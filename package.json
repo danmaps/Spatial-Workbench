@@ -15,7 +15,7 @@
     "@turf/turf": "^6.5.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0",
+    "express": "^4.22.1",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "node-fetch": "^3.3.2",

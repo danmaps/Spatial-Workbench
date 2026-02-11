@@ -18,8 +18,7 @@
     "express": "^4.22.1",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
-    "node-fetch": "^3.3.2",
-    "xlsx": "^0.18.5"
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@babel/core": "^7.22.5",

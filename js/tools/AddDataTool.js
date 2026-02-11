@@ -3,9 +3,11 @@ const { Parameter } = require('../models/Parameter');
 const { map, tocLayers } = require('../app');
 let XLSX;
 if (typeof window !== 'undefined' && window.XLSX) {
-    XLSX = window.XLSX;  // Browser environment
+    XLSX = window.XLSX; // Browser environment (loaded from CDN)
 } else {
-    XLSX = require('xlsx');  // Node environment
+    // This project uses the CDN build (see index.html) and webpack externals.
+    // Avoid bundling the unmaintained npm package.
+    XLSX = null;
 }
 
 class AddDataTool extends Tool {
@@ -98,6 +100,10 @@ class AddDataTool extends Tool {
             const text = await file.text();
             return this.parseCSV(text);
         } else {
+            if (!XLSX) {
+                alert('XLSX parser not available. Reload the page and try again.');
+                return [];
+            }
             const buffer = await file.arrayBuffer();
             const workbook = XLSX.read(buffer);
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];

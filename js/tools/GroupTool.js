@@ -1,5 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
+const { getLayer, listLayers } = require('../state');
 
 class GroupTool extends Tool {
     constructor() {
@@ -18,7 +19,7 @@ class GroupTool extends Tool {
         const distance = document.getElementById('param-Distance').value;
         const units = document.getElementById('param-Units').value;
 
-        const inputLayer = tocLayers.find(layer => layer._leaflet_id === inputLayerId);
+        const inputLayer = getLayer(inputLayerId);
 
         if (inputLayer) {
             const geojson = inputLayer.toGeoJSON();
@@ -41,12 +42,11 @@ class GroupTool extends Tool {
         const inputLayer = document.getElementById('param-Layer');
         const distance = parseFloat(document.getElementById('param-Distance').value);
 
-        // Add an option for each layer in the tocLayers array
-        for (let i = 0; i < tocLayers.length; i++) {
-            const layer = tocLayers[i];
+        // Add an option for each known layer (stable ids)
+        for (const l of listLayers()) {
             const option = document.createElement('option');
-            option.value = layer._leaflet_id.toString();
-            option.text = layer._leaflet_id;
+            option.value = l.id;
+            option.text = l.label;
             inputLayer.appendChild(option);
         }
         // Populate the "Units" dropdown using the information from the Parameter object

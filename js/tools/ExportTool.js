@@ -1,5 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
+const { getLayer, listLayers } = require('../state');
 
 class ExportTool extends Tool {
     constructor() {
@@ -18,13 +19,12 @@ class ExportTool extends Tool {
         // if geojson format is selected, export as geojson
         if (format === 'GeoJSON') {
             
-            // Find the selected layer by ID from the tocLayers array
-            let selectedLayerGeoJSON;
-            for (let i = 0; i < tocLayers.length; i++) {
-                if (tocLayers[i]._leaflet_id.toString() === inputLayerId) {
-                    selectedLayerGeoJSON = tocLayers[i].toGeoJSON();
-                    break;
-                }
+            const layer = getLayer(inputLayerId);
+            const selectedLayerGeoJSON = layer ? layer.toGeoJSON() : null;
+
+            if (!selectedLayerGeoJSON) {
+                this.setStatus(2, 'No layer selected.');
+                return;
             }
 
             let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(selectedLayerGeoJSON));
@@ -44,12 +44,11 @@ class ExportTool extends Tool {
 
         const inputLayer = document.getElementById('param-Layer');
 
-        // Add an option for each layer in the tocLayers array
-        for (let i = 0; i < tocLayers.length; i++) {
-            const layer = tocLayers[i];
+        // Add an option for each known layer (stable ids)
+        for (const l of listLayers()) {
             const option = document.createElement('option');
-            option.value = layer._leaflet_id.toString();
-            option.text = layer._leaflet_id;
+            option.value = l.id;
+            option.text = l.label;
             inputLayer.appendChild(option);
         }
         

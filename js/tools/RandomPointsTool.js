@@ -1,6 +1,8 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { logCurrentBounds } = require('../utils/helpers');
+const { map } = require('../app');
+const { getLayer, listLayers, applyResult } = require('../state');
 
 /**
  * Represents a tool for adding random points within selected polygon.
@@ -29,57 +31,61 @@ class RandomPointsTool extends Tool {
         const polygonIdInput = document.getElementById('param-Polygon');
         
         const pointsCount = pointsCountInput ? parseInt(pointsCountInput.value, 10) : 0;
-        const insidePolygon = insidePolygonInput.checked ? true : false;
-        const polygonId = polygonIdInput ? parseInt(polygonIdInput.value, 10) : null;
-        
-        if (insidePolygon){
-            // console.log(`Executing RandomPointsTool with Polygon ID: ${polygonId} and Points Count: ${pointsCount}`);
-            drawnItems.eachLayer(function(layer) {
-                // Check if the current layer matches the specified polygon ID
-                if (layer instanceof L.Polygon && layer._leaflet_id === polygonId) {
-                    let polygon = layer.toGeoJSON();
-        
-                    for (let i = 0; i < pointsCount; i++) {
-                        let pointAdded = false;
-                        while (!pointAdded) {
-                            let randomPoint = turf.randomPoint(1, {bbox: turf.bbox(polygon)}); // https://turfjs.org/docs/#randomPoint
-                            //todo: consider upgrade to turf.pointsWithinPolygon(points, searchWithin);
-                            if (turf.booleanPointInPolygon(randomPoint.features[0], polygon)) {
-                                let pointCoords = randomPoint.features[0].geometry.coordinates;
-                                // set attribute "random" to random text using regex
-                                // https://stackoverflow.com/questions/1349404/generate-random-string-characters-in-javascript
-                                randomPoint.features[0].properties.random = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 5);
-                                console.log(randomPoint.features[0].properties.random);
-                                
-                                // create geojson layer
-                                let markerLayer = L.geoJSON(randomPoint);
-                                markerLayer.addTo(map);
+        if (!Number.isInteger(pointsCount) || pointsCount <= 0) {
+            this.setStatus(2, 'Points Count must be a positive integer.');
+            return;
+        }
 
-                                // config popups with attributes
-                                markerLayer.bindPopup(JSON.stringify(randomPoint.features[0].properties, null, 2));
+        const insidePolygon = !!(insidePolygonInput && insidePolygonInput.checked);
+        const polygonId = polygonIdInput ? polygonIdInput.value : null;
+        
+        if (insidePolygon) {
+            const polygonLayer = polygonId ? getLayer(polygonId) : null;
+            if (!polygonLayer) {
+                this.setStatus(2, 'No polygon selected.');
+                return;
+            } else if (!(polygonLayer instanceof L.Polygon)) {
+                this.setStatus(2, 'Selected layer is not a polygon.');
+                return;
+            }
 
-                                pointAdded = true;
-                            }
-                        }
+            const polygon = polygonLayer.toGeoJSON();
+            const adds = [];
+
+            for (let i = 0; i < pointsCount; i++) {
+                let pointAdded = false;
+                while (!pointAdded) {
+                    const randomPoint = turf.randomPoint(1, { bbox: turf.bbox(polygon) });
+                    if (turf.booleanPointInPolygon(randomPoint.features[0], polygon)) {
+                        randomPoint.features[0].properties = randomPoint.features[0].properties || {};
+                        randomPoint.features[0].properties.random = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 5);
+                        randomPoint.features[0].toolMetadata = { name: this.name, parameters: this.parameters };
+                        adds.push(randomPoint);
+                        pointAdded = true;
                     }
                 }
-            });
+            }
+
+            const res = applyResult({ addGeojson: adds });
+            if (res && res.ok) {
+                this.setStatus(0, `Added ${res.added.length} point(s).`);
+            } else {
+                this.setStatus(2, 'Failed to add points to map.');
+            }
         } else {
-            var visible_extent = logCurrentBounds(map)
-            let randomPoints = turf.randomPoint(pointsCount, {bbox: visible_extent});
-            // Add markers to the map
-            randomPoints.features.forEach((point) => {
-                var coords = point.geometry.coordinates;
-                let markerLayer = L.marker(coords.reverse());
-                
-                markerLayer.toolMetadata = {
-                    name: this.name,
-                    parameters: this.parameters
-                };
-                
-                markerLayer.addTo(map);
+            const visible_extent = logCurrentBounds(map);
+            const randomPoints = turf.randomPoint(pointsCount, { bbox: visible_extent });
+            // Put tool metadata at the top level (consistent with applyResult expectations).
+            randomPoints.toolMetadata = { name: this.name, parameters: this.parameters };
+            randomPoints.features.forEach((pt) => {
+                pt.properties = pt.properties || {};
             });
-            
+            const res = applyResult({ addGeojson: randomPoints });
+            if (res && res.ok) {
+                this.setStatus(0, `Added ${res.added.length} point(s).`);
+            } else {
+                this.setStatus(2, 'Failed to add points to map.');
+            }
         }
         
     }
@@ -94,15 +100,14 @@ class RandomPointsTool extends Tool {
             // Clear existing options
             polygonIdInput.innerHTML = '';
 
-            // Populate dropdown with current polygons
-            drawnItems.eachLayer(function(layer) {
-                if (layer instanceof L.Polygon) {
-                    const option = document.createElement('option');
-                    option.value = layer._leaflet_id.toString();
-                    option.text = "Polygon " + layer._leaflet_id;
-                    polygonIdInput.appendChild(option);
-                }
-            });
+            // Populate dropdown with current polygons (stable ids)
+            const layers = listLayers().filter((l) => l.geometryType === 'Polygon' || l.geometryType === 'MultiPolygon');
+            for (const l of layers) {
+                const option = document.createElement('option');
+                option.value = l.id;
+                option.text = l.label;
+                polygonIdInput.appendChild(option);
+            }
         }
     }
     

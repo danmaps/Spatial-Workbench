@@ -4,7 +4,8 @@
 
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { drawnItems, tocLayers, map } = require('../app');
+const { map } = require('../app');
+const { getLayer, listLayers, applyResult } = require('../state');
 
 /**
  * Represents a tool for adding a buffer to the selected layer.
@@ -37,14 +38,8 @@ class BufferTool extends Tool {
         // Retrieve the selected units from the dropdown
         const units = document.getElementById('param-Units').value;
     
-        // Find the selected layer by ID from the tocLayers array
-        let selectedLayerGeoJSON;
-        for (let i = 0; i < tocLayers.length; i++) {
-            if (tocLayers[i]._leaflet_id.toString() === inputLayerId) {
-                selectedLayerGeoJSON = tocLayers[i].toGeoJSON();
-                break;
-            }
-        }
+        const layer = getLayer(inputLayerId);
+        const selectedLayerGeoJSON = layer ? layer.toGeoJSON() : null;
     
         // Ensure a layer was selected and convert to GeoJSON was successful
         if (!selectedLayerGeoJSON) {
@@ -67,10 +62,14 @@ class BufferTool extends Tool {
             parameters: this.parameters
         };
 
-        // Add the buffered area to the map - this requires converting the Turf GeoJSON back to a Leaflet layer
-        const bufferedLayer = L.geoJSON(buffered).addTo(map);
+        // Apply via centralized state (no direct map mutation here)
+        const res = applyResult({ addGeojson: buffered });
 
-        this.setStatus(0, 'Buffered layer added to map.');
+        if (res && res.ok) {
+            this.setStatus(0, 'Buffered layer added to map.');
+        } else {
+            this.setStatus(2, 'Failed to add buffered layer to map.');
+        }
     }
     
     renderUI() {
@@ -81,12 +80,12 @@ class BufferTool extends Tool {
         if (inputLayer) {
             inputLayer.innerHTML = ''; // Clear existing options
 
-            // Add an option for each layer in the tocLayers array
-            for (let i = 0; i < tocLayers.length; i++) {
-                const layer = tocLayers[i];
+            // Add an option for each known layer (stable ids)
+            const layers = listLayers();
+            for (const l of layers) {
                 const option = document.createElement('option');
-                option.value = layer._leaflet_id.toString();
-                option.text = layer._leaflet_id;
+                option.value = l.id;
+                option.text = l.label;
                 inputLayer.appendChild(option);
             }
 

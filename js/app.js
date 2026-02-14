@@ -43,6 +43,13 @@ function getToolByName(name) {
 // Function to update the DataContent div
 function updateDataContent() {
     let content = document.getElementById('DataContent');
+    // Ensure every layer has a stable id persisted into feature.properties.__id
+    try {
+        tocLayers.forEach((l) => state.ensureStableId(l));
+    } catch (e) {
+        // best-effort
+    }
+
     let geoJsonData = JSON.stringify(drawnItems.toGeoJSON(), null, 2);
     content.innerHTML = `<code class="language-json">${Prism.highlight(geoJsonData, Prism.languages.json, 'json')}</code>`;
 

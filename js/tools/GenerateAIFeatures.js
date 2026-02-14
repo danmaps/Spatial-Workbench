@@ -1,5 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
+const { applyResult } = require('../state');
+const { map } = require('../app');
 
 /**
  * A tool tool for generating AI features.
@@ -41,10 +43,10 @@ class GenerateAIFeatures extends Tool {
                     const data = await response.json();
                     // console.log(data);
     
-                    // Add the generated GeoJSON to the map
+                    // Add the generated GeoJSON via centralized state
+                    // NOTE: we still build a temporary layer here just for popup binding.
                     let layer = L.geoJSON(data);
-    
-                    // Add popups for the GeoJSON attributes
+
                     layer.eachLayer(function (layer) {
                         let attributes = layer.feature.properties;
                         let popupContent = "<table class='popupTable'>";
@@ -54,8 +56,8 @@ class GenerateAIFeatures extends Tool {
                         popupContent += "</table>";
                         layer.bindPopup(popupContent);
                     });
-    
-                    layer.addTo(map);
+
+                    applyResult({ addGeojson: data });
                 } catch (error) {
                     console.error('Error during API call:', error);
                 } finally {

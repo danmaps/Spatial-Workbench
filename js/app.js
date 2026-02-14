@@ -23,6 +23,8 @@ document.getElementById('backButton').addEventListener('click', function() {
 const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
 
+const state = require('./state');
+
 let drawControl = new L.Control.Draw({
     draw: {
         // Options here
@@ -63,16 +65,17 @@ map.on(L.Draw.Event.CREATED, function (e) {
 
 
     
+    // Assign a stable id immediately.
+    const stableId = state.registerLayer(layer);
+
     let message = '';
     if (type === 'marker') {
-        let latlng = layer.getLatLng();
-        message = `${layer._leaflet_id}`;
+        message = `${stableId}`;
     } else {
         let vertices = layer.getLatLngs()[0];
-        message = `${layer._leaflet_id} ${type} (${vertices.length} vertices)`;
+        message = `${stableId} ${type} (${vertices.length} vertices)`;
     }
-    
-    // console.log(message);
+
     addToToc(layer, message, type);
     updateDataContent();
 });
@@ -81,8 +84,9 @@ map.on('draw:edited', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
         removeMessageForLayer(layer);
+        const stableId = state.registerLayer(layer);
         let vertices = layer.getLatLngs()[0];
-        let message = `${layer._leaflet_id} (${vertices.length} vertices)`;
+        let message = `${stableId} (${vertices.length} vertices)`;
         addToToc(layer, message);
     });
     updateDataContent();
@@ -93,6 +97,9 @@ map.on('draw:deleted', function (e) {
     layers.eachLayer(function (layer) {
         drawnItems.removeLayer(layer);
         removeMessageForLayer(layer);
+        if (layer && layer.__id) {
+            state.removeLayer(layer.__id);
+        }
     });
     updateDataContent();
 });
@@ -102,10 +109,9 @@ map.on('layeradd', function (e) {
     // console.log(layer)
     // if layer has a feature.toolMetadata, add the layer to the TOC
     if (layer.hasOwnProperty('feature') && layer.feature.toolMetadata) {
-        // console.log(`Adding ${layer._leaflet_id} ${layer.featureType} to the TOC because it was made by the ${layer.feature.toolMetadata.name} tool.`);
+        const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
         let featureType = layer.feature.geometry.type;
-        let message = `${layer._leaflet_id} ${featureType}`;
-        // console.log(message)
+        let message = `${stableId} ${featureType}`;
         addToToc(layer, message);
     }
 });
@@ -120,9 +126,11 @@ function addToToc(layer, message, type) {
         polyline: 'fa-solid fa-draw-polygon',
         polygon: 'fa-solid fa-draw-circle',
     };
-    let messageId = `message-${layer._leaflet_id}`;
+    const stableId = state.ensureStableId(layer);
+    let messageId = `message-${stableId}`;
     document.getElementById('tocContent').innerHTML += `<p class="layer-message" id="${messageId}"><i class="${iconMap[type]}"></i> ${message}</p>`;
     tocLayers.push(layer);
+    layerMessageMap.set(layer, messageId);
 }
 
 // Load tools dynamically and store them in the loadedTools object

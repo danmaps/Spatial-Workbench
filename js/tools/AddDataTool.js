@@ -1,6 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { map, tocLayers } = require('../app');
+const { map } = require('../app');
+const { applyResult } = require('../state');
 let XLSX;
 if (typeof window !== 'undefined' && window.XLSX) {
     XLSX = window.XLSX; // Browser environment (loaded from CDN)
@@ -127,9 +128,13 @@ class AddDataTool extends Tool {
     }
 
     addToMap(geojson) {
-        const layer = L.geoJSON(geojson).addTo(map);
-        tocLayers.push(layer);
-        map.fitBounds(layer.getBounds());
+        const res = applyResult({ addGeojson: geojson });
+        // Fit bounds best-effort using a temporary layer
+        try {
+            const tmp = L.geoJSON(geojson);
+            map.fitBounds(tmp.getBounds());
+        } catch (_) {}
+        return res;
     }
 
     renderUI() {

@@ -1,7 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { applyResult } = require('../state');
-const { map } = require('../app');
+const { applyResult, getLayer } = require('../state');
 
 /**
  * A tool tool for generating AI features.
@@ -44,20 +43,27 @@ class GenerateAIFeatures extends Tool {
                     // console.log(data);
     
                     // Add the generated GeoJSON via centralized state
-                    // NOTE: we still build a temporary layer here just for popup binding.
-                    let layer = L.geoJSON(data);
+                    // NOTE: applyResult creates new leaflet layer instances.
+                    // If we want popups, we bind them after applyResult using the returned ids.
+                    const res = applyResult({ addGeojson: data });
 
-                    layer.eachLayer(function (layer) {
-                        let attributes = layer.feature.properties;
-                        let popupContent = "<table class='popupTable'>";
-                        for (let key in attributes) {
-                            popupContent += `<tr><td><b>${key.charAt(0).toUpperCase() + key.slice(1)}</b></td><td>${attributes[key]}</td></tr>`;
+                    if (res && res.ok) {
+                        // Bind a simple properties popup to newly added layers
+                        for (const id of (res.added || [])) {
+                            const addedLayer = getLayer(id);
+                            if (!addedLayer || !addedLayer.feature || !addedLayer.feature.properties) continue;
+
+                            const attributes = addedLayer.feature.properties;
+                            let popupContent = "<table class='popupTable'>";
+                            for (let key in attributes) {
+                                popupContent += `<tr><td><b>${key.charAt(0).toUpperCase() + key.slice(1)}</b></td><td>${attributes[key]}</td></tr>`;
+                            }
+                            popupContent += "</table>";
+                            if (typeof addedLayer.bindPopup === 'function') {
+                                addedLayer.bindPopup(popupContent);
+                            }
                         }
-                        popupContent += "</table>";
-                        layer.bindPopup(popupContent);
-                    });
-
-                    applyResult({ addGeojson: data });
+                    }
                 } catch (error) {
                     console.error('Error during API call:', error);
                 } finally {

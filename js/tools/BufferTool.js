@@ -4,7 +4,7 @@
 
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { tocLayers, map } = require('../app');
+const { map } = require('../app');
 const { getLayer, listLayers, applyResult } = require('../state');
 
 /**
@@ -63,9 +63,13 @@ class BufferTool extends Tool {
         };
 
         // Apply via centralized state (no direct map mutation here)
-        applyResult({ addGeojson: buffered });
+        const res = applyResult({ addGeojson: buffered });
 
-        this.setStatus(0, 'Buffered layer added to map.');
+        if (res && res.ok) {
+            this.setStatus(0, 'Buffered layer added to map.');
+        } else {
+            this.setStatus(2, 'Failed to add buffered layer to map.');
+        }
     }
     
     renderUI() {

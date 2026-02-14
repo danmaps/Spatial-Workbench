@@ -9,13 +9,24 @@ const { drawnItems, map, tocLayers } = require('./app');
 
 const _registry = new Map(); // stableId -> leaflet layer
 
+// Counter to reduce collision risk in _uuid fallback when multiple IDs are generated
+// in the same millisecond.
+let _uuidCounter = 0;
+
 function _uuid() {
   if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
   }
   // Fallback: not RFC-perfect, but stable enough for local use.
-  return 'id-' + Math.random().toString(16).slice(2) + Date.now().toString(16);
+  // Incorporates timestamp, random value, and a monotonically increasing counter
+  // to minimize the chance of collisions in tight loops or batch operations.
+  const timestampPart = Date.now().toString(16);
+  const randomPart = Math.random().toString(16).slice(2);
+  const counterPart = (_uuidCounter++ & 0xffffffff).toString(16);
+  return 'id-' + timestampPart + '-' + randomPart + '-' + counterPart;
 }
+
+const DEBUG = (typeof process !== 'undefined' && process && process.env && process.env.NODE_ENV !== 'production');
 
 function ensureStableId(layer, preferredId) {
   if (!layer) return null;
@@ -39,6 +50,20 @@ function registerLayer(layer, preferredId) {
   if (!id) return null;
   _registry.set(id, layer);
   return id;
+}
+
+// Keep the internal registry in sync when layers are removed directly from the map.
+if (map && typeof map.on === 'function') {
+  map.on('layerremove', function (e) {
+    const layer = e && e.layer;
+    if (!layer || !layer.__id) return;
+
+    // If the layer is still present on the map or in drawnItems, do not unregister it.
+    if (map.hasLayer && map.hasLayer(layer)) return;
+    if (drawnItems && drawnItems.hasLayer && drawnItems.hasLayer(layer)) return;
+
+    unregisterLayer(layer);
+  });
 }
 
 function unregisterLayer(layerOrId) {
@@ -80,7 +105,9 @@ function listLayers() {
   // Prefer TOC list (it reflects "layers we care about").
   const layers = Array.isArray(tocLayers) ? tocLayers : [];
   return layers.map((layer) => {
-    const id = ensureStableId(layer);
+    // Ensure the layer is both ID'd and registered.
+    const preferredId = layer?.feature?.properties?.__id;
+    const id = registerLayer(layer, preferredId);
     const geo = (layer && typeof layer.toGeoJSON === 'function') ? layer.toGeoJSON() : null;
     const geomType = geo && geo.geometry ? geo.geometry.type : (layer && layer.featureType) || null;
     return {
@@ -104,10 +131,11 @@ function getState() {
 // ToolResult is intentionally minimal for now.
 // { addGeojson?: Feature|FeatureCollection|Array<Feature|FeatureCollection>, removeLayerIds?: string[] }
 function applyResult(toolResult) {
-  if (!toolResult || typeof toolResult !== 'object') return { ok: false, added: [], removed: [] };
+  if (!toolResult || typeof toolResult !== 'object') return { ok: false, added: [], removed: [], errors: ['invalid toolResult'] };
 
   const added = [];
   const removed = [];
+  const errors = [];
 
   // Removals
   const toRemove = toolResult.removeLayerIds || [];
@@ -117,7 +145,7 @@ function applyResult(toolResult) {
 
   // Additions
   let toAdd = toolResult.addGeojson;
-  if (!toAdd) return { ok: true, added, removed };
+  if (!toAdd) return { ok: true, added, removed, errors };
   if (!Array.isArray(toAdd)) toAdd = [toAdd];
 
   for (const gj of toAdd) {
@@ -130,31 +158,30 @@ function applyResult(toolResult) {
         // Ensure the feature property is set even if Leaflet didn't attach it yet.
         ensureStableId(child, preferredId || id);
 
-        // Apply any tool metadata stored on the GeoJSON feature (used by TOC hookup)
+        // Apply any tool metadata stored on the GeoJSON (prefer top-level, but accept per-feature too).
         try {
-          if (child.feature && gj && gj.toolMetadata) {
-            child.feature.toolMetadata = gj.toolMetadata;
-          }
-          if (child.feature && child.feature.toolMetadata) {
-            // no-op; already attached
-          }
-        } catch (_) {}
+          const md = (gj && gj.toolMetadata) || (child.feature && child.feature.toolMetadata) || (child.feature && child.feature.properties && child.feature.properties.toolMetadata);
+          if (child.feature && md) child.feature.toolMetadata = md;
+        } catch (e) {
+          if (DEBUG) console.warn('applyResult: toolMetadata attach failed', e);
+        }
 
         // Add to map + editable group
-        try { child.addTo(map); } catch (_) {}
-        try { drawnItems.addLayer(child); } catch (_) {}
+        try { child.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
+        try { drawnItems.addLayer(child); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
 
         // Track in TOC
-        if (!tocLayers.includes(child)) tocLayers.push(child);
+        if (Array.isArray(tocLayers) && !tocLayers.includes(child)) tocLayers.push(child);
 
         added.push(child.__id);
       });
-    } catch (_) {
-      // best-effort
+    } catch (e) {
+      errors.push(String(e && e.message ? e.message : e));
+      if (DEBUG) console.warn('applyResult: addGeojson failed', e);
     }
   }
 
-  return { ok: true, added, removed };
+  return { ok: errors.length === 0, added, removed, errors };
 }
 
 module.exports = {

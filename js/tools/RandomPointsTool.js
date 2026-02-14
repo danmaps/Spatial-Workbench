@@ -1,7 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { logCurrentBounds } = require('../utils/helpers');
-const { drawnItems, map } = require('../app');
+const { map } = require('../app');
 const { getLayer, listLayers, applyResult } = require('../state');
 
 /**
@@ -31,13 +31,21 @@ class RandomPointsTool extends Tool {
         const polygonIdInput = document.getElementById('param-Polygon');
         
         const pointsCount = pointsCountInput ? parseInt(pointsCountInput.value, 10) : 0;
-        const insidePolygon = insidePolygonInput.checked ? true : false;
+        if (!Number.isInteger(pointsCount) || pointsCount <= 0) {
+            this.setStatus(2, 'Points Count must be a positive integer.');
+            return;
+        }
+
+        const insidePolygon = !!(insidePolygonInput && insidePolygonInput.checked);
         const polygonId = polygonIdInput ? polygonIdInput.value : null;
         
         if (insidePolygon) {
             const polygonLayer = polygonId ? getLayer(polygonId) : null;
-            if (!polygonLayer || !(polygonLayer instanceof L.Polygon)) {
+            if (!polygonLayer) {
                 this.setStatus(2, 'No polygon selected.');
+                return;
+            } else if (!(polygonLayer instanceof L.Polygon)) {
+                this.setStatus(2, 'Selected layer is not a polygon.');
                 return;
             }
 
@@ -58,15 +66,26 @@ class RandomPointsTool extends Tool {
                 }
             }
 
-            applyResult({ addGeojson: adds });
+            const res = applyResult({ addGeojson: adds });
+            if (res && res.ok) {
+                this.setStatus(0, `Added ${res.added.length} point(s).`);
+            } else {
+                this.setStatus(2, 'Failed to add points to map.');
+            }
         } else {
             const visible_extent = logCurrentBounds(map);
             const randomPoints = turf.randomPoint(pointsCount, { bbox: visible_extent });
+            // Put tool metadata at the top level (consistent with applyResult expectations).
+            randomPoints.toolMetadata = { name: this.name, parameters: this.parameters };
             randomPoints.features.forEach((pt) => {
                 pt.properties = pt.properties || {};
-                pt.toolMetadata = { name: this.name, parameters: this.parameters };
             });
-            applyResult({ addGeojson: randomPoints });
+            const res = applyResult({ addGeojson: randomPoints });
+            if (res && res.ok) {
+                this.setStatus(0, `Added ${res.added.length} point(s).`);
+            } else {
+                this.setStatus(2, 'Failed to add points to map.');
+            }
         }
         
     }

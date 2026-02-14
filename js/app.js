@@ -85,8 +85,16 @@ map.on('draw:edited', function (e) {
     layers.eachLayer(function (layer) {
         removeMessageForLayer(layer);
         const stableId = state.registerLayer(layer);
-        let vertices = layer.getLatLngs()[0];
-        let message = `${stableId} (${vertices.length} vertices)`;
+
+        // Markers don't have getLatLngs().
+        let message = '';
+        if (layer && typeof layer.getLatLngs === 'function') {
+            let vertices = layer.getLatLngs()[0] || [];
+            message = `${stableId} (${vertices.length} vertices)`;
+        } else {
+            message = `${stableId} (edited)`;
+        }
+
         addToToc(layer, message);
     });
     updateDataContent();
@@ -95,11 +103,14 @@ map.on('draw:edited', function (e) {
 map.on('draw:deleted', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
-        drawnItems.removeLayer(layer);
-        removeMessageForLayer(layer);
         if (layer && layer.__id) {
+            // Let state.removeLayer handle removal from drawnItems for tracked layers
             state.removeLayer(layer.__id);
+        } else {
+            // Fall back to direct removal for untracked layers
+            drawnItems.removeLayer(layer);
         }
+        removeMessageForLayer(layer);
     });
     updateDataContent();
 });
@@ -129,7 +140,9 @@ function addToToc(layer, message, type) {
     const stableId = state.ensureStableId(layer);
     let messageId = `message-${stableId}`;
     document.getElementById('tocContent').innerHTML += `<p class="layer-message" id="${messageId}"><i class="${iconMap[type]}"></i> ${message}</p>`;
-    tocLayers.push(layer);
+    if (Array.isArray(tocLayers) && !tocLayers.includes(layer)) {
+        tocLayers.push(layer);
+    }
     layerMessageMap.set(layer, messageId);
 }
 

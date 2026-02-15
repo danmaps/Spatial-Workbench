@@ -3,80 +3,94 @@ const turf = require('@turf/turf');
 
 jest.mock('leaflet');
 jest.mock('@turf/turf', () => ({
-    randomPoint: jest.fn(),
-    bbox: jest.fn(() => [0, 0, 1, 1]),
-    booleanPointInPolygon: jest.fn(),
+  randomPoint: jest.fn(),
+  bbox: jest.fn(() => [0, 0, 1, 1]),
+  booleanPointInPolygon: jest.fn(() => true),
 }));
 
 jest.mock('../app', () => ({
-    map: {},
+  map: { getBounds: jest.fn() },
 }));
 
+const mockApplyResult = jest.fn(() => ({ ok: true, added: [{ id: 'x' }], removed: [], errors: [] }));
+const mockGetLayer = jest.fn();
+const mockListLayers = jest.fn(() => []);
+
 jest.mock('../state', () => ({
-    getLayer: jest.fn(),
-    listLayers: jest.fn(() => []),
-    applyResult: jest.fn(() => ({ ok: true, added: [{ id: 'x' }], removed: [], errors: [] })),
+  getLayer: (...args) => mockGetLayer(...args),
+  listLayers: (...args) => mockListLayers(...args),
+  applyResult: (...args) => mockApplyResult(...args),
 }));
 
 describe('RandomPointsTool', () => {
-    let RandomPointsTool;
+  let RandomPointsTool;
 
-    beforeEach(() => {
-        global.L = L;
-        global.turf = turf;
+  beforeEach(() => {
+    mockApplyResult.mockClear();
+    mockGetLayer.mockClear();
+    mockListLayers.mockClear();
 
-        // Minimal DOM expected by Tool base class
-        document.body.innerHTML = `
-          <div id="toolSelection" style="display:block"></div>
-          <div id="toolDetails" class="hidden"></div>
-          <div id="toolContent"></div>
-          <div id="statusMessage" style="display:none"><span id="statusMessageText"></span></div>
+    global.L = L;
+    global.turf = turf;
 
-          <input id="param-Points Count" value="5" />
-          <input id="param-Inside Polygon" type="checkbox" checked />
-          <select id="param-Polygon"><option value="123" selected>123</option></select>
-        `;
+    // Minimal DOM expected by Tool base class
+    document.body.innerHTML = `
+      <div id="toolSelection" style="display:block"></div>
+      <div id="toolDetails" class="hidden"></div>
+      <div id="toolContent"></div>
+      <div id="statusMessage" style="display:none"><span id="statusMessageText"></span></div>
 
-        ({ RandomPointsTool } = require('./RandomPointsTool'));
+      <input id="param-Points Count" value="3" />
+      <input id="param-Inside Polygon" type="checkbox" />
+      <select id="param-Polygon"></select>
+    `;
 
-        turf.randomPoint.mockClear();
-        turf.booleanPointInPolygon.mockClear();
-        turf.bbox.mockClear();
+    // Require after mocks
+    ({ RandomPointsTool } = require('./RandomPointsTool'));
 
-        const state = require('../state');
-        state.getLayer.mockReset();
-        state.applyResult.mockClear();
-    });
+    turf.randomPoint.mockClear();
+    turf.booleanPointInPolygon.mockClear();
+    turf.bbox.mockClear();
+  });
 
-    test('execute (inside polygon)', () => {
-        const state = require('../state');
+  test('execute adds points via applyResult (bounds mode)', () => {
+    // insidePolygon unchecked by default
+    const tool = new RandomPointsTool();
+    tool.execute();
 
-        const mockPolygon = {
-            toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] } })),
-        };
+    expect(turf.randomPoint).toHaveBeenCalled();
+    expect(mockApplyResult).toHaveBeenCalled();
+  });
 
-        // satisfy: polygonLayer instanceof L.Polygon
-        L.Polygon = function () { };
-        Object.setPrototypeOf(mockPolygon, L.Polygon.prototype);
+  test('execute adds points via applyResult (inside polygon mode)', () => {
+    // Toggle inside polygon
+    document.getElementById('param-Inside Polygon').checked = true;
+    document.getElementById('param-Polygon').value = 'poly-1';
 
-        state.getLayer.mockReturnValue(mockPolygon);
-        turf.randomPoint.mockReturnValue({ features: [{ properties: {} }] });
-        turf.booleanPointInPolygon.mockReturnValue(true);
+    const poly = { toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] } })) };
 
-        const tool = new RandomPointsTool();
-        tool.execute();
+    // satisfy: polygonLayer instanceof L.Polygon
+    L.Polygon = function Polygon() {};
+    Object.setPrototypeOf(poly, L.Polygon.prototype);
 
-        expect(state.getLayer).toHaveBeenCalled();
-        expect(turf.randomPoint).toHaveBeenCalled();
-        expect(turf.booleanPointInPolygon).toHaveBeenCalled();
-        expect(state.applyResult).toHaveBeenCalled();
-    });
+    mockGetLayer.mockReturnValue(poly);
+    turf.randomPoint.mockReturnValue({ features: [{ properties: {} }] });
 
-    test('renderUI', () => {
-        const tool = new RandomPointsTool();
-        tool.renderUI();
+    const tool = new RandomPointsTool();
+    tool.execute();
 
-        // Tool base class should have cleared/rebuilt toolContent
-        expect(document.getElementById('toolContent').innerHTML).toContain('Random Points');
-    });
+    expect(mockGetLayer).toHaveBeenCalled();
+    expect(turf.randomPoint).toHaveBeenCalled();
+    expect(turf.booleanPointInPolygon).toHaveBeenCalled();
+    expect(mockApplyResult).toHaveBeenCalled();
+  });
+
+  test('renderUI lists polygons via listLayers', () => {
+    mockListLayers.mockReturnValue([{ id: 'p1', geometryType: 'Polygon', label: 'Polygon (p1)' }]);
+
+    const tool = new RandomPointsTool();
+    tool.renderUI();
+
+    expect(mockListLayers).toHaveBeenCalled();
+  });
 });

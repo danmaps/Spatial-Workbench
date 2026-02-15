@@ -9,7 +9,12 @@ jest.mock('@turf/turf', () => ({
 }));
 
 jest.mock('../app', () => ({
-  map: { getBounds: jest.fn() },
+  map: {
+    getBounds: jest.fn(() => ({
+      getSouthWest: () => ({ lng: 0, lat: 0 }),
+      getNorthEast: () => ({ lng: 1, lat: 1 }),
+    })),
+  },
 }));
 
 const mockApplyResult = jest.fn(() => ({ ok: true, added: [{ id: 'x' }], removed: [], errors: [] }));
@@ -42,7 +47,7 @@ describe('RandomPointsTool', () => {
 
       <input id="param-Points Count" value="3" />
       <input id="param-Inside Polygon" type="checkbox" />
-      <select id="param-Polygon"></select>
+      <select id="param-Polygon"><option value="poly-1">poly-1</option></select>
     `;
 
     // Require after mocks
@@ -55,6 +60,8 @@ describe('RandomPointsTool', () => {
 
   test('execute adds points via applyResult (bounds mode)', () => {
     // insidePolygon unchecked by default
+    turf.randomPoint.mockReturnValue({ type: 'FeatureCollection', features: [] });
+
     const tool = new RandomPointsTool();
     tool.execute();
 

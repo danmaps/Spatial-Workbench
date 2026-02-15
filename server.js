@@ -16,7 +16,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const { tools: toolSpecs } = require('./js/tools/specs');
+const toolSpecs = require('./js/tools/specs.json');
 
 app.get('/api/tools', (_req, res) => {
     res.json({ ok: true, tools: toolSpecs });

@@ -25,3 +25,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Tool spec drift check
+        run: npm run spec:check

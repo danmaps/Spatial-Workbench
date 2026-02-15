@@ -7,11 +7,14 @@
     "test": "jest",
     "start": "nodemon server.js",
     "build": "webpack",
-    "watch": "webpack --watch"
+    "watch": "webpack --watch",
+    "spec:update": "node scripts/generate_specs.js",
+    "spec:check": "node scripts/generate_specs.js --check"
   },
   "jest": {
     "testEnvironment": "jsdom"
   },
+
   "author": "",
   "license": "ISC",
   "dependencies": {

@@ -36,6 +36,25 @@ class Tool {
         };
     }
 
+    // Describe this tool in a machine-readable way
+    getSpec() {
+        const params = (this.parameters || []).map((p) => ({
+            name: p.name,
+            description: p.description,
+            type: p.type,
+            defaultValue: p.defaultValue,
+            options: p.options || undefined,
+            min: p.min ?? undefined,
+            max: p.max ?? undefined,
+        }));
+        return {
+            key: this.constructor?.name || this.name,
+            name: this.name,
+            description: this.description || '',
+            parameters: params,
+        };
+    }
+
     renderUI() {
         // console.log(`Rendering UI for ${this.constructor.name}`);
         const toolSelection = document.getElementById('toolSelection');

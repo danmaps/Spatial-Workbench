@@ -17,6 +17,14 @@
     <link rel="stylesheet" href="public/css/main.css" />
 </head>
 <body>
+    <div class="mobile-bar">
+        <div class="mobile-title">Spatial Workbench</div>
+        <div class="mobile-actions">
+            <button class="mobile-tab" data-view="map">Map</button>
+            <button class="mobile-tab" data-view="tools">Tools</button>
+            <button class="mobile-tab" data-view="layers">Layers</button>
+        </div>
+    </div>
     <div class="container-fluid">
         <div class="row h-100">
             <!-- Table of contents (left pane) -->
@@ -75,5 +83,6 @@
 
     <!-- Main application script -->
     <script src="public/dist/bundle.js"></script>
+    <script src="public/js/mobile.js"></script>
 </body>
 </html>

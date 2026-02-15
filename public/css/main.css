@@ -20,6 +20,43 @@ body, html {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
+.mobile-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--secondary-bg);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 1200;
+}
+
+.mobile-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mobile-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.mobile-tab {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.mobile-tab.active {
+    background: var(--hover-bg);
+    border-color: var(--accent-color);
+}
+
 .container-fluid {
     height: 100vh;
 }
@@ -188,32 +225,40 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 
 /* Responsive design */
 @media (max-width: 768px) {
+    .mobile-bar { display: flex; }
+
     .container-fluid {
         display: flex;
         flex-direction: column;
+        height: calc(100vh - 52px);
     }
 
     #map {
-        height: 50vh;
+        height: 100%;
         order: 1;
     }
 
-    #toc {
-        position: relative;
-        width: 100%;
-        height: auto;
-        order: 2;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-    }
-
+    #toc,
     #sidebar {
         position: relative;
         width: 100%;
-        height: auto;
-        order: 3;
-        border-left: none;
+        height: 100%;
+        border: none;
     }
+
+    /* View switching */
+    body[data-view="map"] #toc,
+    body[data-view="map"] #sidebar { display: none; }
+
+    body[data-view="tools"] #map,
+    body[data-view="tools"] #toc { display: none; }
+
+    body[data-view="layers"] #map,
+    body[data-view="layers"] #sidebar { display: none; }
+
+    /* Touch targets */
+    .tool { padding: 18px; }
+    input[type="number"], input[type="text"], select, button { min-height: 44px; }
 }
 
 /* Animation */

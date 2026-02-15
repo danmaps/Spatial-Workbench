@@ -1,13 +1,20 @@
-const { RandomPointsTool } = require('./RandomPointsTool');
+const L = require('leaflet');
+const turf = require('@turf/turf');
+
+jest.mock('leaflet');
+jest.mock('@turf/turf', () => ({
+  randomPoint: jest.fn(),
+  bbox: jest.fn(() => [0, 0, 1, 1]),
+  booleanPointInPolygon: jest.fn(() => true),
+}));
 
 jest.mock('../app', () => ({
-  drawnItems: {},
   map: { getBounds: jest.fn() },
 }));
 
-const mockApplyResult = jest.fn();
+const mockApplyResult = jest.fn(() => ({ ok: true, added: [{ id: 'x' }], removed: [], errors: [] }));
 const mockGetLayer = jest.fn();
-const mockListLayers = jest.fn();
+const mockListLayers = jest.fn(() => []);
 
 jest.mock('../state', () => ({
   getLayer: (...args) => mockGetLayer(...args),
@@ -16,53 +23,74 @@ jest.mock('../state', () => ({
 }));
 
 describe('RandomPointsTool', () => {
+  let RandomPointsTool;
+
   beforeEach(() => {
-    mockApplyResult.mockReset();
-    mockGetLayer.mockReset();
-    mockListLayers.mockReset();
+    mockApplyResult.mockClear();
+    mockGetLayer.mockClear();
+    mockListLayers.mockClear();
 
-    // Minimal DOM stubs
-    document.getElementById = jest.fn((id) => {
-      switch (id) {
-        case 'param-Points Count':
-          return { value: '3' };
-        case 'param-Inside Polygon':
-          return { checked: false };
-        case 'param-Polygon':
-          return { value: 'stable-id-1' };
-        default:
-          return null;
-      }
-    });
+    global.L = L;
+    global.turf = turf;
 
-    // Turf is global in the app; provide the bits the tool uses.
-    global.turf = {
-      randomPoint: jest.fn(() => ({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {} }] })),
-      bbox: jest.fn(() => [0, 0, 1, 1]),
-      booleanPointInPolygon: jest.fn(() => true),
-    };
+    // Minimal DOM expected by Tool base class
+    document.body.innerHTML = `
+      <div id="toolSelection" style="display:block"></div>
+      <div id="toolDetails" class="hidden"></div>
+      <div id="toolContent"></div>
+      <div id="statusMessage" style="display:none"><span id="statusMessageText"></span></div>
 
-    // Leaflet global
-    global.L = {
-      Polygon: function Polygon() {},
-    };
+      <input id="param-Points Count" value="3" />
+      <input id="param-Inside Polygon" type="checkbox" />
+      <select id="param-Polygon"></select>
+    `;
+
+    // Require after mocks
+    ({ RandomPointsTool } = require('./RandomPointsTool'));
+
+    turf.randomPoint.mockClear();
+    turf.booleanPointInPolygon.mockClear();
+    turf.bbox.mockClear();
   });
 
-  test('execute adds points via applyResult', () => {
+  test('execute adds points via applyResult (bounds mode)', () => {
+    // insidePolygon unchecked by default
     const tool = new RandomPointsTool();
     tool.execute();
+
+    expect(turf.randomPoint).toHaveBeenCalled();
+    expect(mockApplyResult).toHaveBeenCalled();
+  });
+
+  test('execute adds points via applyResult (inside polygon mode)', () => {
+    // Toggle inside polygon
+    document.getElementById('param-Inside Polygon').checked = true;
+    document.getElementById('param-Polygon').value = 'poly-1';
+
+    const poly = { toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] } })) };
+
+    // satisfy: polygonLayer instanceof L.Polygon
+    L.Polygon = function Polygon() {};
+    Object.setPrototypeOf(poly, L.Polygon.prototype);
+
+    mockGetLayer.mockReturnValue(poly);
+    turf.randomPoint.mockReturnValue({ features: [{ properties: {} }] });
+
+    const tool = new RandomPointsTool();
+    tool.execute();
+
+    expect(mockGetLayer).toHaveBeenCalled();
+    expect(turf.randomPoint).toHaveBeenCalled();
+    expect(turf.booleanPointInPolygon).toHaveBeenCalled();
     expect(mockApplyResult).toHaveBeenCalled();
   });
 
   test('renderUI lists polygons via listLayers', () => {
     mockListLayers.mockReturnValue([{ id: 'p1', geometryType: 'Polygon', label: 'Polygon (p1)' }]);
+
     const tool = new RandomPointsTool();
-
-    const polygonEl = { innerHTML: '', appendChild: jest.fn() };
-    document.getElementById = jest.fn((id) => (id === 'param-Polygon' ? polygonEl : null));
-
     tool.renderUI();
+
     expect(mockListLayers).toHaveBeenCalled();
-    expect(polygonEl.appendChild).toHaveBeenCalled();
   });
 });

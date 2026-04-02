@@ -12,12 +12,11 @@ class GroupTool extends Tool {
 
         this.description = "Group";
     }
-    execute() {
-        super.execute();
+    async run(params) {
         console.log("Exporting data...");
-        const inputLayerId = document.getElementById('param-Layer').value;
-        const distance = document.getElementById('param-Distance').value;
-        const units = document.getElementById('param-Units').value;
+        const inputLayerId = params['Layer'];
+        const distance = params['Distance'];
+        const units = params['Units'];
 
         const inputLayer = getLayer(inputLayerId);
 
@@ -25,16 +24,27 @@ class GroupTool extends Tool {
             const geojson = inputLayer.toGeoJSON();
             const features = geojson.features;
             const groupedFeatures = this.groupFeatures(features, distance, units);
-            const groupedGeojson = { type: 'FeatureCollection', features: groupedFeatures };    
-            const geojsonString = JSON.stringify(groupedGeojson);
-            const blob = new Blob([geojsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'grouped.geojson';
-            link.click();
-            URL.revokeObjectURL(url);
+            const groupedGeojson = {
+                type: 'FeatureCollection',
+                features: groupedFeatures,
+                toolMetadata: {
+                    name: this.name,
+                    params,
+                    parentLayerId: inputLayerId,
+                    timestamp: new Date().toISOString()
+                }
+            };
+            this.setStatus(0, 'Prepared grouped GeoJSON export.');
+            return {
+                download: {
+                    filename: 'grouped.geojson',
+                    mimeType: 'application/json',
+                    data: JSON.stringify(groupedGeojson)
+                }
+            };
         }
+
+        this.setStatus(2, 'No layer selected.');
     }
 
     renderUI() {

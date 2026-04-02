@@ -23,21 +23,17 @@ class RandomPointsTool extends Tool {
     }
 
     /**
-     * Executes the RandomPointsTool logic, adding specified number of random points within a selected polygon.
+     * Executes the RandomPointsTool logic without reading from the DOM.
      */
-    execute() {
-        const pointsCountInput = document.getElementById('param-Points Count');
-        const insidePolygonInput = document.getElementById('param-Inside Polygon');
-        const polygonIdInput = document.getElementById('param-Polygon');
-        
-        const pointsCount = pointsCountInput ? parseInt(pointsCountInput.value, 10) : 0;
+    async run(params) {
+        const pointsCount = parseInt(params['Points Count'], 10);
         if (!Number.isInteger(pointsCount) || pointsCount <= 0) {
             this.setStatus(2, 'Points Count must be a positive integer.');
             return;
         }
 
-        const insidePolygon = !!(insidePolygonInput && insidePolygonInput.checked);
-        const polygonId = polygonIdInput ? polygonIdInput.value : null;
+        const insidePolygon = !!params['Inside Polygon'];
+        const polygonId = params['Polygon'] || null;
         
         if (insidePolygon) {
             const polygonLayer = polygonId ? getLayer(polygonId) : null;
@@ -59,7 +55,12 @@ class RandomPointsTool extends Tool {
                     if (turf.booleanPointInPolygon(randomPoint.features[0], polygon)) {
                         randomPoint.features[0].properties = randomPoint.features[0].properties || {};
                         randomPoint.features[0].properties.random = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 5);
-                        randomPoint.features[0].toolMetadata = { name: this.name, parameters: this.parameters };
+                        randomPoint.features[0].toolMetadata = {
+                            name: this.name,
+                            params,
+                            parentLayerId: polygonId,
+                            timestamp: new Date().toISOString()
+                        };
                         adds.push(randomPoint);
                         pointAdded = true;
                     }
@@ -69,25 +70,29 @@ class RandomPointsTool extends Tool {
             const res = applyResult({ addGeojson: adds });
             if (res && res.ok) {
                 this.setStatus(0, `Added ${res.added.length} point(s).`);
+                return res;
             } else {
                 this.setStatus(2, 'Failed to add points to map.');
             }
         } else {
             const visible_extent = logCurrentBounds(map);
             const randomPoints = turf.randomPoint(pointsCount, { bbox: visible_extent });
-            // Put tool metadata at the top level (consistent with applyResult expectations).
-            randomPoints.toolMetadata = { name: this.name, parameters: this.parameters };
+            randomPoints.toolMetadata = {
+                name: this.name,
+                params,
+                timestamp: new Date().toISOString()
+            };
             randomPoints.features.forEach((pt) => {
                 pt.properties = pt.properties || {};
             });
             const res = applyResult({ addGeojson: randomPoints });
             if (res && res.ok) {
                 this.setStatus(0, `Added ${res.added.length} point(s).`);
+                return res;
             } else {
                 this.setStatus(2, 'Failed to add points to map.');
             }
         }
-        
     }
 
     // Dynamically populate dropdown when the tool is selected

@@ -58,18 +58,18 @@ describe('RandomPointsTool', () => {
     turf.bbox.mockClear();
   });
 
-  test('execute adds points via applyResult (bounds mode)', () => {
+  test('execute adds points via applyResult (bounds mode)', async () => {
     // insidePolygon unchecked by default
     turf.randomPoint.mockReturnValue({ type: 'FeatureCollection', features: [] });
 
     const tool = new RandomPointsTool();
-    tool.execute();
+    await tool.execute();
 
     expect(turf.randomPoint).toHaveBeenCalled();
     expect(mockApplyResult).toHaveBeenCalled();
   });
 
-  test('execute adds points via applyResult (inside polygon mode)', () => {
+  test('execute adds points via applyResult (inside polygon mode)', async () => {
     // Toggle inside polygon
     document.getElementById('param-Inside Polygon').checked = true;
     document.getElementById('param-Polygon').value = 'poly-1';
@@ -84,7 +84,7 @@ describe('RandomPointsTool', () => {
     turf.randomPoint.mockReturnValue({ features: [{ properties: {} }] });
 
     const tool = new RandomPointsTool();
-    tool.execute();
+    await tool.execute();
 
     expect(mockGetLayer).toHaveBeenCalled();
     expect(turf.randomPoint).toHaveBeenCalled();

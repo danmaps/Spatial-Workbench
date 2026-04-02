@@ -1,3 +1,5 @@
+const stateModule = require('../state');
+
 class Tool {
     constructor(name, parameters = [], description, map) {
         this.name = name;
@@ -5,7 +7,7 @@ class Tool {
         this.description = description;
         this.map = map;
 
-        // Wrap the execute method in the constructor
+        // Wrap the UI execution method in the constructor
         this.execute = this.reRenderOnExecute(this.execute.bind(this));
 
         // Messages to store status info
@@ -165,20 +167,73 @@ class Tool {
 
     }
 
-    execute(){} // inherited with implementation details in subclasses
+    collectParamsFromDOM() {
+        const params = {};
+        this.parameters.forEach(param => {
+            const el = document.getElementById(`param-${param.name}`);
+            if (!el) return;
+
+            if (param.type === 'boolean') {
+                params[param.name] = !!el.checked;
+            } else if (param.type === 'int') {
+                const value = parseInt(el.value, 10);
+                params[param.name] = Number.isNaN(value) ? param.defaultValue : value;
+            } else if (param.type === 'float') {
+                const value = parseFloat(el.value);
+                params[param.name] = Number.isNaN(value) ? param.defaultValue : value;
+            } else if (param.type === 'file') {
+                params[param.name] = el.files && el.files.length ? el.files[0] : null;
+            } else {
+                params[param.name] = el.value;
+            }
+        });
+        return params;
+    }
+
+    getExecutionContext() {
+        return {
+            map: this.map,
+            state: typeof stateModule.getState === 'function' ? stateModule.getState() : null,
+            tool: this,
+        };
+    }
+
+    async handleRunResult(result) {
+        if (!result || !result.download) return;
+        const { filename = 'download.json', mimeType = 'application/json', data = '' } = result.download;
+        const blob = new Blob([typeof data === 'string' ? data : JSON.stringify(data)], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
+    async execute() {
+        const params = this.collectParamsFromDOM();
+        const context = this.getExecutionContext();
+        const result = await this.run(params, context);
+        await this.handleRunResult(result);
+        return result;
+    }
+
+    async run(_params, _context) {
+        throw new Error(`${this.name} must implement run(params, context)`);
+    }
 
     reRenderOnExecute(exec) {
-        return () => {
+        return async () => {
             const toolContent = document.getElementById('toolContent');
             
             // Start loading animation (pulsing background of toolContent div)
             toolContent.classList.add('pulsate');
             
             try {
-                exec();
+                await exec();
             } catch (error) {
                 // Set error status
-                this.setStatus(1, 'Execution failed');
+                this.setStatus(1, error?.message || 'Execution failed');
                 console.error('Error during execution:', error);
             } finally {
                 // Stop loading animation

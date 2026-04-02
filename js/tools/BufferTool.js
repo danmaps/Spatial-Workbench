@@ -26,47 +26,40 @@ class BufferTool extends Tool {
     }
 
     /**
-     * Executes the BufferTool logic.
+     * Executes the BufferTool logic without reading from the DOM.
      */
-    execute() {
-        super.execute();
-
-        // Retrieve the selected input layer's ID from the dropdown
-        const inputLayerId = document.getElementById('param-Input Layer').value;
-        // Retrieve the buffer distance
-        const distance = parseFloat(document.getElementById('param-Distance').value);
-        // Retrieve the selected units from the dropdown
-        const units = document.getElementById('param-Units').value;
+    async run(params) {
+        const inputLayerId = params['Input Layer'];
+        const distance = parseFloat(params['Distance']);
+        const units = params['Units'];
     
         const layer = getLayer(inputLayerId);
         const selectedLayerGeoJSON = layer ? layer.toGeoJSON() : null;
     
-        // Ensure a layer was selected and convert to GeoJSON was successful
         if (!selectedLayerGeoJSON) {
             this.setStatus(2, 'No layer selected.');
             return;
         }
 
-        // if no distance is selected, return
         if (isNaN(distance)) {
             this.setStatus(2, 'No distance selected.');
             return;
         }
     
-        // Use Turf.js to buffer the selected layer
         const buffered = turf.buffer(selectedLayerGeoJSON, distance, {units: units});
 
-        // Add metadata to the layer with tool name and parameters
         buffered.toolMetadata = {
             name: this.name,
-            parameters: this.parameters
+            params,
+            parentLayerId: inputLayerId,
+            timestamp: new Date().toISOString()
         };
 
-        // Apply via centralized state (no direct map mutation here)
         const res = applyResult({ addGeojson: buffered });
 
         if (res && res.ok) {
             this.setStatus(0, 'Buffered layer added to map.');
+            return res;
         } else {
             this.setStatus(2, 'Failed to add buffered layer to map.');
         }

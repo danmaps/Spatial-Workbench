@@ -11,14 +11,11 @@ class ExportTool extends Tool {
 
         this.description = "Export data";
     }
-    execute() {
-        super.execute();
+    async run(params) {
         console.log("Exporting data...");
-        const inputLayerId = document.getElementById('param-Layer').value;
-        const format = document.getElementById('param-Format').value;
-        // if geojson format is selected, export as geojson
+        const inputLayerId = params['Layer'];
+        const format = params['Format'];
         if (format === 'GeoJSON') {
-            
             const layer = getLayer(inputLayerId);
             const selectedLayerGeoJSON = layer ? layer.toGeoJSON() : null;
 
@@ -27,15 +24,15 @@ class ExportTool extends Tool {
                 return;
             }
 
-            let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(selectedLayerGeoJSON));
-            let downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href",     dataStr);
-            downloadAnchorNode.setAttribute("download", `${inputLayerId}.${format.toLowerCase()}`);
-            document.body.appendChild(downloadAnchorNode); // required for firefox
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
+            this.setStatus(0, 'Prepared GeoJSON export.');
+            return {
+                download: {
+                    filename: `${inputLayerId}.${format.toLowerCase()}`,
+                    mimeType: 'application/json',
+                    data: JSON.stringify(selectedLayerGeoJSON)
+                }
+            };
         }
-
     }
 
     renderUI() {

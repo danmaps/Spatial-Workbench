@@ -23,64 +23,65 @@ class AddDataTool extends Tool {
         this.description = "Upload GeoJSON or tabular data (CSV/XLSX) with coordinates";
     }
 
-    execute() {
-        super.execute();
-        const fileInput = document.getElementById('param-Input');
-        const file = fileInput.files[0];
-        
+    async run(params) {
+        const file = params['Input'];
         if (!file) {
-            alert('Please select a file');
-            return;
+            throw new Error('Please select a file');
         }
 
         const fileType = file.name.split('.').pop().toLowerCase();
 
         if (fileType === 'geojson') {
-            this.handleGeoJSON(file);
+            return await this.handleGeoJSON(file, params);
         } else if (fileType === 'csv' || fileType === 'xlsx') {
-            this.handleTabular(file, fileType);
+            return await this.handleTabular(file, fileType, params);
         } else {
-            alert('Unsupported file type. Please use .geojson, .csv, or .xlsx');
+            throw new Error('Unsupported file type. Please use .geojson, .csv, or .xlsx');
         }
     }
 
-    handleGeoJSON(file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const geojson = JSON.parse(e.target.result);
-                this.addToMap(geojson);
-            } catch (error) {
-                alert('Error loading GeoJSON file: ' + error.message);
-            }
-        };
-        reader.readAsText(file);
+    handleGeoJSON(file, params) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const geojson = JSON.parse(e.target.result);
+                    geojson.toolMetadata = {
+                        name: this.name,
+                        params: { ...params, Input: file.name },
+                        timestamp: new Date().toISOString()
+                    };
+                    const res = this.addToMap(geojson);
+                    this.setStatus(0, 'GeoJSON added to map.');
+                    resolve(res);
+                } catch (error) {
+                    reject(new Error('Error loading GeoJSON file: ' + error.message));
+                }
+            };
+            reader.readAsText(file);
+        });
     }
 
-    async handleTabular(file, fileType) {
+    async handleTabular(file, fileType, params) {
         const data = await this.readTabularFile(file, fileType);
         if (!data || !data.length) {
-            alert('No data found in file');
-            return;
+            throw new Error('No data found in file');
         }
 
-        const override = document.getElementById('param-Override Columns').checked;
-        let latCol = document.getElementById('param-Lat Column').value;
-        let longCol = document.getElementById('param-Long Column').value;
+        const override = !!params['Override Columns'];
+        let latCol = params['Lat Column'];
+        let longCol = params['Long Column'];
 
         if (!override) {
-            // Auto-detect columns
             const headers = Object.keys(data[0]);
             latCol = headers.find(h => h.toLowerCase().includes('lat')) || '';
             longCol = headers.find(h => h.toLowerCase().includes('lon')) || '';
         }
 
         if (!latCol || !longCol) {
-            alert('Could not identify latitude/longitude columns');
-            return;
+            throw new Error('Could not identify latitude/longitude columns');
         }
 
-        // Convert to GeoJSON
         const geojson = {
             type: 'FeatureCollection',
             features: data.map(row => ({
@@ -90,10 +91,17 @@ class AddDataTool extends Tool {
                     coordinates: [parseFloat(row[longCol]), parseFloat(row[latCol])]
                 },
                 properties: row
-            })).filter(f => !isNaN(f.geometry.coordinates[0]) && !isNaN(f.geometry.coordinates[1]))
+            })).filter(f => !isNaN(f.geometry.coordinates[0]) && !isNaN(f.geometry.coordinates[1])),
+            toolMetadata: {
+                name: this.name,
+                params: { ...params, Input: file.name, 'Lat Column': latCol, 'Long Column': longCol },
+                timestamp: new Date().toISOString()
+            }
         };
 
-        this.addToMap(geojson);
+        const res = this.addToMap(geojson);
+        this.setStatus(0, 'Tabular data added to map.');
+        return res;
     }
 
     async readTabularFile(file, fileType) {

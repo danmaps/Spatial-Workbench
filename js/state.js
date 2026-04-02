@@ -5,9 +5,8 @@
 // a single place to ask "what exists" and to apply results without directly
 // mutating the map.
 
-const { drawnItems, map, tocLayers } = require('./app');
-
 const _registry = new Map(); // stableId -> leaflet layer
+let _layerRemoveListenerAttached = false;
 
 // Counter to reduce collision risk in _uuid fallback when multiple IDs are generated
 // in the same millisecond.
@@ -28,6 +27,49 @@ function _uuid() {
 
 const DEBUG = (typeof process !== 'undefined' && process && process.env && process.env.NODE_ENV !== 'production');
 
+function getAppRefs() {
+  try {
+    const app = require('./app');
+    return {
+      map: app && app.map ? app.map : null,
+      drawnItems: app && app.drawnItems ? app.drawnItems : null,
+      tocLayers: app && Array.isArray(app.tocLayers) ? app.tocLayers : null,
+    };
+  } catch (_) {
+    return {
+      map: null,
+      drawnItems: null,
+      tocLayers: null,
+    };
+  }
+}
+
+function getMap() {
+  return getAppRefs().map;
+}
+
+function ensureLayerRemoveListener() {
+  if (_layerRemoveListenerAttached) return;
+
+  const { map } = getAppRefs();
+  if (!map || typeof map.on !== 'function') return;
+
+  map.on('layerremove', function (e) {
+    const layer = e && e.layer;
+    if (!layer || !layer.__id) return;
+
+    const { map: currentMap, drawnItems: currentDrawnItems } = getAppRefs();
+
+    // If the layer is still present on the map or in drawnItems, do not unregister it.
+    if (currentMap && currentMap.hasLayer && currentMap.hasLayer(layer)) return;
+    if (currentDrawnItems && currentDrawnItems.hasLayer && currentDrawnItems.hasLayer(layer)) return;
+
+    unregisterLayer(layer);
+  });
+
+  _layerRemoveListenerAttached = true;
+}
+
 function ensureStableId(layer, preferredId) {
   if (!layer) return null;
 
@@ -46,24 +88,11 @@ function ensureStableId(layer, preferredId) {
 }
 
 function registerLayer(layer, preferredId) {
+  ensureLayerRemoveListener();
   const id = ensureStableId(layer, preferredId);
   if (!id) return null;
   _registry.set(id, layer);
   return id;
-}
-
-// Keep the internal registry in sync when layers are removed directly from the map.
-if (map && typeof map.on === 'function') {
-  map.on('layerremove', function (e) {
-    const layer = e && e.layer;
-    if (!layer || !layer.__id) return;
-
-    // If the layer is still present on the map or in drawnItems, do not unregister it.
-    if (map.hasLayer && map.hasLayer(layer)) return;
-    if (drawnItems && drawnItems.hasLayer && drawnItems.hasLayer(layer)) return;
-
-    unregisterLayer(layer);
-  });
 }
 
 function unregisterLayer(layerOrId) {
@@ -77,8 +106,10 @@ function getLayer(id) {
 }
 
 function removeLayer(id) {
+  ensureLayerRemoveListener();
   const layer = getLayer(id);
   if (!layer) return false;
+  const { drawnItems, map, tocLayers } = getAppRefs();
 
   try {
     if (drawnItems && drawnItems.hasLayer && drawnItems.hasLayer(layer)) {
@@ -102,6 +133,8 @@ function removeLayer(id) {
 }
 
 function listLayers() {
+  ensureLayerRemoveListener();
+  const { tocLayers } = getAppRefs();
   // Prefer TOC list (it reflects "layers we care about").
   const layers = Array.isArray(tocLayers) ? tocLayers : [];
   return layers.map((layer) => {
@@ -120,7 +153,9 @@ function listLayers() {
 }
 
 function getState() {
+  ensureLayerRemoveListener();
   const layers = listLayers();
+  const { map } = getAppRefs();
   return {
     layerCount: layers.length,
     layers,
@@ -131,11 +166,13 @@ function getState() {
 // ToolResult is intentionally minimal for now.
 // { addGeojson?: Feature|FeatureCollection|Array<Feature|FeatureCollection>, removeLayerIds?: string[] }
 function applyResult(toolResult) {
+  ensureLayerRemoveListener();
   if (!toolResult || typeof toolResult !== 'object') return { ok: false, added: [], removed: [], errors: ['invalid toolResult'] };
 
   const added = [];
   const removed = [];
   const errors = [];
+  const { drawnItems, map, tocLayers } = getAppRefs();
 
   // Removals
   const toRemove = toolResult.removeLayerIds || [];
@@ -188,6 +225,7 @@ module.exports = {
   ensureStableId,
   registerLayer,
   getLayer,
+  getMap,
   listLayers,
   getState,
   applyResult,

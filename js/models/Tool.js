@@ -192,7 +192,7 @@ class Tool {
 
     getExecutionContext() {
         return {
-            map: this.map,
+            map: this.map || (typeof stateModule.getMap === 'function' ? stateModule.getMap() : null),
             state: typeof stateModule.getState === 'function' ? stateModule.getState() : null,
             tool: this,
         };

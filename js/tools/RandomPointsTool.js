@@ -1,8 +1,23 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { logCurrentBounds } = require('../utils/helpers');
-const { map } = require('../app');
 const { getLayer, listLayers, applyResult } = require('../state');
+
+function getExecutionBoundsSource(context) {
+    if (context && context.map) {
+        return context.map;
+    }
+
+    if (context && context.state && context.state.bounds) {
+        return context.state.bounds;
+    }
+
+    try {
+        return require('../app').map || null;
+    } catch (_) {
+        return null;
+    }
+}
 
 /**
  * Represents a tool for adding random points within selected polygon.
@@ -25,7 +40,7 @@ class RandomPointsTool extends Tool {
     /**
      * Executes the RandomPointsTool logic without reading from the DOM.
      */
-    async run(params) {
+    async run(params, context) {
         const pointsCount = parseInt(params['Points Count'], 10);
         if (!Number.isInteger(pointsCount) || pointsCount <= 0) {
             this.setStatus(2, 'Points Count must be a positive integer.');
@@ -75,7 +90,13 @@ class RandomPointsTool extends Tool {
                 this.setStatus(2, 'Failed to add points to map.');
             }
         } else {
-            const visible_extent = logCurrentBounds(map);
+            const boundsSource = getExecutionBoundsSource(context);
+            if (!boundsSource) {
+                this.setStatus(3, 'Map bounds are unavailable.');
+                return;
+            }
+
+            const visible_extent = logCurrentBounds(boundsSource);
             const randomPoints = turf.randomPoint(pointsCount, { bbox: visible_extent });
             randomPoints.toolMetadata = {
                 name: this.name,

@@ -24,6 +24,7 @@ const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
 
 const state = require('./state');
+const { renderAISettings } = require('./ui/ai-settings');
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -165,6 +166,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     renderToolList(Object.values(loadedTools));
+
+    // Render AI Settings panel
+    const aiSettingsContent = document.getElementById('aiSettingsContent');
+    if (aiSettingsContent) renderAISettings(aiSettingsContent);
+
+    // Wire up AI Settings back button
+    const aiSettingsBack = document.getElementById('aiSettingsBack');
+    if (aiSettingsBack) {
+        aiSettingsBack.addEventListener('click', () => {
+            document.getElementById('aiSettingsPanel').classList.add('hidden');
+            document.getElementById('toolSelection').style.display = 'block';
+        });
+    }
 });
 
 function renderToolList(tools) {
@@ -184,6 +198,16 @@ function renderToolList(tools) {
         });
         toolContainer.appendChild(toolDiv);
     });
+
+    // Add AI Settings entry at the bottom
+    const settingsDiv = document.createElement('div');
+    settingsDiv.className = 'tool ai-settings-trigger';
+    settingsDiv.innerHTML = '<i class="fas fa-robot me-2"></i>AI Settings';
+    settingsDiv.addEventListener('click', () => {
+        document.getElementById('toolSelection').style.display = 'none';
+        document.getElementById('aiSettingsPanel').classList.remove('hidden');
+    });
+    toolContainer.appendChild(settingsDiv);
 }
 
 function removeMessageForLayer(layer) {

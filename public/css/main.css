@@ -271,6 +271,30 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     animation: fadeIn 0.3s ease-out;
 }
 
+/* AI Settings */
+.ai-settings-trigger {
+    border-style: dashed !important;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.ai-settings label {
+    display: block;
+}
+
+.ai-settings input[type="password"] {
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 6px;
+    width: 100%;
+}
+
+#aiSettingsPanel {
+    animation: fadeIn 0.3s ease-out;
+}
+
 /* Hidden class and visibility control */
 .hidden {
     display: none !important;

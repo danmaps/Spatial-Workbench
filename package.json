@@ -7,6 +7,7 @@
     "test": "jest",
     "start": "nodemon server.js",
     "build": "webpack",
+    "build:prod": "webpack --config webpack.prod.config.js",
     "watch": "webpack --watch",
     "spec:update": "node scripts/generate_specs.js",
     "spec:check": "node scripts/generate_specs.js --check"
@@ -14,7 +15,6 @@
   "jest": {
     "testEnvironment": "jsdom"
   },
-
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -22,6 +22,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.22.1",
+    "express-rate-limit": "^8.4.1",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "node-fetch": "^3.3.2"
@@ -37,4 +38,3 @@
     "webpack-cli": "^5.1.4"
   }
 }
-

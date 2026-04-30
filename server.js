@@ -27,11 +27,11 @@ if (allowedOrigins.length > 0) {
   app.use(cors());
 }
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve the project root so index.html and /public assets are both reachable.
+app.use(express.static(__dirname));
 
 app.get('/', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const toolSpecs = require('./js/tools/specs.json');

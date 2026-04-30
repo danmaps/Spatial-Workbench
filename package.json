@@ -6,6 +6,7 @@
   "scripts": {
     "test": "jest",
     "start": "nodemon server.js",
+    "start:prod": "node server.js",
     "build": "webpack",
     "build:prod": "webpack --config webpack.prod.config.js",
     "watch": "webpack --watch",

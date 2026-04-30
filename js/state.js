@@ -70,6 +70,14 @@ function ensureLayerRemoveListener() {
   _layerRemoveListenerAttached = true;
 }
 
+function ensureLayerFeature(layer) {
+  if (!layer.feature) {
+    layer.feature = { type: 'Feature', properties: {} };
+  }
+  if (!layer.feature.properties) layer.feature.properties = {};
+  return layer.feature;
+}
+
 function ensureStableId(layer, preferredId) {
   if (!layer) return null;
 
@@ -77,14 +85,79 @@ function ensureStableId(layer, preferredId) {
   if (!layer.__id) layer.__id = preferredId || _uuid();
 
   // Persist on GeoJSON feature properties.
-  // Leaflet.Draw-created layers often don't have .feature; ensure it exists.
-  if (!layer.feature) {
-    layer.feature = { type: 'Feature', properties: {} };
-  }
-  if (!layer.feature.properties) layer.feature.properties = {};
-  if (!layer.feature.properties.__id) layer.feature.properties.__id = layer.__id;
+  const feature = ensureLayerFeature(layer);
+  if (!feature.properties.__id) feature.properties.__id = layer.__id;
 
   return layer.__id;
+}
+
+function cloneMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return null;
+  return JSON.parse(JSON.stringify(metadata));
+}
+
+function sanitizeMetadata(metadata) {
+  const cloned = cloneMetadata(metadata);
+  if (!cloned) return null;
+
+  if (cloned.params && typeof cloned.params === 'object') {
+    if (cloned.params.Input && typeof cloned.params.Input === 'object' && cloned.params.Input.name) {
+      cloned.params.Input = cloned.params.Input.name;
+    }
+  }
+
+  return cloned;
+}
+
+function getToolMetadata(layer) {
+  if (!layer || !layer.feature) return null;
+  return layer.feature.toolMetadata || layer.feature.properties?.toolMetadata || null;
+}
+
+function ensureToolHistory(layer, metadata, options = {}) {
+  if (!layer) return [];
+
+  const feature = ensureLayerFeature(layer);
+  const properties = feature.properties || (feature.properties = {});
+
+  let history = Array.isArray(properties.toolHistory)
+    ? properties.toolHistory.map((entry) => cloneMetadata(entry)).filter(Boolean)
+    : [];
+
+  if (!history.length && Array.isArray(feature.toolHistory)) {
+    history = feature.toolHistory.map((entry) => cloneMetadata(entry)).filter(Boolean);
+  }
+
+  const sourceMetadata = sanitizeMetadata(metadata || getToolMetadata(layer));
+  const inheritFromLayer = options.inheritFromLayer || null;
+  const seenKeys = new Set();
+  const merged = [];
+
+  function pushUnique(entry) {
+    if (!entry) return;
+    const key = JSON.stringify(entry);
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    merged.push(entry);
+  }
+
+  if (inheritFromLayer) {
+    const parentHistory = getToolHistory(inheritFromLayer);
+    parentHistory.forEach(pushUnique);
+  }
+
+  history.forEach(pushUnique);
+  if (sourceMetadata) pushUnique(sourceMetadata);
+
+  properties.toolHistory = merged;
+  feature.toolHistory = merged;
+
+  if (sourceMetadata) {
+    feature.toolMetadata = sourceMetadata;
+    properties.toolMetadata = sourceMetadata;
+  }
+
+  return merged;
 }
 
 function registerLayer(layer, preferredId) {
@@ -103,6 +176,62 @@ function unregisterLayer(layerOrId) {
 
 function getLayer(id) {
   return _registry.get(id) || null;
+}
+
+function getGeometryType(layer) {
+  const geo = (layer && typeof layer.toGeoJSON === 'function') ? layer.toGeoJSON() : null;
+  return geo && geo.geometry ? geo.geometry.type : (layer && layer.featureType) || null;
+}
+
+function getLayerBounds(layer) {
+  if (!layer) return null;
+  try {
+    if (typeof layer.getBounds === 'function') {
+      const bounds = layer.getBounds();
+      if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) return bounds;
+    }
+  } catch (_) {}
+
+  try {
+    if (typeof layer.getLatLng === 'function') {
+      const latlng = layer.getLatLng();
+      if (latlng && typeof L !== 'undefined' && L && typeof L.latLngBounds === 'function') {
+        return L.latLngBounds([latlng, latlng]);
+      }
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+function getToolHistory(layer) {
+  if (!layer || !layer.feature) return [];
+  const history = layer.feature.properties?.toolHistory || layer.feature.toolHistory || [];
+  return Array.isArray(history) ? history.map((entry) => cloneMetadata(entry)).filter(Boolean) : [];
+}
+
+function getLayerInfo(layerOrId) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return null;
+
+  const id = ensureStableId(layer, layer?.feature?.properties?.__id);
+  const geojson = typeof layer.toGeoJSON === 'function' ? layer.toGeoJSON() : null;
+  const geometryType = getGeometryType(layer);
+  const properties = geojson?.properties || layer.feature?.properties || {};
+  const metadata = getToolMetadata(layer);
+  const history = getToolHistory(layer);
+  const bounds = getLayerBounds(layer);
+
+  return {
+    id,
+    geometryType,
+    label: geometryType ? `${geometryType} (${id})` : id,
+    properties,
+    geojson,
+    metadata,
+    history,
+    bounds,
+  };
 }
 
 function removeLayer(id) {
@@ -141,8 +270,7 @@ function listLayers() {
     // Ensure the layer is both ID'd and registered.
     const preferredId = layer?.feature?.properties?.__id;
     const id = registerLayer(layer, preferredId);
-    const geo = (layer && typeof layer.toGeoJSON === 'function') ? layer.toGeoJSON() : null;
-    const geomType = geo && geo.geometry ? geo.geometry.type : (layer && layer.featureType) || null;
+    const geomType = getGeometryType(layer);
     return {
       id,
       geometryType: geomType,
@@ -187,6 +315,7 @@ function applyResult(toolResult) {
 
   for (const gj of toAdd) {
     try {
+      const parentLayer = gj?.toolMetadata?.parentLayerId ? getLayer(gj.toolMetadata.parentLayerId) : null;
       const layer = L.geoJSON(gj);
       layer.eachLayer((child) => {
         // Pull through any existing __id from feature, otherwise mint one.
@@ -198,7 +327,7 @@ function applyResult(toolResult) {
         // Apply any tool metadata stored on the GeoJSON (prefer top-level, but accept per-feature too).
         try {
           const md = (gj && gj.toolMetadata) || (child.feature && child.feature.toolMetadata) || (child.feature && child.feature.properties && child.feature.properties.toolMetadata);
-          if (child.feature && md) child.feature.toolMetadata = md;
+          ensureToolHistory(child, md, { inheritFromLayer: parentLayer });
         } catch (e) {
           if (DEBUG) console.warn('applyResult: toolMetadata attach failed', e);
         }
@@ -223,8 +352,12 @@ function applyResult(toolResult) {
 
 module.exports = {
   ensureStableId,
+  ensureToolHistory,
   registerLayer,
   getLayer,
+  getLayerInfo,
+  getLayerBounds,
+  getToolHistory,
   getMap,
   listLayers,
   getState,

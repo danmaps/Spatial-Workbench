@@ -32,6 +32,9 @@ You draw features, run tools, see what happens, and iterate.
   - Grouping by distance
   - Export to GeoJSON
 - Upload external data (GeoJSON, CSV, XLSX with coordinates)
+- See post-import summaries and coordinate warnings after Add Data ingest
+- Zoom to individual layers or the current layer selection from the Contents pane
+- Open on-demand layer properties for metadata, source, geometry, and tool history
 - Generate geometry using AI prompts
 - Inspect tool parameters and outputs directly
 

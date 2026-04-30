@@ -2,6 +2,9 @@
 
 const toolNames = ['RandomPointsTool', 'BufferTool', 'ExportTool', 'GenerateAIFeatures', 'GroupTool', 'AddDataTool']; // Keep this up to date
 
+const state = require('./state');
+const { renderAISettings } = require('./ui/ai-settings');
+
 // Initialize the map
 const map = L.map('map').setView([34, -117], 7);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -11,20 +14,10 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 const drawnItems = new L.FeatureGroup();
 map.addLayer(drawnItems);
 
-document.getElementById('backButton').addEventListener('click', function() {
-    document.getElementById('toolSelection').style.display = 'block';
-    document.getElementById('toolDetails').classList.add('hidden');
-    const statusMessage = document.getElementById('statusMessageText');
-    statusMessage.textContent = "";
-    document.getElementById('statusMessage').style.display = 'none';
-});
-
 // Set up an array to keep track of layers added to the TOC
 const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
-
-const state = require('./state');
-const { renderAISettings } = require('./ui/ai-settings');
+const selectedLayerIds = new Set();
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -35,6 +28,312 @@ let drawControl = new L.Control.Draw({
     },
 });
 map.addControl(drawControl);
+
+function getLayerHistorySummary(layer) {
+    const history = state.getToolHistory(layer);
+    return history.map((entry) => entry.name || 'Unknown step');
+}
+
+function getLayerTypeForIcon(layer, type) {
+    if (type) return type;
+    const info = state.getLayerInfo(layer);
+    const geometryType = info?.geometryType;
+    if (geometryType === 'Point' || geometryType === 'MultiPoint') return 'marker';
+    if (geometryType === 'LineString' || geometryType === 'MultiLineString') return 'polyline';
+    return 'polygon';
+}
+
+function getLayerLabel(layer, fallbackMessage) {
+    const info = state.getLayerInfo(layer);
+    const metadata = info?.metadata || {};
+    const preferredName = info?.properties?.name || info?.properties?.title || info?.properties?.layerName || metadata.layerName;
+    if (preferredName) return `${preferredName} · ${info.id}`;
+    return fallbackMessage || info?.label || info?.id || 'Layer';
+}
+
+function createActionButton(iconClass, title, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toc-action';
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.innerHTML = `<i class="${iconClass}"></i>`;
+    button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onClick(event);
+    });
+    return button;
+}
+
+function updateSelectionSummary() {
+    const button = document.getElementById('zoomSelectionButton');
+    const summary = document.getElementById('selectionSummary');
+    if (button) button.disabled = selectedLayerIds.size === 0;
+    if (summary) {
+        summary.textContent = selectedLayerIds.size ? `${selectedLayerIds.size} selected` : 'No selection';
+    }
+}
+
+function openLayerProperties(layerOrId) {
+    const info = state.getLayerInfo(layerOrId);
+    if (!info) return;
+
+    const title = document.getElementById('layerPropertiesTitle');
+    const body = document.getElementById('layerPropertiesBody');
+    if (!title || !body) return;
+
+    title.textContent = `${info.geometryType || 'Layer'} · ${info.id}`;
+
+    const metadataRows = [];
+    if (info.metadata?.name) metadataRows.push(['Created By', info.metadata.name]);
+    if (info.metadata?.timestamp) metadataRows.push(['Timestamp', info.metadata.timestamp]);
+    if (info.metadata?.parentLayerId) metadataRows.push(['Parent Layer', info.metadata.parentLayerId]);
+
+    const sourceRows = [];
+    if (info.metadata?.params?.Input) sourceRows.push(['Input', info.metadata.params.Input]);
+    if (info.metadata?.provider) sourceRows.push(['Provider', info.metadata.provider]);
+    const importSummary = info.properties?.importSummary;
+    if (importSummary) {
+        sourceRows.push(['Imported Features', `${importSummary.importedCount}`]);
+        if (importSummary.skippedCount) sourceRows.push(['Skipped Rows', `${importSummary.skippedCount}`]);
+        if (importSummary.detectedColumns?.lat && importSummary.detectedColumns?.lon) {
+            sourceRows.push(['Detected Columns', `${importSummary.detectedColumns.lat}, ${importSummary.detectedColumns.lon}`]);
+        }
+    }
+
+    const geometryRows = [];
+    geometryRows.push(['Geometry Type', info.geometryType || 'Unknown']);
+    const featureCount = info.geojson?.type === 'FeatureCollection' ? info.geojson.features.length : 1;
+    geometryRows.push(['Feature Count', `${featureCount}`]);
+    if (info.bounds) {
+        geometryRows.push(['Bounds', info.bounds.toBBoxString ? info.bounds.toBBoxString() : 'Available']);
+    }
+
+    const history = info.history || [];
+    const historyList = history.length
+        ? `<ol class="properties-history">${history.map((entry) => `<li><strong>${entry.name || 'Unknown step'}</strong>${entry.timestamp ? ` <span class="text-muted">${entry.timestamp}</span>` : ''}${entry.parentLayerId ? `<div class="properties-note">from ${entry.parentLayerId}</div>` : ''}</li>`).join('')}</ol>`
+        : '<p class="properties-empty">No tool history recorded yet.</p>';
+
+    const importWarnings = Array.isArray(importSummary?.warnings) && importSummary.warnings.length
+        ? `<ul class="properties-warnings">${importSummary.warnings.map((warning) => `<li>${warning}</li>`).join('')}</ul>`
+        : '<p class="properties-empty">No import warnings.</p>';
+
+    body.innerHTML = `
+        <section class="properties-section">
+            <h6>Metadata</h6>
+            ${renderKeyValueTable(metadataRows, 'No metadata recorded.')}
+        </section>
+        <section class="properties-section">
+            <h6>Source</h6>
+            ${renderKeyValueTable(sourceRows, 'No source details available.')}
+        </section>
+        <section class="properties-section">
+            <h6>Geometry</h6>
+            ${renderKeyValueTable(geometryRows, 'No geometry details available.')}
+        </section>
+        <section class="properties-section">
+            <h6>Tool History</h6>
+            ${historyList}
+        </section>
+        <section class="properties-section">
+            <h6>Properties</h6>
+            <pre class="properties-json">${escapeHtml(JSON.stringify(info.properties || {}, null, 2))}</pre>
+        </section>
+        <section class="properties-section">
+            <h6>Import Warnings</h6>
+            ${importWarnings}
+        </section>
+    `;
+
+    const modalEl = document.getElementById('layerPropertiesModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+}
+
+function renderKeyValueTable(rows, emptyMessage) {
+    if (!rows.length) return `<p class="properties-empty">${emptyMessage}</p>`;
+    return `<table class="properties-table"><tbody>${rows.map(([key, value]) => `<tr><th>${escapeHtml(String(key))}</th><td>${escapeHtml(String(value))}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function zoomToLayer(layerOrId) {
+    const layer = typeof layerOrId === 'string' ? state.getLayer(layerOrId) : layerOrId;
+    const bounds = state.getLayerBounds(layer);
+    if (bounds && typeof map.fitBounds === 'function') {
+        map.fitBounds(bounds, { padding: [32, 32] });
+        return true;
+    }
+
+    try {
+        if (layer && typeof layer.getLatLng === 'function') {
+            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 14));
+            return true;
+        }
+    } catch (_) {}
+
+    return false;
+}
+
+function zoomToSelection() {
+    const selectedLayers = Array.from(selectedLayerIds)
+        .map((id) => state.getLayer(id))
+        .filter(Boolean);
+
+    if (!selectedLayers.length) return false;
+
+    const group = L.featureGroup(selectedLayers.filter((layer) => state.getLayerBounds(layer)));
+    if (group.getLayers().length) {
+        map.fitBounds(group.getBounds(), { padding: [32, 32] });
+        return true;
+    }
+
+    return zoomToLayer(selectedLayers[0]);
+}
+
+function renderImportSummary(summary) {
+    const container = document.getElementById('importSummary');
+    if (!container) return;
+
+    if (!summary) {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+        return;
+    }
+
+    const warningList = (summary.warnings || []).length
+        ? `<ul>${summary.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>`
+        : '<p class="mb-0">No warnings.</p>';
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="import-summary-card">
+            <div class="import-summary-header">
+                <div>
+                    <strong>Import Summary</strong>
+                    <div class="import-summary-file">${escapeHtml(summary.fileName || 'Imported data')}</div>
+                </div>
+                <button type="button" class="toc-action" id="dismissImportSummary" aria-label="Dismiss import summary">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="import-summary-grid">
+                <div><span>Imported</span><strong>${summary.importedCount}</strong></div>
+                <div><span>Skipped</span><strong>${summary.skippedCount}</strong></div>
+                <div><span>Format</span><strong>${escapeHtml(summary.fileType || 'unknown')}</strong></div>
+                <div><span>Coordinates</span><strong>${escapeHtml(summary.detectedColumns?.lat || '—')} / ${escapeHtml(summary.detectedColumns?.lon || '—')}</strong></div>
+            </div>
+            <div class="import-summary-warnings">
+                <h6>Warnings</h6>
+                ${warningList}
+            </div>
+        </div>
+    `;
+
+    const dismiss = document.getElementById('dismissImportSummary');
+    if (dismiss) dismiss.addEventListener('click', () => renderImportSummary(null));
+}
+
+function renderToc() {
+    const tocContent = document.getElementById('tocContent');
+    if (!tocContent) return;
+    tocContent.innerHTML = '';
+
+    tocLayers.forEach((layer) => {
+        const stableId = state.ensureStableId(layer);
+        const info = state.getLayerInfo(layer);
+        const item = document.createElement('div');
+        item.className = `layer-message ${selectedLayerIds.has(stableId) ? 'selected' : ''}`;
+        item.id = `message-${stableId}`;
+        item.dataset.layerId = stableId;
+
+        const left = document.createElement('div');
+        left.className = 'layer-row-main';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'layer-select';
+        checkbox.checked = selectedLayerIds.has(stableId);
+        checkbox.addEventListener('click', (event) => event.stopPropagation());
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked) selectedLayerIds.add(stableId);
+            else selectedLayerIds.delete(stableId);
+            renderToc();
+            updateSelectionSummary();
+        });
+
+        const icon = document.createElement('i');
+        const iconMap = {
+            marker: 'fa-solid fa-location-pin',
+            rectangle: 'fa-solid fa-draw-polygon',
+            circle: 'fa-solid fa-draw-polygon',
+            polyline: 'fa-solid fa-wave-square',
+            polygon: 'fa-solid fa-draw-polygon',
+        };
+        icon.className = iconMap[getLayerTypeForIcon(layer)] || 'fa-solid fa-layer-group';
+
+        const textWrap = document.createElement('div');
+        textWrap.className = 'layer-text';
+
+        const title = document.createElement('div');
+        title.className = 'layer-title';
+        title.textContent = getLayerLabel(layer, info?.label);
+
+        const meta = document.createElement('div');
+        meta.className = 'layer-meta';
+        const history = getLayerHistorySummary(layer);
+        meta.textContent = history.length ? history.join(' → ') : (info?.geometryType || 'Layer');
+
+        textWrap.appendChild(title);
+        textWrap.appendChild(meta);
+
+        left.appendChild(checkbox);
+        left.appendChild(icon);
+        left.appendChild(textWrap);
+
+        const actions = document.createElement('div');
+        actions.className = 'layer-actions';
+        actions.appendChild(createActionButton('fas fa-magnifying-glass-location', 'Zoom to layer', () => zoomToLayer(layer)));
+        actions.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => openLayerProperties(layer)));
+
+        item.appendChild(left);
+        item.appendChild(actions);
+        item.addEventListener('click', () => {
+            if (selectedLayerIds.has(stableId)) selectedLayerIds.delete(stableId);
+            else selectedLayerIds.add(stableId);
+            renderToc();
+            updateSelectionSummary();
+        });
+
+        tocContent.appendChild(item);
+    });
+}
+
+function refreshSidebarState() {
+    renderToc();
+    updateSelectionSummary();
+}
+
+function addToolHistoryEntry(layer, entry) {
+    state.ensureToolHistory(layer, entry);
+}
+
+document.getElementById('backButton').addEventListener('click', function() {
+    document.getElementById('toolSelection').style.display = 'block';
+    document.getElementById('toolDetails').classList.add('hidden');
+    const statusMessage = document.getElementById('statusMessageText');
+    statusMessage.textContent = '';
+    document.getElementById('statusMessage').style.display = 'none';
+});
 
 // Function to get a tool instance by name
 function getToolByName(name) {
@@ -62,6 +361,8 @@ function updateDataContent() {
             tool.renderUI();
         }
     }
+
+    refreshSidebarState();
 }
 
 // Event listeners remain the same...
@@ -71,39 +372,30 @@ map.on(L.Draw.Event.CREATED, function (e) {
     
     drawnItems.addLayer(layer);
 
-
-    
     // Assign a stable id immediately.
     const stableId = state.registerLayer(layer);
+    addToolHistoryEntry(layer, {
+        name: 'Draw',
+        timestamp: new Date().toISOString(),
+        geometryType: type,
+    });
 
-    let message = '';
-    if (type === 'marker') {
-        message = `${stableId}`;
-    } else {
-        let vertices = layer.getLatLngs()[0];
-        message = `${stableId} ${type} (${vertices.length} vertices)`;
-    }
+    if (!tocLayers.includes(layer)) tocLayers.push(layer);
 
-    addToToc(layer, message, type);
+    refreshSidebarState();
     updateDataContent();
 });
 
 map.on('draw:edited', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
-        removeMessageForLayer(layer);
         const stableId = state.registerLayer(layer);
-
-        // Markers don't have getLatLngs().
-        let message = '';
-        if (layer && typeof layer.getLatLngs === 'function') {
-            let vertices = layer.getLatLngs()[0] || [];
-            message = `${stableId} (${vertices.length} vertices)`;
-        } else {
-            message = `${stableId} (edited)`;
-        }
-
-        addToToc(layer, message);
+        addToolHistoryEntry(layer, {
+            name: 'Edit',
+            timestamp: new Date().toISOString(),
+            layerId: stableId,
+        });
+        if (!tocLayers.includes(layer)) tocLayers.push(layer);
     });
     updateDataContent();
 });
@@ -112,47 +404,28 @@ map.on('draw:deleted', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
         if (layer && layer.__id) {
+            selectedLayerIds.delete(layer.__id);
             // Let state.removeLayer handle removal from drawnItems for tracked layers
             state.removeLayer(layer.__id);
         } else {
             // Fall back to direct removal for untracked layers
             drawnItems.removeLayer(layer);
         }
-        removeMessageForLayer(layer);
     });
     updateDataContent();
 });
 
 map.on('layeradd', function (e) {
     let layer = e.layer;
-    // console.log(layer)
     // if layer has a feature.toolMetadata, add the layer to the TOC
     if (layer.hasOwnProperty('feature') && layer.feature.toolMetadata) {
         const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
-        let featureType = layer.feature.geometry.type;
-        let message = `${stableId} ${featureType}`;
-        addToToc(layer, message);
+        if (!tocLayers.includes(layer)) tocLayers.push(layer);
+        const importSummary = layer.feature?.properties?.importSummary;
+        if (importSummary) renderImportSummary(importSummary);
+        refreshSidebarState();
     }
 });
-let layerMessageMap = new Map();
-
-function addToToc(layer, message, type) {
-    // map types to fontawesome icons
-    let iconMap = {
-        marker: 'fa-solid fa-location-pin',
-        rectangle: 'fa-solid fa-draw-polygon',
-        circle: 'fa-solid fa-draw-polygon',
-        polyline: 'fa-solid fa-draw-polygon',
-        polygon: 'fa-solid fa-draw-circle',
-    };
-    const stableId = state.ensureStableId(layer);
-    let messageId = `message-${stableId}`;
-    document.getElementById('tocContent').innerHTML += `<p class="layer-message" id="${messageId}"><i class="${iconMap[type]}"></i> ${message}</p>`;
-    if (Array.isArray(tocLayers) && !tocLayers.includes(layer)) {
-        tocLayers.push(layer);
-    }
-    layerMessageMap.set(layer, messageId);
-}
 
 // Load tools dynamically and store them in the loadedTools object
 document.addEventListener('DOMContentLoaded', () => {
@@ -179,6 +452,14 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('toolSelection').style.display = 'block';
         });
     }
+
+    const zoomSelectionButton = document.getElementById('zoomSelectionButton');
+    if (zoomSelectionButton) {
+        zoomSelectionButton.addEventListener('click', () => zoomToSelection());
+    }
+
+    updateSelectionSummary();
+    renderImportSummary(null);
 });
 
 function renderToolList(tools) {
@@ -210,18 +491,6 @@ function renderToolList(tools) {
     toolContainer.appendChild(settingsDiv);
 }
 
-function removeMessageForLayer(layer) {
-    let messageId = layerMessageMap.get(layer);
-    if (messageId) {
-        let messageElement = document.getElementById(messageId);
-        // console.log(`removing ${messageElement}`);
-        if (messageElement) {
-            messageElement.remove();
-        }
-        layerMessageMap.delete(layer); // Remove association
-    }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     updateDataContent();
 });
@@ -231,7 +500,10 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         map,
         drawnItems,
-        tocLayers
+        tocLayers,
+        zoomToLayer,
+        zoomToSelection,
+        openLayerProperties,
+        renderImportSummary,
     };
 }
-

@@ -180,7 +180,15 @@ function getLayer(id) {
 
 function getGeometryType(layer) {
   const geo = (layer && typeof layer.toGeoJSON === 'function') ? layer.toGeoJSON() : null;
-  return geo && geo.geometry ? geo.geometry.type : (layer && layer.featureType) || null;
+  if (!geo) return (layer && layer.featureType) || null;
+  if (geo.geometry) return geo.geometry.type;
+  // FeatureCollection (group layer) – derive a summary geometry type
+  if (geo.type === 'FeatureCollection' && Array.isArray(geo.features) && geo.features.length > 0) {
+    const types = new Set(geo.features.map(f => f && f.geometry && f.geometry.type).filter(Boolean));
+    if (types.size === 1) return types.values().next().value;
+    return 'Mixed';
+  }
+  return (layer && layer.featureType) || null;
 }
 
 function getLayerBounds(layer) {
@@ -316,31 +324,65 @@ function applyResult(toolResult) {
   for (const gj of toAdd) {
     try {
       const parentLayer = gj?.toolMetadata?.parentLayerId ? getLayer(gj.toolMetadata.parentLayerId) : null;
-      const layer = L.geoJSON(gj);
-      layer.eachLayer((child) => {
-        // Pull through any existing __id from feature, otherwise mint one.
-        const preferredId = child?.feature?.properties?.__id;
-        const id = registerLayer(child, preferredId);
-        // Ensure the feature property is set even if Leaflet didn't attach it yet.
-        ensureStableId(child, preferredId || id);
+      const isCollection = gj && gj.type === 'FeatureCollection' && Array.isArray(gj.features) && gj.features.length > 0;
 
-        // Apply any tool metadata stored on the GeoJSON (prefer top-level, but accept per-feature too).
+      if (isCollection) {
+        // Add the entire FeatureCollection as a single group layer (one layer in TOC).
+        const groupLayer = L.geoJSON(gj);
+
+        // Prefer an existing __id on the first feature or mint a new one.
+        const preferredId = gj.features[0]?.properties?.__id
+          ? undefined // let ensureStableId mint fresh – collection != single feature
+          : undefined;
+        const id = registerLayer(groupLayer, preferredId);
+        ensureStableId(groupLayer, id);
+
+        // Attach feature object on group layer for metadata/history
+        if (!groupLayer.feature) {
+          groupLayer.feature = { type: 'Feature', properties: {} };
+        }
+        if (!groupLayer.feature.properties) groupLayer.feature.properties = {};
+        groupLayer.feature.properties.__id = id;
+
+        // Apply tool metadata / history
         try {
-          const md = (gj && gj.toolMetadata) || (child.feature && child.feature.toolMetadata) || (child.feature && child.feature.properties && child.feature.properties.toolMetadata);
-          ensureToolHistory(child, md, { inheritFromLayer: parentLayer });
+          const md = gj.toolMetadata || null;
+          ensureToolHistory(groupLayer, md, { inheritFromLayer: parentLayer });
         } catch (e) {
           if (DEBUG) console.warn('applyResult: toolMetadata attach failed', e);
         }
 
         // Add to map + editable group
-        try { child.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
-        try { drawnItems.addLayer(child); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
+        try { groupLayer.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
+        try { drawnItems.addLayer(groupLayer); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
 
-        // Track in TOC
-        if (Array.isArray(tocLayers) && !tocLayers.includes(child)) tocLayers.push(child);
+        // Track in TOC as a single entry
+        if (Array.isArray(tocLayers) && !tocLayers.includes(groupLayer)) tocLayers.push(groupLayer);
 
-        added.push(child.__id);
-      });
+        added.push(groupLayer.__id);
+      } else {
+        // Single Feature (or empty collection) – add individually as before.
+        const layer = L.geoJSON(gj);
+        layer.eachLayer((child) => {
+          const preferredId = child?.feature?.properties?.__id;
+          const id = registerLayer(child, preferredId);
+          ensureStableId(child, preferredId || id);
+
+          try {
+            const md = (gj && gj.toolMetadata) || (child.feature && child.feature.toolMetadata) || (child.feature && child.feature.properties && child.feature.properties.toolMetadata);
+            ensureToolHistory(child, md, { inheritFromLayer: parentLayer });
+          } catch (e) {
+            if (DEBUG) console.warn('applyResult: toolMetadata attach failed', e);
+          }
+
+          try { child.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
+          try { drawnItems.addLayer(child); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
+
+          if (Array.isArray(tocLayers) && !tocLayers.includes(child)) tocLayers.push(child);
+
+          added.push(child.__id);
+        });
+      }
     } catch (e) {
       errors.push(String(e && e.message ? e.message : e));
       if (DEBUG) console.warn('applyResult: addGeojson failed', e);

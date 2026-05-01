@@ -330,11 +330,7 @@ function applyResult(toolResult) {
         // Add the entire FeatureCollection as a single group layer (one layer in TOC).
         const groupLayer = L.geoJSON(gj);
 
-        // Prefer an existing __id on the first feature or mint a new one.
-        const preferredId = gj.features[0]?.properties?.__id
-          ? undefined // let ensureStableId mint fresh – collection != single feature
-          : undefined;
-        const id = registerLayer(groupLayer, preferredId);
+        const id = registerLayer(groupLayer);
         ensureStableId(groupLayer, id);
 
         // Attach feature object on group layer for metadata/history

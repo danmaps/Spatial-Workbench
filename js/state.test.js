@@ -25,19 +25,22 @@ describe('state provenance helpers', () => {
   beforeEach(() => {
     jest.resetModules();
     global.L = {
-      geoJSON: jest.fn((gj) => ({
-        eachLayer(cb) {
-          const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
-          features.forEach((feature, index) => {
-            cb({
-              feature,
-              __id: feature.properties?.__id || `child-${index}`,
-              addTo: jest.fn(),
-              toGeoJSON: jest.fn(() => feature),
-            });
-          });
-        },
-      })),
+      geoJSON: jest.fn((gj) => {
+        const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
+        const children = features.map((feature, index) => ({
+          feature,
+          __id: feature.properties?.__id || `child-${index}`,
+          addTo: jest.fn(),
+          toGeoJSON: jest.fn(() => feature),
+        }));
+        return {
+          eachLayer(cb) { children.forEach(cb); },
+          addTo: jest.fn(),
+          feature: null,
+          toGeoJSON: jest.fn(() => gj),
+          __id: undefined,
+        };
+      }),
       latLngBounds: jest.fn(() => ({ isValid: () => true })),
     };
     tocLayers.length = 0;
@@ -87,5 +90,39 @@ describe('state provenance helpers', () => {
       { name: 'Draw', timestamp: '2026-04-30T00:00:00Z' },
       { name: 'Buffer', parentLayerId: 'parent-1', timestamp: '2026-04-30T01:00:00Z' },
     ]);
+  });
+
+  test('applyResult adds FeatureCollection as single group layer', () => {
+    const result = state.applyResult({
+      addGeojson: {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: 'a' } },
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { name: 'b' } },
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [2, 2] }, properties: { name: 'c' } },
+        ],
+        toolMetadata: { name: 'Add Data', timestamp: '2026-05-01T00:00:00Z' },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    // Should produce exactly one layer in TOC, not three
+    expect(result.added).toHaveLength(1);
+    expect(tocLayers).toHaveLength(1);
+  });
+
+  test('applyResult adds single Feature individually', () => {
+    const result = state.applyResult({
+      addGeojson: {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [0, 0] },
+        properties: { __id: 'single-1' },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.added).toHaveLength(1);
+    expect(tocLayers).toHaveLength(1);
+    expect(state.getLayer('single-1')).not.toBeNull();
   });
 });

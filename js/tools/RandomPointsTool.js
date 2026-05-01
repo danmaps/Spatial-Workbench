@@ -61,30 +61,36 @@ class RandomPointsTool extends Tool {
             }
 
             const polygon = polygonLayer.toGeoJSON();
-            const adds = [];
+            const features = [];
 
             for (let i = 0; i < pointsCount; i++) {
                 let pointAdded = false;
                 while (!pointAdded) {
                     const randomPoint = turf.randomPoint(1, { bbox: turf.bbox(polygon) });
                     if (turf.booleanPointInPolygon(randomPoint.features[0], polygon)) {
-                        randomPoint.features[0].properties = randomPoint.features[0].properties || {};
-                        randomPoint.features[0].properties.random = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 5);
-                        randomPoint.features[0].toolMetadata = {
-                            name: this.name,
-                            params,
-                            parentLayerId: polygonId,
-                            timestamp: new Date().toISOString()
-                        };
-                        adds.push(randomPoint);
+                        const feature = randomPoint.features[0];
+                        feature.properties = feature.properties || {};
+                        feature.properties.random = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 5);
+                        features.push(feature);
                         pointAdded = true;
                     }
                 }
             }
 
-            const res = applyResult({ addGeojson: adds });
+            const featureCollection = {
+                type: 'FeatureCollection',
+                features,
+                toolMetadata: {
+                    name: this.name,
+                    params,
+                    parentLayerId: polygonId,
+                    timestamp: new Date().toISOString()
+                }
+            };
+
+            const res = applyResult({ addGeojson: featureCollection });
             if (res && res.ok) {
-                this.setStatus(0, `Added ${res.added.length} point(s).`);
+                this.setStatus(0, `Added ${features.length} point(s).`);
                 return res;
             } else {
                 this.setStatus(2, 'Failed to add points to map.');

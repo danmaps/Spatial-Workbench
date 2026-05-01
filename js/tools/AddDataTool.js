@@ -40,20 +40,61 @@ class AddDataTool extends Tool {
         }
     }
 
+    buildImportSummary({ fileName, fileType, importedCount, skippedCount = 0, detectedColumns = {}, warnings = [] }) {
+        return {
+            fileName,
+            fileType,
+            importedCount,
+            skippedCount,
+            detectedColumns,
+            warnings,
+        };
+    }
+
+    attachImportSummary(geojson, summary) {
+        if (!summary) return geojson;
+        const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+        const enrichFeature = (feature) => {
+            feature.properties = feature.properties || {};
+            feature.properties.importSummary = summary;
+            if (warnings.length) feature.properties.importWarnings = warnings;
+            return feature;
+        };
+
+        if (geojson.type === 'FeatureCollection') {
+            geojson.features = (geojson.features || []).map(enrichFeature);
+        } else if (geojson.type === 'Feature') {
+            enrichFeature(geojson);
+        }
+
+        return geojson;
+    }
+
     handleGeoJSON(file, params) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
                     const geojson = JSON.parse(e.target.result);
+                    const featureCount = geojson.type === 'FeatureCollection'
+                        ? (geojson.features || []).length
+                        : 1;
+                    const importSummary = this.buildImportSummary({
+                        fileName: file.name,
+                        fileType: 'geojson',
+                        importedCount: featureCount,
+                        skippedCount: 0,
+                        warnings: [],
+                    });
                     geojson.toolMetadata = {
                         name: this.name,
                         params: { ...params, Input: file.name },
                         timestamp: new Date().toISOString()
                     };
+                    this.attachImportSummary(geojson, importSummary);
                     const res = this.addToMap(geojson);
-                    this.setStatus(0, 'GeoJSON added to map.');
-                    resolve(res);
+                    this.setStatus(0, `Imported ${featureCount} GeoJSON feature(s).`);
+                    resolve({ ...res, importSummary });
                 } catch (error) {
                     reject(new Error('Error loading GeoJSON file: ' + error.message));
                 }
@@ -75,23 +116,60 @@ class AddDataTool extends Tool {
         if (!override) {
             const headers = Object.keys(data[0]);
             latCol = headers.find(h => h.toLowerCase().includes('lat')) || '';
-            longCol = headers.find(h => h.toLowerCase().includes('lon')) || '';
+            longCol = headers.find(h => {
+                const lowered = h.toLowerCase();
+                return lowered.includes('lon') || lowered.includes('lng') || lowered.includes('long');
+            }) || '';
         }
 
         if (!latCol || !longCol) {
             throw new Error('Could not identify latitude/longitude columns');
         }
 
-        const geojson = {
-            type: 'FeatureCollection',
-            features: data.map(row => ({
+        const warnings = [];
+        const skippedSamples = [];
+        const features = [];
+
+        data.forEach((row, index) => {
+            const latRaw = row[latCol];
+            const lonRaw = row[longCol];
+            const lat = parseFloat(latRaw);
+            const lon = parseFloat(lonRaw);
+
+            if (Number.isNaN(lat) || Number.isNaN(lon)) {
+                skippedSamples.push(`Row ${index + 2} skipped: invalid coordinates (${latRaw}, ${lonRaw})`);
+                return;
+            }
+
+            features.push({
                 type: 'Feature',
                 geometry: {
                     type: 'Point',
-                    coordinates: [parseFloat(row[longCol]), parseFloat(row[latCol])]
+                    coordinates: [lon, lat]
                 },
                 properties: row
-            })).filter(f => !isNaN(f.geometry.coordinates[0]) && !isNaN(f.geometry.coordinates[1])),
+            });
+        });
+
+        if (skippedSamples.length) {
+            warnings.push(...skippedSamples.slice(0, 5));
+            if (skippedSamples.length > 5) {
+                warnings.push(`${skippedSamples.length - 5} more row(s) were skipped for invalid coordinates.`);
+            }
+        }
+
+        const importSummary = this.buildImportSummary({
+            fileName: file.name,
+            fileType,
+            importedCount: features.length,
+            skippedCount: data.length - features.length,
+            detectedColumns: { lat: latCol, lon: longCol },
+            warnings,
+        });
+
+        const geojson = {
+            type: 'FeatureCollection',
+            features,
             toolMetadata: {
                 name: this.name,
                 params: { ...params, Input: file.name, 'Lat Column': latCol, 'Long Column': longCol },
@@ -99,9 +177,12 @@ class AddDataTool extends Tool {
             }
         };
 
+        this.attachImportSummary(geojson, importSummary);
+
         const res = this.addToMap(geojson);
-        this.setStatus(0, 'Tabular data added to map.');
-        return res;
+        const warningSummary = importSummary.skippedCount ? ` ${importSummary.skippedCount} row(s) skipped.` : '';
+        this.setStatus(0, `Imported ${importSummary.importedCount} feature(s) from ${file.name}.${warningSummary}`.trim());
+        return { ...res, importSummary };
     }
 
     async readTabularFile(file, fileType) {
@@ -172,4 +253,3 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
     window.AddDataTool = AddDataTool;
 }
-

@@ -218,6 +218,68 @@ function getToolHistory(layer) {
   return Array.isArray(history) ? history.map((entry) => cloneMetadata(entry)).filter(Boolean) : [];
 }
 
+function getLayerName(layerOrId) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return '';
+
+  const feature = ensureLayerFeature(layer);
+  const properties = feature.properties || {};
+  return [
+    properties.name,
+    properties.title,
+    properties.layerName,
+    feature.properties?.displayName,
+  ].find((value) => typeof value === 'string' && value.trim()) || '';
+}
+
+function setLayerName(layerOrId, name) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return false;
+
+  const feature = ensureLayerFeature(layer);
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  feature.properties.name = trimmed;
+  feature.properties.layerName = trimmed;
+  return true;
+}
+
+function getChildLayerIds(parentId) {
+  if (!parentId) return [];
+
+  const ids = [];
+  _registry.forEach((layer, id) => {
+    const metadata = getToolMetadata(layer);
+    if (metadata?.parentLayerId === parentId) ids.push(id);
+  });
+
+  return ids;
+}
+
+function removeLayerTree(id) {
+  const descendants = [];
+  const queue = [...getChildLayerIds(id)];
+  const seen = new Set(queue);
+
+  while (queue.length) {
+    const childId = queue.shift();
+    descendants.push(childId);
+    const nested = getChildLayerIds(childId);
+    nested.forEach((nestedId) => {
+      if (seen.has(nestedId)) return;
+      seen.add(nestedId);
+      queue.push(nestedId);
+    });
+  }
+
+  descendants.slice().reverse().forEach((childId) => removeLayer(childId));
+  const removedRoot = removeLayer(id);
+  return {
+    removed: removedRoot ? [id, ...descendants] : descendants,
+    descendantIds: descendants,
+    ok: removedRoot,
+  };
+}
+
 function getLayerInfo(layerOrId) {
   const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
   if (!layer) return null;
@@ -234,6 +296,7 @@ function getLayerInfo(layerOrId) {
     id,
     geometryType,
     label: geometryType ? `${geometryType} (${id})` : id,
+    name: getLayerName(layer),
     properties,
     geojson,
     metadata,
@@ -396,6 +459,10 @@ module.exports = {
   getLayerInfo,
   getLayerBounds,
   getToolHistory,
+  getLayerName,
+  setLayerName,
+  getChildLayerIds,
+  removeLayerTree,
   getMap,
   listLayers,
   getState,

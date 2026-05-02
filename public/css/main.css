@@ -250,6 +250,10 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     min-width: 0;
 }
 
+.layer-text > * + * {
+    margin-top: 4px;
+}
+
 .layer-title {
     font-size: 13px;
     font-weight: 600;
@@ -264,6 +268,51 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.layer-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.layer-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 10px;
+    line-height: 1.2;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.03);
+}
+
+.layer-badge.source-imported {
+    color: #86d3ff;
+}
+
+.layer-badge.source-derived {
+    color: #f5c26b;
+}
+
+.layer-badge.source-manual {
+    color: #9ad18b;
+}
+
+.layer-badge.source-ai {
+    color: #d6a6ff;
+}
+
+.layer-rename-input {
+    width: 100%;
+    border: 1px solid var(--accent-color);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: rgba(0,0,0,0.25);
 }
 
 .layer-actions {

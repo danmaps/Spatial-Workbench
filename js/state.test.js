@@ -88,4 +88,44 @@ describe('state provenance helpers', () => {
       { name: 'Buffer', parentLayerId: 'parent-1', timestamp: '2026-04-30T01:00:00Z' },
     ]);
   });
+
+  test('setLayerName persists a user-facing layer name', () => {
+    const layer = {
+      __id: 'layer-1',
+      feature: { properties: { __id: 'layer-1' } },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'layer-1' } })),
+    };
+
+    state.registerLayer(layer, 'layer-1');
+    expect(state.setLayerName('layer-1', 'Study Area')).toBe(true);
+    expect(state.getLayerName('layer-1')).toBe('Study Area');
+    expect(layer.feature.properties.layerName).toBe('Study Area');
+  });
+
+  test('removeLayerTree removes a parent layer and derived descendants', () => {
+    const parentLayer = {
+      __id: 'parent-2',
+      feature: { properties: { __id: 'parent-2' }, toolMetadata: { name: 'Draw' } },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'parent-2' } })),
+    };
+    const childLayer = {
+      __id: 'child-2',
+      feature: { properties: { __id: 'child-2' }, toolMetadata: { name: 'Buffer', parentLayerId: 'parent-2' } },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'child-2' } })),
+    };
+
+    state.registerLayer(parentLayer, 'parent-2');
+    state.registerLayer(childLayer, 'child-2');
+    tocLayers.push(parentLayer, childLayer);
+
+    expect(state.getChildLayerIds('parent-2')).toEqual(['child-2']);
+
+    const result = state.removeLayerTree('parent-2');
+
+    expect(result.ok).toBe(true);
+    expect(result.descendantIds).toEqual(['child-2']);
+    expect(state.getLayer('parent-2')).toBeNull();
+    expect(state.getLayer('child-2')).toBeNull();
+    expect(tocLayers).toHaveLength(0);
+  });
 });

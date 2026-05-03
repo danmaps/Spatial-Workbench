@@ -113,4 +113,28 @@ describe('Tool base architecture', () => {
     expect(tool.getStatus().message).toBe('boom');
     expect(document.getElementById('statusMessageText').textContent).toBe('boom');
   });
+
+  test('execute wrapper re-renders with last entered params instead of defaults', async () => {
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo', [
+          { name: 'Count', type: 'int', defaultValue: 1, min: 0, max: 10 },
+          { name: 'Enabled', type: 'boolean', defaultValue: false },
+        ], 'demo', null);
+      }
+      async run() {
+        this.setStatus(0, 'ran');
+      }
+    }
+
+    const tool = new DemoTool();
+    tool.renderUI();
+    document.getElementById('param-Count').value = '7';
+    document.getElementById('param-Enabled').checked = true;
+
+    await tool.execute();
+
+    expect(document.getElementById('param-Count').value).toBe('7');
+    expect(document.getElementById('param-Enabled').checked).toBe(true);
+  });
 });

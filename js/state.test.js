@@ -136,6 +136,92 @@ describe('state provenance helpers', () => {
     expect(state.setLayerName('layer-1', 'Study Area')).toBe(true);
     expect(state.getLayerName('layer-1')).toBe('Study Area');
     expect(layer.feature.properties.layerName).toBe('Study Area');
+    expect(layer.feature.properties.displayName).toBe('Study Area');
+  });
+
+  test('getLayerInfo exposes canonical geometry, source, provenance, and ui fields', () => {
+    const layer = {
+      __id: 'import-1',
+      feature: {
+        properties: {
+          __id: 'import-1',
+          importSummary: {
+            fileName: 'sites.geojson',
+            importedCount: 2,
+            skippedCount: 0,
+          },
+          toolHistory: [{ name: 'Add Data', timestamp: '2026-05-01T00:00:00Z' }],
+        },
+        toolMetadata: {
+          name: 'Add Data',
+          params: { Input: 'sites.geojson' },
+          timestamp: '2026-05-01T00:00:00Z',
+        },
+      },
+      toGeoJSON: jest.fn(() => ({
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {} },
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: {} },
+        ],
+        properties: {
+          __id: 'import-1',
+          importSummary: {
+            fileName: 'sites.geojson',
+            importedCount: 2,
+            skippedCount: 0,
+          },
+        },
+      })),
+    };
+
+    state.registerLayer(layer, 'import-1');
+    tocLayers.push(layer);
+    mockMap.hasLayer.mockImplementation((candidate) => candidate === layer);
+
+    const info = state.getLayerInfo('import-1');
+
+    expect(info.id).toBe('import-1');
+    expect(info.displayName).toBe('sites');
+    expect(info.geometry).toEqual(expect.objectContaining({
+      type: 'Point',
+      label: 'Point',
+      featureCount: 2,
+    }));
+    expect(info.source).toEqual(expect.objectContaining({
+      kind: 'imported',
+      label: 'Imported',
+      input: 'sites.geojson',
+      importedFileName: 'sites.geojson',
+    }));
+    expect(info.provenance.history).toEqual([{ name: 'Add Data', timestamp: '2026-05-01T00:00:00Z' }]);
+    expect(info.ui).toEqual(expect.objectContaining({ visible: true, selectable: true, removable: true, editable: true }));
+  });
+
+  test('listLayers returns canonical display labels and summary fields', () => {
+    const layer = {
+      __id: 'named-1',
+      feature: {
+        properties: {
+          __id: 'named-1',
+          name: 'Parcels',
+        },
+      },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'named-1', name: 'Parcels' } })),
+    };
+
+    state.registerLayer(layer, 'named-1');
+    tocLayers.push(layer);
+
+    expect(state.listLayers()).toEqual([
+      expect.objectContaining({
+        id: 'named-1',
+        geometryType: 'Polygon',
+        label: 'Parcels',
+        displayName: 'Parcels',
+        featureCount: 1,
+      }),
+    ]);
   });
 
   test('removeLayerTree removes a parent layer and derived descendants', () => {

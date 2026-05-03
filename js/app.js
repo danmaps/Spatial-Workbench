@@ -31,7 +31,8 @@ let drawControl = new L.Control.Draw({
 map.addControl(drawControl);
 
 function getLayerHistorySummary(layer) {
-    const history = state.getToolHistory(layer);
+    const info = state.getLayerInfo(layer);
+    const history = info?.provenance?.history || [];
     return history.map((entry) => entry.name || 'Unknown step');
 }
 
@@ -79,23 +80,22 @@ function getDefaultLayerName(layer) {
 function getLayerLabel(layer, fallbackMessage) {
     const info = state.getLayerInfo(layer);
     const explicitName = state.getLayerName(layer);
-    const preferredName = explicitName || getDefaultLayerName(layer);
+    const preferredName = explicitName || info?.displayName || getDefaultLayerName(layer);
     if (preferredName) return preferredName;
     return fallbackMessage || info?.label || info?.id || 'Layer';
 }
 
 function getLayerSourceBadge(layer) {
     const info = state.getLayerInfo(layer);
-    const metadata = info?.metadata || {};
-    const importSummary = info?.properties?.importSummary;
+    const source = info?.source || {};
 
-    if (importSummary) return { label: 'Imported', tone: 'imported' };
-    if (metadata.parentLayerId) return { label: 'Derived', tone: 'derived' };
-    if (metadata.name === 'Draw' || metadata.name === 'Edit') return { label: 'Manual', tone: 'manual' };
-    if (metadata.provider || metadata.name === 'Generate AI Features') return { label: 'AI', tone: 'ai' };
-    if (metadata.name) return { label: metadata.name, tone: 'tool' };
+    if (source.kind === 'imported') return { label: source.label, tone: 'imported' };
+    if (source.kind === 'derived') return { label: source.label, tone: 'derived' };
+    if (source.kind === 'manual') return { label: source.label, tone: 'manual' };
+    if (source.kind === 'ai') return { label: source.label, tone: 'ai' };
+    if (source.kind === 'tool') return { label: source.label, tone: 'tool' };
 
-    return { label: 'Layer', tone: 'default' };
+    return { label: source.label || 'Layer', tone: 'default' };
 }
 
 function beginRenameLayer(layer, titleEl) {
@@ -210,14 +210,16 @@ function openLayerProperties(layerOrId) {
     title.textContent = `${info.geometryType || 'Layer'} · ${info.id}`;
 
     const metadataRows = [];
-    if (info.metadata?.name) metadataRows.push(['Created By', info.metadata.name]);
-    if (info.metadata?.timestamp) metadataRows.push(['Timestamp', info.metadata.timestamp]);
-    if (info.metadata?.parentLayerId) metadataRows.push(['Parent Layer', info.metadata.parentLayerId]);
+    if (info.provenance?.metadata?.name) metadataRows.push(['Created By', info.provenance.metadata.name]);
+    if (info.provenance?.metadata?.timestamp) metadataRows.push(['Timestamp', info.provenance.metadata.timestamp]);
+    if (info.source?.parentLayerId) metadataRows.push(['Parent Layer', info.source.parentLayerId]);
+    metadataRows.push(['Visible', info.ui?.visible ? 'Yes' : 'No']);
 
     const sourceRows = [];
-    if (info.metadata?.params?.Input) sourceRows.push(['Input', info.metadata.params.Input]);
-    if (info.metadata?.provider) sourceRows.push(['Provider', info.metadata.provider]);
-    const importSummary = info.properties?.importSummary;
+    if (info.source?.kind) sourceRows.push(['Source Type', info.source.label || info.source.kind]);
+    if (info.source?.input) sourceRows.push(['Input', info.source.input]);
+    if (info.source?.provider) sourceRows.push(['Provider', info.source.provider]);
+    const importSummary = info.source?.importSummary || info.properties?.importSummary;
     if (importSummary) {
         sourceRows.push(['Imported Features', `${importSummary.importedCount}`]);
         if (importSummary.skippedCount) sourceRows.push(['Skipped Rows', `${importSummary.skippedCount}`]);
@@ -227,14 +229,13 @@ function openLayerProperties(layerOrId) {
     }
 
     const geometryRows = [];
-    geometryRows.push(['Geometry Type', info.geometryType || 'Unknown']);
-    const featureCount = info.geojson?.type === 'FeatureCollection' ? info.geojson.features.length : 1;
-    geometryRows.push(['Feature Count', `${featureCount}`]);
+    geometryRows.push(['Geometry Type', info.geometry?.type || info.geometryType || 'Unknown']);
+    geometryRows.push(['Feature Count', `${info.geometry?.featureCount || 0}`]);
     if (info.bounds) {
         geometryRows.push(['Bounds', info.bounds.toBBoxString ? info.bounds.toBBoxString() : 'Available']);
     }
 
-    const history = info.history || [];
+    const history = info.provenance?.history || info.history || [];
     const historyList = history.length
         ? `<ol class="properties-history">${history.map((entry) => `<li><strong>${entry.name || 'Unknown step'}</strong>${entry.timestamp ? ` <span class="text-muted">${entry.timestamp}</span>` : ''}${entry.parentLayerId ? `<div class="properties-note">from ${entry.parentLayerId}</div>` : ''}</li>`).join('')}</ol>`
         : '<p class="properties-empty">No tool history recorded yet.</p>';
@@ -439,8 +440,8 @@ function renderToc() {
         const metaSection = document.createElement('div');
         metaSection.className = 'layer-menu-section layer-menu-details';
         metaSection.innerHTML = `
-            <div class="layer-menu-label">${getGeometryLabel(info?.geometryType)} · ${sourceBadge.label}</div>
-            <div class="layer-menu-meta">${history.length ? history.join(' → ') : (info?.geometryType || 'Layer')}</div>
+            <div class="layer-menu-label">${info?.geometry?.label || getGeometryLabel(info?.geometryType)} · ${sourceBadge.label}</div>
+            <div class="layer-menu-meta">${history.length ? history.join(' → ') : (info?.geometry?.type || info?.geometryType || 'Layer')}</div>
             <div class="layer-menu-id">${stableId}</div>
         `;
 

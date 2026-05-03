@@ -191,6 +191,20 @@ function getGeometryType(layer) {
   return (layer && layer.featureType) || null;
 }
 
+function getGeometryLabel(geometryType) {
+  const type = geometryType || 'Layer';
+  if (type === 'Point' || type === 'MultiPoint') return 'Point';
+  if (type === 'LineString' || type === 'MultiLineString') return 'Line';
+  if (type === 'Polygon' || type === 'MultiPolygon') return 'Polygon';
+  return type;
+}
+
+function getFeatureCountFromGeoJSON(geojson) {
+  if (!geojson) return 0;
+  if (geojson.type === 'FeatureCollection') return Array.isArray(geojson.features) ? geojson.features.length : 0;
+  return 1;
+}
+
 function getLayerBounds(layer) {
   if (!layer) return null;
   try {
@@ -240,6 +254,7 @@ function setLayerName(layerOrId, name) {
   const trimmed = typeof name === 'string' ? name.trim() : '';
   feature.properties.name = trimmed;
   feature.properties.layerName = trimmed;
+  feature.properties.displayName = trimmed;
   return true;
 }
 
@@ -284,24 +299,86 @@ function getLayerInfo(layerOrId) {
   const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
   if (!layer) return null;
 
+  const { map, drawnItems } = getAppRefs();
   const id = ensureStableId(layer, layer?.feature?.properties?.__id);
   const geojson = typeof layer.toGeoJSON === 'function' ? layer.toGeoJSON() : null;
   const geometryType = getGeometryType(layer);
+  const geometryLabel = getGeometryLabel(geometryType);
   const properties = geojson?.properties || layer.feature?.properties || {};
-  const metadata = getToolMetadata(layer);
+  const metadata = sanitizeMetadata(getToolMetadata(layer));
   const history = getToolHistory(layer);
   const bounds = getLayerBounds(layer);
+  const name = getLayerName(layer);
+  const featureCount = getFeatureCountFromGeoJSON(geojson);
+
+  let sourceKind = 'unknown';
+  let sourceLabel = 'Layer';
+  const importSummary = properties?.importSummary || null;
+
+  if (importSummary) {
+    sourceKind = 'imported';
+    sourceLabel = 'Imported';
+  } else if (metadata?.parentLayerId) {
+    sourceKind = 'derived';
+    sourceLabel = 'Derived';
+  } else if (metadata?.name === 'Draw' || metadata?.name === 'Edit') {
+    sourceKind = 'manual';
+    sourceLabel = 'Manual';
+  } else if (metadata?.provider || metadata?.name === 'Generate AI Features') {
+    sourceKind = 'ai';
+    sourceLabel = 'AI';
+  } else if (metadata?.name) {
+    sourceKind = 'tool';
+    sourceLabel = metadata.name;
+  }
+
+  const displayName = name || (importSummary?.fileName
+    ? importSummary.fileName.replace(/\.[^/.]+$/, '')
+    : geometryLabel || id || 'Layer');
+
+  const visible = !!(
+    (map && typeof map.hasLayer === 'function' && map.hasLayer(layer)) ||
+    (drawnItems && typeof drawnItems.hasLayer === 'function' && drawnItems.hasLayer(layer))
+  );
 
   return {
     id,
-    geometryType,
     label: geometryType ? `${geometryType} (${id})` : id,
-    name: getLayerName(layer),
+    name,
+    displayName,
     properties,
     geojson,
+    bounds,
+    geometry: {
+      type: geometryType,
+      label: geometryLabel,
+      featureCount,
+      bounds,
+    },
+    source: {
+      kind: sourceKind,
+      label: sourceLabel,
+      parentLayerId: metadata?.parentLayerId || null,
+      input: metadata?.params?.Input || null,
+      provider: metadata?.provider || null,
+      importedFileName: importSummary?.fileName || null,
+      importSummary,
+      metadata,
+    },
+    provenance: {
+      metadata,
+      history,
+    },
+    ui: {
+      visible,
+      selectable: true,
+      removable: true,
+      editable: true,
+    },
+    // Compatibility aliases for older code paths.
+    geometryType,
     metadata,
     history,
-    bounds,
   };
 }
 
@@ -342,11 +419,16 @@ function listLayers() {
     const preferredId = layer?.feature?.properties?.__id;
     const id = registerLayer(layer, preferredId);
     const geomType = getGeometryType(layer);
+    const info = getLayerInfo(layer);
     return {
       id,
       geometryType: geomType,
       // Best-effort label. Tools can choose to display id or a friendlier string.
-      label: geomType ? `${geomType} (${id})` : id,
+      label: info?.displayName || (geomType ? `${geomType} (${id})` : id),
+      displayName: info?.displayName || '',
+      featureCount: info?.geometry?.featureCount || 0,
+      source: info?.source || null,
+      ui: info?.ui || null,
     };
   });
 }

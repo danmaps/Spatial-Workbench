@@ -385,6 +385,8 @@ function renderToc() {
         item.className = `layer-message ${selectedLayerIds.has(stableId) ? 'selected' : ''} ${menuOpen ? 'menu-open' : ''}`;
         item.id = `message-${stableId}`;
         item.dataset.layerId = stableId;
+        item.tabIndex = 0;
+        item.setAttribute('aria-label', `Layer ${getLayerLabel(layer, info?.label)}`);
 
         const row = document.createElement('div');
         row.className = 'layer-row';
@@ -474,6 +476,16 @@ function renderToc() {
         item.appendChild(row);
 
         item.addEventListener('click', () => {
+            if (selectedLayerIds.has(stableId)) selectedLayerIds.delete(stableId);
+            else selectedLayerIds.add(stableId);
+            renderToc();
+            updateSelectionSummary();
+        });
+
+        item.addEventListener('keydown', (event) => {
+            if (event.target !== item) return;
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
             if (selectedLayerIds.has(stableId)) selectedLayerIds.delete(stableId);
             else selectedLayerIds.add(stableId);
             renderToc();

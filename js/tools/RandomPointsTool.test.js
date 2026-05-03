@@ -17,7 +17,7 @@ jest.mock('../app', () => ({
   },
 }));
 
-const mockApplyResult = jest.fn(() => ({ ok: true, added: [{ id: 'x' }], removed: [], errors: [] }));
+const mockApplyResult = jest.fn(() => ({ ok: true, added: ['random-points-layer'], removed: [], errors: [] }));
 const mockGetLayer = jest.fn();
 const mockListLayers = jest.fn(() => []);
 
@@ -58,18 +58,38 @@ describe('RandomPointsTool', () => {
     turf.bbox.mockClear();
   });
 
-  test('execute adds points via applyResult (bounds mode)', async () => {
-    // insidePolygon unchecked by default
-    turf.randomPoint.mockReturnValue({ type: 'FeatureCollection', features: [] });
+  test('execute adds one FeatureCollection layer via applyResult (bounds mode)', async () => {
+    turf.randomPoint.mockReturnValue({
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {} },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: {} },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [2, 2] }, properties: {} },
+      ],
+    });
 
     const tool = new RandomPointsTool();
     await tool.execute();
 
-    expect(turf.randomPoint).toHaveBeenCalled();
-    expect(mockApplyResult).toHaveBeenCalled();
+    expect(turf.randomPoint).toHaveBeenCalledWith(3, { bbox: [0, 0, 1, 1] });
+    expect(mockApplyResult).toHaveBeenCalledWith({
+      addGeojson: expect.objectContaining({
+        type: 'FeatureCollection',
+        features: expect.arrayContaining([
+          expect.objectContaining({ type: 'Feature' }),
+          expect.objectContaining({ type: 'Feature' }),
+          expect.objectContaining({ type: 'Feature' }),
+        ]),
+        toolMetadata: expect.objectContaining({
+          name: 'Random Points',
+          params: expect.objectContaining({ 'Points Count': 3 }),
+        }),
+      }),
+    });
+    expect(document.getElementById('statusMessageText').textContent).toBe('Added 3 point(s).');
   });
 
-  test('execute adds points via applyResult (inside polygon mode)', async () => {
+  test('execute adds one FeatureCollection layer via applyResult (inside polygon mode)', async () => {
     // Toggle inside polygon
     document.getElementById('param-Inside Polygon').checked = true;
     document.getElementById('param-Polygon').value = 'poly-1';
@@ -87,9 +107,26 @@ describe('RandomPointsTool', () => {
     await tool.execute();
 
     expect(mockGetLayer).toHaveBeenCalled();
-    expect(turf.randomPoint).toHaveBeenCalled();
-    expect(turf.booleanPointInPolygon).toHaveBeenCalled();
-    expect(mockApplyResult).toHaveBeenCalled();
+    expect(turf.randomPoint).toHaveBeenCalledTimes(3);
+    expect(turf.booleanPointInPolygon).toHaveBeenCalledTimes(3);
+    expect(mockApplyResult).toHaveBeenCalledWith({
+      addGeojson: expect.objectContaining({
+        type: 'FeatureCollection',
+        features: expect.arrayContaining([
+          expect.objectContaining({
+            properties: expect.objectContaining({
+              random: expect.any(String),
+            }),
+          }),
+        ]),
+        toolMetadata: expect.objectContaining({
+          name: 'Random Points',
+          parentLayerId: 'poly-1',
+          params: expect.objectContaining({ 'Points Count': 3, 'Inside Polygon': true }),
+        }),
+      }),
+    });
+    expect(document.getElementById('statusMessageText').textContent).toBe('Added 3 point(s).');
   });
 
   test('renderUI lists polygons via listLayers', () => {

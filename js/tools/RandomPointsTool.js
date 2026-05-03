@@ -19,6 +19,19 @@ function getExecutionBoundsSource(context) {
     }
 }
 
+function buildRandomPointsResult(toolName, params, features, parentLayerId = null) {
+    return {
+        type: 'FeatureCollection',
+        features,
+        toolMetadata: {
+            name: toolName,
+            params,
+            ...(parentLayerId ? { parentLayerId } : {}),
+            timestamp: new Date().toISOString()
+        }
+    };
+}
+
 /**
  * Represents a tool for adding random points within selected polygon.
  * @extends Tool
@@ -77,16 +90,7 @@ class RandomPointsTool extends Tool {
                 }
             }
 
-            const featureCollection = {
-                type: 'FeatureCollection',
-                features,
-                toolMetadata: {
-                    name: this.name,
-                    params,
-                    parentLayerId: polygonId,
-                    timestamp: new Date().toISOString()
-                }
-            };
+            const featureCollection = buildRandomPointsResult(this.name, params, features, polygonId);
 
             const res = applyResult({ addGeojson: featureCollection });
             if (res && res.ok) {
@@ -104,17 +108,14 @@ class RandomPointsTool extends Tool {
 
             const visible_extent = logCurrentBounds(boundsSource);
             const randomPoints = turf.randomPoint(pointsCount, { bbox: visible_extent });
-            randomPoints.toolMetadata = {
-                name: this.name,
-                params,
-                timestamp: new Date().toISOString()
-            };
-            randomPoints.features.forEach((pt) => {
+            const features = Array.isArray(randomPoints?.features) ? randomPoints.features : [];
+            features.forEach((pt) => {
                 pt.properties = pt.properties || {};
             });
-            const res = applyResult({ addGeojson: randomPoints });
+            const featureCollection = buildRandomPointsResult(this.name, params, features);
+            const res = applyResult({ addGeojson: featureCollection });
             if (res && res.ok) {
-                this.setStatus(0, `Added ${res.added.length} point(s).`);
+                this.setStatus(0, `Added ${features.length} point(s).`);
                 return res;
             } else {
                 this.setStatus(2, 'Failed to add points to map.');

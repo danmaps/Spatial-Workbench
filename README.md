@@ -66,6 +66,7 @@ Tools are defined declaratively using a small model:
 - Execution updates the map and GeoJSON state
 - Tool metadata can be attached to outputs
 - Layer identity, geometry, provenance, source, and UI hooks are normalized through a canonical layer model in `js/state.js` (see `docs/layer-model.md`)
+- TOC row behavior and per-layer actions follow a minimal row + ellipsis-menu model (see `docs/toc-action-model.md`)
 
 This mirrors how desktop GIS geoprocessing tools work, but in a much smaller, hackable form.
 

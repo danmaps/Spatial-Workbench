@@ -110,6 +110,52 @@ describe('state provenance helpers', () => {
     expect(tocLayers).toHaveLength(1);
   });
 
+  test('applyResult coalesces arrays of features into one result layer', () => {
+    const result = state.applyResult({
+      addGeojson: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: 'a' }, toolMetadata: { name: 'AI', timestamp: '2026-05-03T00:00:00Z' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { name: 'b' } },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.added).toHaveLength(1);
+    expect(tocLayers).toHaveLength(1);
+
+    const groupLayer = state.getLayer(result.added[0]);
+    expect(groupLayer.toGeoJSON()).toEqual(expect.objectContaining({
+      type: 'FeatureCollection',
+      features: expect.arrayContaining([
+        expect.objectContaining({ type: 'Feature' }),
+        expect.objectContaining({ type: 'Feature' }),
+      ]),
+    }));
+    expect(groupLayer.feature.properties.toolHistory).toEqual([
+      { name: 'AI', timestamp: '2026-05-03T00:00:00Z' },
+    ]);
+  });
+
+  test('applyResult keeps aggregate single features as one result layer', () => {
+    const result = state.applyResult({
+      addGeojson: {
+        type: 'Feature',
+        geometry: {
+          type: 'MultiPoint',
+          coordinates: [[0, 0], [1, 1]],
+        },
+        properties: { __id: 'multi-1' },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.added).toHaveLength(1);
+    expect(tocLayers).toHaveLength(1);
+    expect(state.getLayer(result.added[0]).toGeoJSON()).toEqual(expect.objectContaining({
+      type: 'Feature',
+      geometry: expect.objectContaining({ type: 'MultiPoint' }),
+    }));
+  });
+
   test('applyResult adds single Feature individually', () => {
     const result = state.applyResult({
       addGeojson: {

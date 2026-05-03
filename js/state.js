@@ -445,6 +445,43 @@ function getState() {
 }
 
 // ToolResult is intentionally minimal for now.
+function isGeoJSONFeature(value) {
+  return !!value && value.type === 'Feature' && value.geometry && typeof value.geometry.type === 'string';
+}
+
+function isAggregateFeatureGeometry(geometryType) {
+  return geometryType === 'MultiPoint'
+    || geometryType === 'MultiLineString'
+    || geometryType === 'MultiPolygon'
+    || geometryType === 'GeometryCollection';
+}
+
+function shouldAddAsSingleResultLayer(gj) {
+  if (!gj || typeof gj !== 'object') return false;
+  if (gj.type === 'FeatureCollection' || gj.type === 'GeometryCollection') return true;
+  if (isGeoJSONFeature(gj) && isAggregateFeatureGeometry(gj.geometry?.type)) return true;
+  return false;
+}
+
+function coalesceAdditions(addGeojson) {
+  if (!addGeojson) return [];
+  if (!Array.isArray(addGeojson)) return [addGeojson];
+  if (addGeojson.length === 0) return [];
+
+  const everyItemIsFeature = addGeojson.every(isGeoJSONFeature);
+  if (everyItemIsFeature) {
+    const sharedMetadata = addGeojson.find(item => item && item.toolMetadata)?.toolMetadata || null;
+    const collection = {
+      type: 'FeatureCollection',
+      features: addGeojson,
+    };
+    if (sharedMetadata) collection.toolMetadata = sharedMetadata;
+    return [collection];
+  }
+
+  return addGeojson;
+}
+
 // { addGeojson?: Feature|FeatureCollection|Array<Feature|FeatureCollection>, removeLayerIds?: string[] }
 function applyResult(toolResult) {
   ensureLayerRemoveListener();
@@ -462,17 +499,16 @@ function applyResult(toolResult) {
   }
 
   // Additions
-  let toAdd = toolResult.addGeojson;
-  if (!toAdd) return { ok: true, added, removed, errors };
-  if (!Array.isArray(toAdd)) toAdd = [toAdd];
+  const toAdd = coalesceAdditions(toolResult.addGeojson);
+  if (!toAdd.length) return { ok: true, added, removed, errors };
 
   for (const gj of toAdd) {
     try {
       const parentLayer = gj?.toolMetadata?.parentLayerId ? getLayer(gj.toolMetadata.parentLayerId) : null;
-      const isCollection = gj && gj.type === 'FeatureCollection' && Array.isArray(gj.features) && gj.features.length > 0;
+      const isCollection = shouldAddAsSingleResultLayer(gj);
 
       if (isCollection) {
-        // Add the entire FeatureCollection as a single group layer (one layer in TOC).
+        // Add the entire result dataset as a single group layer (one layer in TOC).
         const groupLayer = L.geoJSON(gj);
 
         const id = registerLayer(groupLayer);

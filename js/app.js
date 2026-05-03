@@ -18,6 +18,7 @@ map.addLayer(drawnItems);
 const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
 const selectedLayerIds = new Set();
+let openLayerMenuId = null;
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -176,6 +177,17 @@ function createActionButton(iconClass, title, onClick) {
         onClick(event);
     });
     return button;
+}
+
+function closeLayerMenu() {
+    if (openLayerMenuId === null) return;
+    openLayerMenuId = null;
+    renderToc();
+}
+
+function toggleLayerMenu(stableId) {
+    openLayerMenuId = openLayerMenuId === stableId ? null : stableId;
+    renderToc();
 }
 
 function updateSelectionSummary() {
@@ -364,10 +376,17 @@ function renderToc() {
     tocLayers.forEach((layer) => {
         const stableId = state.ensureStableId(layer);
         const info = state.getLayerInfo(layer);
+        const history = getLayerHistorySummary(layer);
+        const sourceBadge = getLayerSourceBadge(layer);
+        const menuOpen = openLayerMenuId === stableId;
+
         const item = document.createElement('div');
-        item.className = `layer-message ${selectedLayerIds.has(stableId) ? 'selected' : ''}`;
+        item.className = `layer-message ${selectedLayerIds.has(stableId) ? 'selected' : ''} ${menuOpen ? 'menu-open' : ''}`;
         item.id = `message-${stableId}`;
         item.dataset.layerId = stableId;
+
+        const row = document.createElement('div');
+        row.className = 'layer-row';
 
         const left = document.createElement('div');
         left.className = 'layer-row-main';
@@ -384,16 +403,6 @@ function renderToc() {
             updateSelectionSummary();
         });
 
-        const icon = document.createElement('i');
-        const iconMap = {
-            marker: 'fa-solid fa-location-pin',
-            rectangle: 'fa-solid fa-draw-polygon',
-            circle: 'fa-solid fa-draw-polygon',
-            polyline: 'fa-solid fa-wave-square',
-            polygon: 'fa-solid fa-draw-polygon',
-        };
-        icon.className = iconMap[getLayerTypeForIcon(layer)] || 'fa-solid fa-layer-group';
-
         const textWrap = document.createElement('div');
         textWrap.className = 'layer-text';
 
@@ -406,43 +415,63 @@ function renderToc() {
             beginRenameLayer(layer, title);
         });
 
-        const meta = document.createElement('div');
-        meta.className = 'layer-meta';
-        const history = getLayerHistorySummary(layer);
-        meta.textContent = history.length ? history.join(' → ') : (info?.geometryType || 'Layer');
-
-        const badges = document.createElement('div');
-        badges.className = 'layer-badges';
-
-        const sourceBadge = getLayerSourceBadge(layer);
-        const sourceEl = document.createElement('span');
-        sourceEl.className = `layer-badge source-${sourceBadge.tone}`;
-        sourceEl.textContent = sourceBadge.label;
-
-        const typeEl = document.createElement('span');
-        typeEl.className = 'layer-badge layer-badge-type';
-        typeEl.textContent = getGeometryLabel(info?.geometryType);
-
-        badges.appendChild(sourceEl);
-        badges.appendChild(typeEl);
-
         textWrap.appendChild(title);
-        textWrap.appendChild(meta);
-        textWrap.appendChild(badges);
-
         left.appendChild(checkbox);
-        left.appendChild(icon);
         left.appendChild(textWrap);
 
-        const actions = document.createElement('div');
-        actions.className = 'layer-actions';
-        actions.appendChild(createActionButton('fas fa-magnifying-glass-location', 'Zoom to layer', () => zoomToLayer(layer)));
-        actions.appendChild(createActionButton('fas fa-pen', 'Rename layer', () => beginRenameLayer(layer, title)));
-        actions.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => openLayerProperties(layer)));
-        actions.appendChild(createActionButton('fas fa-trash', 'Remove layer', () => removeLayerWithGuard(layer)));
+        const menuWrap = document.createElement('div');
+        menuWrap.className = 'layer-menu-wrap';
+        menuWrap.addEventListener('click', (event) => event.stopPropagation());
 
-        item.appendChild(left);
-        item.appendChild(actions);
+        const menuButton = document.createElement('button');
+        menuButton.type = 'button';
+        menuButton.className = 'layer-menu-trigger';
+        menuButton.setAttribute('aria-label', `Open actions for ${getLayerLabel(layer, info?.label)}`);
+        menuButton.setAttribute('aria-haspopup', 'menu');
+        menuButton.setAttribute('aria-expanded', menuOpen ? 'true' : 'false');
+        menuButton.innerHTML = '<i class="fa-solid fa-ellipsis"></i>';
+        menuButton.addEventListener('click', () => toggleLayerMenu(stableId));
+
+        const menu = document.createElement('div');
+        menu.className = `layer-menu ${menuOpen ? 'open' : ''}`;
+        menu.setAttribute('role', 'menu');
+
+        const metaSection = document.createElement('div');
+        metaSection.className = 'layer-menu-section layer-menu-details';
+        metaSection.innerHTML = `
+            <div class="layer-menu-label">${getGeometryLabel(info?.geometryType)} · ${sourceBadge.label}</div>
+            <div class="layer-menu-meta">${history.length ? history.join(' → ') : (info?.geometryType || 'Layer')}</div>
+            <div class="layer-menu-id">${stableId}</div>
+        `;
+
+        const actionList = document.createElement('div');
+        actionList.className = 'layer-menu-section layer-menu-actions';
+        actionList.appendChild(createActionButton('fas fa-magnifying-glass-location', 'Zoom to layer', () => {
+            closeLayerMenu();
+            zoomToLayer(layer);
+        }));
+        actionList.appendChild(createActionButton('fas fa-pen', 'Rename layer', () => {
+            closeLayerMenu();
+            beginRenameLayer(layer, title);
+        }));
+        actionList.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => {
+            closeLayerMenu();
+            openLayerProperties(layer);
+        }));
+        actionList.appendChild(createActionButton('fas fa-trash', 'Remove layer', () => {
+            closeLayerMenu();
+            removeLayerWithGuard(layer);
+        }));
+
+        menu.appendChild(metaSection);
+        menu.appendChild(actionList);
+        menuWrap.appendChild(menuButton);
+        menuWrap.appendChild(menu);
+
+        row.appendChild(left);
+        row.appendChild(menuWrap);
+        item.appendChild(row);
+
         item.addEventListener('click', () => {
             if (selectedLayerIds.has(stableId)) selectedLayerIds.delete(stableId);
             else selectedLayerIds.add(stableId);
@@ -626,6 +655,18 @@ function renderToolList(tools) {
     });
     toolContainer.appendChild(settingsDiv);
 }
+
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('.layer-menu-wrap')) {
+        closeLayerMenu();
+    }
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        closeLayerMenu();
+    }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     updateDataContent();

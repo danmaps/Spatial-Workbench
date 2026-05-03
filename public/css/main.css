@@ -222,10 +222,7 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 }
 
 .layer-message {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    position: relative;
     padding: 10px 12px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -238,6 +235,13 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     box-shadow: 0 0 0 1px rgba(52, 152, 219, 0.3);
 }
 
+.layer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
 .layer-row-main {
     display: flex;
     align-items: center;
@@ -248,10 +252,7 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 
 .layer-text {
     min-width: 0;
-}
-
-.layer-text > * + * {
-    margin-top: 4px;
+    flex: 1;
 }
 
 .layer-title {
@@ -316,9 +317,94 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 }
 
 .layer-actions {
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
+}
+
+.layer-menu-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.layer-menu-trigger {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 6px;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 1;
+    transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.layer-menu-trigger:hover,
+.layer-menu-trigger:focus-visible,
+.layer-message.menu-open .layer-menu-trigger {
+    opacity: 1;
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    background: var(--hover-bg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .layer-menu-trigger {
+        opacity: 0;
+    }
+
+    .layer-message:hover .layer-menu-trigger,
+    .layer-message:focus-within .layer-menu-trigger,
+    .layer-message.menu-open .layer-menu-trigger {
+        opacity: 1;
+    }
+}
+
+.layer-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 20;
+    min-width: 220px;
+    display: none;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px;
+    background: var(--secondary-bg);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+}
+
+.layer-menu.open {
+    display: block;
+}
+
+.layer-menu-section + .layer-menu-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.layer-menu-label,
+.layer-menu-meta,
+.layer-menu-id {
+    font-size: 11px;
+}
+
+.layer-menu-label {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.layer-menu-meta,
+.layer-menu-id {
+    color: var(--text-secondary);
+}
+
+.layer-menu-meta,
+.layer-menu-id {
+    margin-top: 4px;
 }
 
 .toc-action {
@@ -326,8 +412,7 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     background: transparent;
     color: var(--text-primary);
     border-radius: 6px;
-    width: 32px;
-    height: 32px;
+    min-height: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

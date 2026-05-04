@@ -719,6 +719,19 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     body[data-view="data"] #sidebar,
     body[data-view="tools"] #sidebar { display: block; }
 
+    /* Keep mobile Tools and Data as truly separate modes */
+    body[data-view="tools"] #attributePanel,
+    body[data-view="tools"] #drawingData {
+        display: none;
+    }
+
+    body[data-view="data"] #toolSelection,
+    body[data-view="data"] #toolDetails,
+    body[data-view="data"] #aiSettingsPanel,
+    body[data-view="data"] #drawingData {
+        display: none !important;
+    }
+
     .attribute-table-wrap {
         display: none;
     }

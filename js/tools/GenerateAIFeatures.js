@@ -1,7 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { applyResult, getLayer } = require('../state');
-const { STORAGE_KEYS, DEFAULT_PROVIDER } = require('../ai-providers');
+const { STORAGE_KEYS, DEFAULT_PROVIDER, AI_PROVIDERS } = require('../ai-providers');
 
 /**
  * A tool for generating AI features.
@@ -22,11 +22,12 @@ class GenerateAIFeatures extends Tool {
 
     _getSettings() {
         if (typeof localStorage === 'undefined') return {};
+        const provider = localStorage.getItem(STORAGE_KEYS.provider) || DEFAULT_PROVIDER;
         return {
-            provider: localStorage.getItem(STORAGE_KEYS.provider) || DEFAULT_PROVIDER,
+            provider,
             apiKey: localStorage.getItem(STORAGE_KEYS.apiKey) || '',
             ollamaUrl: localStorage.getItem(STORAGE_KEYS.ollamaUrl) || '',
-            model: localStorage.getItem(STORAGE_KEYS.model) || '',
+            model: localStorage.getItem(STORAGE_KEYS.model) || AI_PROVIDERS[provider]?.defaultModel || '',
         };
     }
 

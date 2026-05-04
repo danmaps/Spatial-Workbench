@@ -5,6 +5,14 @@
   const setActive = (view) => {
     document.body.dataset.view = view;
     tabs.forEach((t) => t.classList.toggle('active', t.dataset.view === view));
+
+    if (view === 'data') {
+      const panel = document.getElementById('attributePanel');
+      if (panel) panel.scrollIntoView({ block: 'start' });
+    } else if (view === 'tools') {
+      const tools = document.getElementById('toolSelection');
+      if (tools) tools.scrollIntoView({ block: 'start' });
+    }
   };
 
   tabs.forEach((tab) => {

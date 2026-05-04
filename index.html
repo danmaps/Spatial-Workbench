@@ -23,6 +23,7 @@
             <button class="mobile-tab" data-view="map">Map</button>
             <button class="mobile-tab" data-view="tools">Tools</button>
             <button class="mobile-tab" data-view="layers">Layers</button>
+            <button class="mobile-tab" data-view="data">Data</button>
         </div>
     </div>
     <div class="container-fluid">
@@ -80,6 +81,22 @@
                     </div>
                     <div id="importSummary" class="hidden"></div>
                 </div>
+
+                <section id="attributePanel" class="attribute-panel">
+                    <div class="sidebar-header attribute-header">
+                        <div>
+                            <h4><i class="fas fa-table me-2"></i>Attributes</h4>
+                            <div id="attributeSummary" class="toc-subtitle">No layer selected</div>
+                        </div>
+                    </div>
+                    <div class="attribute-controls">
+                        <label class="attribute-label" for="attributeLayerSelect">Layer</label>
+                        <select id="attributeLayerSelect" aria-label="Choose layer for attribute view"></select>
+                    </div>
+                    <div id="attributeContent" class="attribute-content">
+                        <div class="attribute-empty">Select a layer to inspect its attributes.</div>
+                    </div>
+                </section>
 
                 <div id="drawingData" class="hidden expander">
                     <div class="drawing-header">

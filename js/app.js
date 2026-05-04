@@ -4,6 +4,7 @@ const toolNames = ['RandomPointsTool', 'BufferTool', 'ExportTool', 'GenerateAIFe
 
 const state = require('./state');
 const { renderAISettings } = require('./ui/ai-settings');
+const { getAttributeModel } = require('./ui/attribute-view');
 
 // Initialize the map
 const map = L.map('map').setView([34, -117], 7);
@@ -19,6 +20,7 @@ const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
 const selectedLayerIds = new Set();
 let openLayerMenuId = null;
+let activeAttributeLayerId = null;
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -153,6 +155,7 @@ function removeLayerWithGuard(layer) {
     }
 
     selectedLayerIds.delete(stableId);
+    if (activeAttributeLayerId === stableId) activeAttributeLayerId = null;
     updateDataContent();
 }
 
@@ -197,6 +200,157 @@ function updateSelectionSummary() {
     if (summary) {
         summary.textContent = selectedLayerIds.size ? `${selectedLayerIds.size} selected` : 'No selection';
     }
+}
+
+function getSelectedLayers() {
+    return Array.from(selectedLayerIds)
+        .map((id) => state.getLayer(id))
+        .filter(Boolean);
+}
+
+function syncActiveAttributeLayer() {
+    const selectedIds = Array.from(selectedLayerIds).filter((id) => state.getLayer(id));
+
+    if (selectedIds.includes(activeAttributeLayerId)) return;
+    if (selectedIds.length) {
+        activeAttributeLayerId = selectedIds[0];
+        return;
+    }
+
+    if (activeAttributeLayerId && state.getLayer(activeAttributeLayerId)) return;
+    const firstLayer = tocLayers[0];
+    activeAttributeLayerId = firstLayer ? state.ensureStableId(firstLayer) : null;
+}
+
+function buildFeaturePopupContent(row) {
+    const items = Object.entries(row.properties || {})
+        .filter(([key]) => key !== '__id')
+        .map(([key, value]) => `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—'))}</td></tr>`)
+        .join('');
+
+    return `
+        <div class="attribute-popup">
+            <div class="attribute-popup-title">${escapeHtml(row.title)}</div>
+            <table class="popupTable"><tbody>${items || '<tr><td colspan="2">No attributes</td></tr>'}</tbody></table>
+        </div>
+    `;
+}
+
+function zoomToFeature(row) {
+    if (!row?.feature) return false;
+
+    try {
+        const previewLayer = L.geoJSON(row.feature);
+        const bounds = previewLayer.getBounds && previewLayer.getBounds();
+        if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [32, 32] });
+            map.openPopup(buildFeaturePopupContent(row), bounds.getCenter());
+            return true;
+        }
+
+        const marker = previewLayer.getLayers && previewLayer.getLayers()[0];
+        if (marker && typeof marker.getLatLng === 'function') {
+            const latlng = marker.getLatLng();
+            map.setView(latlng, Math.max(map.getZoom(), 14));
+            map.openPopup(buildFeaturePopupContent(row), latlng);
+            return true;
+        }
+    } catch (_) {}
+
+    return false;
+}
+
+function renderAttributeView() {
+    syncActiveAttributeLayer();
+
+    const container = document.getElementById('attributeContent');
+    const selector = document.getElementById('attributeLayerSelect');
+    const summary = document.getElementById('attributeSummary');
+    if (!container || !selector || !summary) return;
+
+    const selectedInfos = getSelectedLayers().map((layer) => state.getLayerInfo(layer)).filter(Boolean);
+    const candidateInfos = selectedInfos.length
+        ? selectedInfos
+        : tocLayers.map((layer) => state.getLayerInfo(layer)).filter(Boolean);
+
+    if (!candidateInfos.length) {
+        selector.innerHTML = '';
+        selector.disabled = true;
+        summary.textContent = 'No layer selected';
+        container.innerHTML = '<div class="attribute-empty">Select a layer to inspect its attributes.</div>';
+        return;
+    }
+
+    const safeActiveId = candidateInfos.some((info) => info.id === activeAttributeLayerId)
+        ? activeAttributeLayerId
+        : candidateInfos[0].id;
+    activeAttributeLayerId = safeActiveId;
+
+    selector.disabled = candidateInfos.length === 1;
+    selector.innerHTML = candidateInfos.map((info) => `
+        <option value="${escapeHtml(info.id)}" ${info.id === safeActiveId ? 'selected' : ''}>${escapeHtml(info.displayName || info.id)}</option>
+    `).join('');
+
+    const activeInfo = candidateInfos.find((info) => info.id === safeActiveId) || candidateInfos[0];
+    const model = getAttributeModel(activeInfo, { maxRows: 25 });
+    const featureCount = activeInfo.geometry?.featureCount || model.totalRows || 0;
+
+    summary.textContent = `${featureCount} feature${featureCount === 1 ? '' : 's'} · ${model.columns.length} field${model.columns.length === 1 ? '' : 's'}`;
+
+    if (!model.totalRows) {
+        container.innerHTML = '<div class="attribute-empty">This layer does not have feature attributes to display yet.</div>';
+        return;
+    }
+
+    const desktopHead = model.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('');
+    const desktopRows = model.rows.map((row) => `
+        <tr>
+            <td class="attribute-row-index">${row.index + 1}</td>
+            ${row.cells.map((cell) => `<td title="${escapeHtml(cell.value)}">${escapeHtml(cell.value)}</td>`).join('')}
+            <td class="attribute-row-action"><button type="button" class="attribute-row-button" data-feature-index="${row.index}">Zoom</button></td>
+        </tr>
+    `).join('');
+
+    const mobileCards = model.rows.map((row) => `
+        <article class="attribute-card">
+            <div class="attribute-card-header">
+                <div>
+                    <div class="attribute-card-title">${escapeHtml(row.title)}</div>
+                    <div class="attribute-card-meta">${escapeHtml(row.geometryType)} · Row ${row.index + 1}</div>
+                </div>
+                <button type="button" class="attribute-row-button" data-feature-index="${row.index}">Zoom</button>
+            </div>
+            <dl class="attribute-card-list">
+                ${row.cells.map((cell) => `<div><dt>${escapeHtml(cell.key)}</dt><dd>${escapeHtml(cell.value)}</dd></div>`).join('')}
+            </dl>
+        </article>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="attribute-shell">
+            <div class="attribute-table-wrap">
+                <table class="attribute-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            ${desktopHead}
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>${desktopRows}</tbody>
+                </table>
+            </div>
+            <div class="attribute-cards">${mobileCards}</div>
+            ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
+        </div>
+    `;
+
+    Array.from(container.querySelectorAll('[data-feature-index]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            const row = model.rows[Number(button.dataset.featureIndex)];
+            zoomToFeature(row);
+        });
+    });
 }
 
 function openLayerProperties(layerOrId) {
@@ -400,10 +554,16 @@ function renderToc() {
         checkbox.checked = selectedLayerIds.has(stableId);
         checkbox.addEventListener('click', (event) => event.stopPropagation());
         checkbox.addEventListener('change', () => {
-            if (checkbox.checked) selectedLayerIds.add(stableId);
-            else selectedLayerIds.delete(stableId);
+            if (checkbox.checked) {
+                selectedLayerIds.add(stableId);
+                activeAttributeLayerId = stableId;
+            } else {
+                selectedLayerIds.delete(stableId);
+                if (activeAttributeLayerId === stableId) activeAttributeLayerId = null;
+            }
             renderToc();
             updateSelectionSummary();
+            renderAttributeView();
         });
 
         const textWrap = document.createElement('div');
@@ -457,6 +617,14 @@ function renderToc() {
             closeLayerMenu();
             beginRenameLayer(layer, title);
         }));
+        actionList.appendChild(createActionButton('fas fa-table', 'View attributes', () => {
+            closeLayerMenu();
+            selectedLayerIds.add(stableId);
+            activeAttributeLayerId = stableId;
+            renderToc();
+            updateSelectionSummary();
+            renderAttributeView();
+        }));
         actionList.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => {
             closeLayerMenu();
             openLayerProperties(layer);
@@ -476,20 +644,32 @@ function renderToc() {
         item.appendChild(row);
 
         item.addEventListener('click', () => {
-            if (selectedLayerIds.has(stableId)) selectedLayerIds.delete(stableId);
-            else selectedLayerIds.add(stableId);
+            if (selectedLayerIds.has(stableId)) {
+                selectedLayerIds.delete(stableId);
+                if (activeAttributeLayerId === stableId) activeAttributeLayerId = null;
+            } else {
+                selectedLayerIds.add(stableId);
+                activeAttributeLayerId = stableId;
+            }
             renderToc();
             updateSelectionSummary();
+            renderAttributeView();
         });
 
         item.addEventListener('keydown', (event) => {
             if (event.target !== item) return;
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
-            if (selectedLayerIds.has(stableId)) selectedLayerIds.delete(stableId);
-            else selectedLayerIds.add(stableId);
+            if (selectedLayerIds.has(stableId)) {
+                selectedLayerIds.delete(stableId);
+                if (activeAttributeLayerId === stableId) activeAttributeLayerId = null;
+            } else {
+                selectedLayerIds.add(stableId);
+                activeAttributeLayerId = stableId;
+            }
             renderToc();
             updateSelectionSummary();
+            renderAttributeView();
         });
 
         tocContent.appendChild(item);
@@ -499,6 +679,7 @@ function renderToc() {
 function refreshSidebarState() {
     renderToc();
     updateSelectionSummary();
+    renderAttributeView();
 }
 
 function addToolHistoryEntry(layer, entry) {
@@ -583,6 +764,7 @@ map.on('draw:deleted', function (e) {
     layers.eachLayer(function (layer) {
         if (layer && layer.__id) {
             selectedLayerIds.delete(layer.__id);
+            if (activeAttributeLayerId === layer.__id) activeAttributeLayerId = null;
             // Let state.removeLayer handle removal from drawnItems for tracked layers
             state.removeLayer(layer.__id);
         } else {
@@ -636,8 +818,17 @@ document.addEventListener('DOMContentLoaded', () => {
         zoomSelectionButton.addEventListener('click', () => zoomToSelection());
     }
 
+    const attributeLayerSelect = document.getElementById('attributeLayerSelect');
+    if (attributeLayerSelect) {
+        attributeLayerSelect.addEventListener('change', (event) => {
+            activeAttributeLayerId = event.target.value || null;
+            renderAttributeView();
+        });
+    }
+
     updateSelectionSummary();
     renderImportSummary(null);
+    renderAttributeView();
 });
 
 function renderToolList(tools) {

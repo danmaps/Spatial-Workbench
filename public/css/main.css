@@ -130,6 +130,148 @@ body, html {
     margin-bottom: 1em;
 }
 
+.attribute-panel {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-color);
+}
+
+.attribute-header {
+    margin-bottom: 10px;
+}
+
+.attribute-controls {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.attribute-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.attribute-content {
+    display: grid;
+    gap: 12px;
+}
+
+.attribute-empty,
+.attribute-footnote {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.attribute-shell {
+    display: grid;
+    gap: 12px;
+}
+
+.attribute-table-wrap {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: auto;
+    background: rgba(0,0,0,0.16);
+}
+
+.attribute-table {
+    width: 100%;
+    min-width: 480px;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.attribute-table th,
+.attribute-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    vertical-align: top;
+}
+
+.attribute-table th {
+    position: sticky;
+    top: 0;
+    background: var(--secondary-bg);
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.attribute-row-index,
+.attribute-row-action {
+    white-space: nowrap;
+}
+
+.attribute-row-button {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+}
+
+.attribute-row-button:hover {
+    background: var(--hover-bg);
+}
+
+.attribute-cards {
+    display: none;
+    gap: 10px;
+}
+
+.attribute-card {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px;
+    background: rgba(255,255,255,0.03);
+}
+
+.attribute-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.attribute-card-title {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.attribute-card-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.attribute-card-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+}
+
+.attribute-card-list div {
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.attribute-card-list dt {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.attribute-card-list dd {
+    margin: 4px 0 0;
+    font-size: 13px;
+    word-break: break-word;
+}
+
+.attribute-popup-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
 #toolContent *, #toolParameters * {
     margin-bottom: 0.8em;
 }
@@ -570,6 +712,20 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 
     body[data-view="layers"] #map,
     body[data-view="layers"] #sidebar { display: none; }
+
+    body[data-view="data"] #map,
+    body[data-view="data"] #toc { display: none; }
+
+    body[data-view="data"] #sidebar,
+    body[data-view="tools"] #sidebar { display: block; }
+
+    .attribute-table-wrap {
+        display: none;
+    }
+
+    .attribute-cards {
+        display: grid;
+    }
 
     /* Touch targets */
     .tool { padding: 18px; }

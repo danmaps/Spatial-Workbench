@@ -1,6 +1,6 @@
 /* global L, turf */  // Tell ESLint that L and turf are global variables
 
-const toolNames = ['RandomPointsTool', 'BufferTool', 'ExportTool', 'GenerateAIFeatures', 'GroupTool', 'AddDataTool']; // Keep this up to date
+const toolNames = ['RandomPointsTool', 'BufferTool', 'ExportTool', 'GenerateAIFeatures', 'AddDataTool']; // Keep this up to date
 
 const state = require('./state');
 const { renderAISettings } = require('./ui/ai-settings');
@@ -368,7 +368,7 @@ function renderAttributeView() {
         summaries.forEach((summary) => {
             summary.textContent = 'No layer selected';
         });
-        if (desktopToggleLabel) desktopToggleLabel.textContent = 'Attributes';
+        if (desktopToggleLabel) desktopToggleLabel.textContent = 'No layer selected';
         containers.forEach((container) => {
             container.innerHTML = '<div class="attribute-empty">Select a layer to inspect its attributes.</div>';
         });
@@ -399,7 +399,7 @@ function renderAttributeView() {
         summary.textContent = summaryText;
     });
     if (desktopToggleLabel) {
-        desktopToggleLabel.textContent = featureCount ? `${featureCount} feature${featureCount === 1 ? '' : 's'}` : 'Attributes';
+        desktopToggleLabel.textContent = featureCount ? `${featureCount} feature${featureCount === 1 ? '' : 's'}` : 'No attributes';
     }
 
     if (!model.totalRows) {

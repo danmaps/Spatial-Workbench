@@ -794,18 +794,77 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     white-space: pre-wrap;
 }
 
+/* Leaflet popup styling */
+.leaflet-popup-content-wrapper {
+    background: rgba(34, 38, 42, 0.98);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+}
+
+.leaflet-popup-content {
+    margin: 14px 16px;
+    min-width: 260px;
+    color: var(--text-primary);
+}
+
+.leaflet-popup-tip {
+    background: rgba(34, 38, 42, 0.98);
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+    color: var(--text-secondary);
+}
+
+.leaflet-container a.leaflet-popup-close-button:hover {
+    color: var(--text-primary);
+}
+
+.attribute-popup {
+    color: var(--text-primary);
+}
+
+.attribute-popup-title {
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: #ffffff;
+}
+
 /* Popup table styling */
 .popupTable {
     width: 100%;
     border-collapse: collapse;
-    margin: 10px 0;
+    margin: 0;
+    background: rgba(11, 13, 15, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.popupTable tbody tr:nth-child(odd) td {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.popupTable tbody tr:nth-child(even) td {
+    background-color: rgba(255, 255, 255, 0.06);
 }
 
 .popupTable td {
-    padding: 8px;
-    border: 1px solid var(--border-color);
+    padding: 9px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 13px;
-    background-color: var(--secondary-bg);
+    color: var(--text-primary);
+    background-color: transparent;
+    vertical-align: top;
+    word-break: break-word;
+}
+
+.popupTable td:first-child {
+    width: 38%;
+    color: #f4f6f8;
+    font-weight: 600;
+    background-color: rgba(255, 255, 255, 0.04);
 }
 
 /* Responsive design */

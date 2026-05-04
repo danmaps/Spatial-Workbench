@@ -27,7 +27,7 @@
         </div>
     </div>
     <div class="container-fluid">
-        <div class="row h-100">
+        <div class="row h-100 app-layout">
             <!-- Table of contents (left pane) -->
             <div id="toc" class="col-md-2">
                 <div class="toc-header">
@@ -43,7 +43,26 @@
             </div>
 
             <!-- Map (center pane) -->
-            <div id="map" class="col-md-8"></div>
+            <div id="mapPane" class="col-md-8 map-pane">
+                <div id="map"></div>
+                <section id="desktopAttributeDrawer" class="desktop-attribute-drawer" aria-label="Attributes drawer">
+                    <button id="desktopAttributeDrawerToggle" class="desktop-attribute-toggle" type="button" aria-expanded="false" aria-controls="desktopAttributeDrawerBody">
+                        <span class="desktop-attribute-toggle-title">Attributes</span>
+                        <span id="desktopAttributeToggleLabel" class="desktop-attribute-toggle-label">No layer selected</span>
+                        <i class="fas fa-chevron-up" aria-hidden="true"></i>
+                    </button>
+                    <div id="desktopAttributeDrawerBody" class="desktop-attribute-body">
+                        <div class="desktop-attribute-toolbar">
+                            <label class="attribute-label" for="desktopAttributeLayerSelect">Layer</label>
+                            <select id="desktopAttributeLayerSelect" aria-label="Choose layer for desktop attribute view"></select>
+                            <div id="desktopAttributeSummary" class="toc-subtitle">No layer selected</div>
+                        </div>
+                        <div id="desktopAttributeContent" class="attribute-content desktop-attribute-content">
+                            <div class="attribute-empty">Select a layer to inspect its attributes.</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
 
             <!-- Sidebar (right pane) -->
             <div id="sidebar" class="col-md-2">

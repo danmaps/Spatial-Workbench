@@ -62,9 +62,30 @@ body, html {
     height: 100vh;
 }
 
+.app-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 20vw) minmax(0, 1fr) minmax(300px, 22vw);
+    height: 100%;
+    margin: 0;
+}
+
+.app-layout > [class*="col-"] {
+    width: auto;
+    max-width: none;
+    flex: none;
+}
+
+.map-pane {
+    position: relative;
+    min-width: 0;
+    height: 100vh;
+    padding: 0;
+}
+
 /* Map styling */
 #map {
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     position: relative;
     margin: 0 auto;
     z-index: 1;
@@ -72,10 +93,9 @@ body, html {
 
 /* Sidebar styling */
 #sidebar {
-    position: fixed;
-    right: 0;
+    position: sticky;
     top: 0;
-    bottom: 0;
+    height: 100vh;
     background-color: var(--secondary-bg) !important;
     box-shadow: -2px 0 15px var(--shadow-color);
     padding: 20px;
@@ -87,10 +107,9 @@ body, html {
 
 /* Table of contents pane */
 #toc {
-    position: fixed;
-    left: 0;
+    position: sticky;
     top: 0;
-    bottom: 0;
+    height: 100vh;
     background-color: var(--secondary-bg) !important;
     padding: 20px;
     overflow-y: auto;
@@ -132,6 +151,7 @@ body, html {
 }
 
 .attribute-panel {
+    display: none;
     margin-top: 18px;
     padding-top: 18px;
     border-top: 1px solid var(--border-color);
@@ -157,6 +177,75 @@ body, html {
     gap: 12px;
 }
 
+.desktop-attribute-drawer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    background: rgba(26, 29, 33, 0.96);
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(10px);
+}
+
+.desktop-attribute-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+}
+
+.desktop-attribute-toggle-title {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.desktop-attribute-toggle-label {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.desktop-attribute-toggle i {
+    margin-left: auto;
+    transition: transform 0.2s ease;
+}
+
+.desktop-attribute-drawer:not(.is-open) .desktop-attribute-toggle i {
+    transform: rotate(180deg);
+}
+
+.desktop-attribute-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: min(42vh, 360px);
+    padding: 12px 14px 14px;
+}
+
+.desktop-attribute-drawer:not(.is-open) .desktop-attribute-body {
+    display: none;
+}
+
+.desktop-attribute-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(220px, 360px) 1fr;
+    align-items: center;
+    gap: 10px;
+}
+
+.desktop-attribute-content {
+    min-height: 0;
+}
+
 .attribute-empty,
 .attribute-footnote {
     font-size: 12px;
@@ -175,6 +264,10 @@ body, html {
     background: rgba(0,0,0,0.16);
 }
 
+.attribute-table-wrap-desktop {
+    max-height: min(28vh, 260px);
+}
+
 .attribute-table {
     width: 100%;
     min-width: 480px;
@@ -190,6 +283,14 @@ body, html {
     vertical-align: top;
 }
 
+.attribute-table tbody tr:hover td {
+    background: rgba(255,255,255,0.03);
+}
+
+.attribute-table tbody tr.is-selected-row td {
+    background: rgba(52, 152, 219, 0.08);
+}
+
 .attribute-table th {
     position: sticky;
     top: 0;
@@ -201,6 +302,32 @@ body, html {
 .attribute-row-index,
 .attribute-row-action {
     white-space: nowrap;
+}
+
+.attribute-grid-cell {
+    min-width: 140px;
+    padding: 0;
+}
+
+.attribute-grid-cell.is-selected-cell {
+    outline: 2px solid rgba(52, 152, 219, 0.9);
+    outline-offset: -2px;
+    background: rgba(52, 152, 219, 0.14) !important;
+}
+
+.attribute-grid-input {
+    width: 100%;
+    min-width: 140px;
+    padding: 8px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.attribute-grid-input:focus {
+    outline: none;
+    background: rgba(255,255,255,0.02);
 }
 
 .attribute-row-button {
@@ -685,6 +812,21 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 @media (max-width: 768px) {
     .mobile-bar { display: flex; }
 
+    .app-layout {
+        display: flex;
+        flex-direction: column;
+        grid-template-columns: none;
+    }
+
+    .app-layout > [class*="col-"] {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .map-pane {
+        height: 100%;
+    }
+
     .container-fluid {
         display: flex;
         flex-direction: column;
@@ -695,6 +837,10 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     #map {
         height: 100%;
         order: 1;
+    }
+
+    .desktop-attribute-drawer {
+        display: none;
     }
 
     #toc,
@@ -729,6 +875,10 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 
     body[data-view="data"] #sidebar,
     body[data-view="tools"] #sidebar { display: block; }
+
+    .attribute-panel {
+        display: block;
+    }
 
     /* Keep mobile Tools and Data as truly separate modes */
     body[data-view="tools"] #attributePanel,

@@ -4,7 +4,8 @@ const toolNames = ['RandomPointsTool', 'BufferTool', 'ExportTool', 'GenerateAIFe
 
 const state = require('./state');
 const { renderAISettings } = require('./ui/ai-settings');
-const { getAttributeModel } = require('./ui/attribute-view');
+const { getAttributeModel, parseEditedValue } = require('./ui/attribute-view');
+const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-drawer');
 
 // Initialize the map
 const map = L.map('map').setView([34, -117], 7);
@@ -21,6 +22,8 @@ const loadedTools = {}; // Object to store instantiated tools
 const selectedLayerIds = new Set();
 let openLayerMenuId = null;
 let activeAttributeLayerId = null;
+let activeDesktopAttributeRow = null;
+let activeDesktopAttributeCell = null;
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -260,13 +263,97 @@ function zoomToFeature(row) {
     return false;
 }
 
+function getAttributeLayerTargets(layer) {
+    if (!layer) return [];
+
+    if (typeof layer.eachLayer === 'function') {
+        const targets = [];
+        layer.eachLayer((child) => {
+            if (child?.feature) targets.push(child);
+        });
+        if (targets.length) return targets;
+    }
+
+    return layer?.feature ? [layer] : [];
+}
+
+function updateAttributeFeatureProperty(layerId, rowIndex, propertyKey, nextValue, originalValue) {
+    const layer = state.getLayer(layerId);
+    const targets = getAttributeLayerTargets(layer);
+    const target = targets[rowIndex];
+    if (!target?.feature) return false;
+
+    if (!target.feature.properties) target.feature.properties = {};
+    const parsedValue = parseEditedValue(nextValue, originalValue);
+    target.feature.properties[propertyKey] = parsedValue;
+    return true;
+}
+
+function wireAttributeZoomButtons(root, model) {
+    Array.from(root.querySelectorAll('[data-feature-index]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            const row = model.rows[Number(button.dataset.featureIndex)];
+            zoomToFeature(row);
+        });
+    });
+}
+
+function wireDesktopAttributeGrid(container, activeInfo, model) {
+    const syncGridSelection = (rowIndex, columnKey) => {
+        activeDesktopAttributeRow = rowIndex;
+        activeDesktopAttributeCell = columnKey;
+
+        Array.from(container.querySelectorAll('tbody tr')).forEach((rowEl) => {
+            rowEl.classList.toggle('is-selected-row', Number(rowEl.dataset.rowIndex) === rowIndex);
+        });
+
+        Array.from(container.querySelectorAll('.attribute-grid-cell')).forEach((cellEl) => {
+            const matchesRow = Number(cellEl.dataset.rowIndex) === rowIndex;
+            const matchesColumn = cellEl.dataset.columnKey === columnKey;
+            cellEl.classList.toggle('is-selected-cell', matchesRow && matchesColumn);
+        });
+    };
+
+    Array.from(container.querySelectorAll('.attribute-grid-input')).forEach((input) => {
+        input.addEventListener('focus', () => {
+            syncGridSelection(Number(input.dataset.rowIndex), input.dataset.columnKey || null);
+        });
+
+        input.addEventListener('click', () => {
+            syncGridSelection(Number(input.dataset.rowIndex), input.dataset.columnKey || null);
+        });
+
+        input.addEventListener('change', () => {
+            const rowIndex = Number(input.dataset.rowIndex);
+            const columnKey = input.dataset.columnKey;
+            const row = model.rows[rowIndex];
+            const cell = row?.cells.find((candidate) => candidate.key === columnKey);
+            if (!row || !cell) return;
+
+            const didUpdate = updateAttributeFeatureProperty(activeInfo.id, rowIndex, columnKey, input.value, cell.rawValue);
+            if (!didUpdate) return;
+
+            syncGridSelection(rowIndex, columnKey);
+            updateDataContent();
+        });
+    });
+}
+
 function renderAttributeView() {
     syncActiveAttributeLayer();
 
-    const container = document.getElementById('attributeContent');
-    const selector = document.getElementById('attributeLayerSelect');
-    const summary = document.getElementById('attributeSummary');
-    if (!container || !selector || !summary) return;
+    const mobileContainer = document.getElementById('attributeContent');
+    const mobileSelector = document.getElementById('attributeLayerSelect');
+    const mobileSummary = document.getElementById('attributeSummary');
+    const desktopContainer = document.getElementById('desktopAttributeContent');
+    const desktopSelector = document.getElementById('desktopAttributeLayerSelect');
+    const desktopSummary = document.getElementById('desktopAttributeSummary');
+    const desktopToggleLabel = document.getElementById('desktopAttributeToggleLabel');
+
+    const selectors = [mobileSelector, desktopSelector].filter(Boolean);
+    const summaries = [mobileSummary, desktopSummary].filter(Boolean);
+    const containers = [mobileContainer, desktopContainer].filter(Boolean);
+    if (!selectors.length || !containers.length) return;
 
     const selectedInfos = getSelectedLayers().map((layer) => state.getLayerInfo(layer)).filter(Boolean);
     const candidateInfos = selectedInfos.length
@@ -274,10 +361,17 @@ function renderAttributeView() {
         : tocLayers.map((layer) => state.getLayerInfo(layer)).filter(Boolean);
 
     if (!candidateInfos.length) {
-        selector.innerHTML = '';
-        selector.disabled = true;
-        summary.textContent = 'No layer selected';
-        container.innerHTML = '<div class="attribute-empty">Select a layer to inspect its attributes.</div>';
+        selectors.forEach((selector) => {
+            selector.innerHTML = '';
+            selector.disabled = true;
+        });
+        summaries.forEach((summary) => {
+            summary.textContent = 'No layer selected';
+        });
+        if (desktopToggleLabel) desktopToggleLabel.textContent = 'Attributes';
+        containers.forEach((container) => {
+            container.innerHTML = '<div class="attribute-empty">Select a layer to inspect its attributes.</div>';
+        });
         return;
     }
 
@@ -286,30 +380,60 @@ function renderAttributeView() {
         : candidateInfos[0].id;
     activeAttributeLayerId = safeActiveId;
 
-    selector.disabled = candidateInfos.length === 1;
-    selector.innerHTML = candidateInfos.map((info) => `
+    const optionMarkup = candidateInfos.map((info) => `
         <option value="${escapeHtml(info.id)}" ${info.id === safeActiveId ? 'selected' : ''}>${escapeHtml(info.displayName || info.id)}</option>
     `).join('');
+
+    selectors.forEach((selector) => {
+        selector.disabled = candidateInfos.length === 1;
+        selector.innerHTML = optionMarkup;
+        selector.value = safeActiveId;
+    });
 
     const activeInfo = candidateInfos.find((info) => info.id === safeActiveId) || candidateInfos[0];
     const model = getAttributeModel(activeInfo, { maxRows: 25 });
     const featureCount = activeInfo.geometry?.featureCount || model.totalRows || 0;
+    const summaryText = `${featureCount} feature${featureCount === 1 ? '' : 's'} · ${model.columns.length} field${model.columns.length === 1 ? '' : 's'}`;
 
-    summary.textContent = `${featureCount} feature${featureCount === 1 ? '' : 's'} · ${model.columns.length} field${model.columns.length === 1 ? '' : 's'}`;
+    summaries.forEach((summary) => {
+        summary.textContent = summaryText;
+    });
+    if (desktopToggleLabel) {
+        desktopToggleLabel.textContent = featureCount ? `${featureCount} feature${featureCount === 1 ? '' : 's'}` : 'Attributes';
+    }
 
     if (!model.totalRows) {
-        container.innerHTML = '<div class="attribute-empty">This layer does not have feature attributes to display yet.</div>';
+        containers.forEach((container) => {
+            container.innerHTML = '<div class="attribute-empty">This layer does not have feature attributes to display yet.</div>';
+        });
         return;
     }
 
     const desktopHead = model.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('');
-    const desktopRows = model.rows.map((row) => `
-        <tr>
-            <td class="attribute-row-index">${row.index + 1}</td>
-            ${row.cells.map((cell) => `<td title="${escapeHtml(cell.value)}">${escapeHtml(cell.value)}</td>`).join('')}
-            <td class="attribute-row-action"><button type="button" class="attribute-row-button" data-feature-index="${row.index}">Zoom</button></td>
-        </tr>
-    `).join('');
+    const desktopRows = model.rows.map((row) => {
+        const isActiveRow = row.index === activeDesktopAttributeRow;
+        return `
+            <tr class="${isActiveRow ? 'is-selected-row' : ''}" data-row-index="${row.index}">
+                <td class="attribute-row-index">${row.index + 1}</td>
+                ${row.cells.map((cell) => {
+                    const isActiveCell = isActiveRow && cell.key === activeDesktopAttributeCell;
+                    return `
+                        <td class="attribute-grid-cell ${isActiveCell ? 'is-selected-cell' : ''}" data-row-index="${row.index}" data-column-key="${escapeHtml(cell.key)}">
+                            <input
+                                class="attribute-grid-input"
+                                type="text"
+                                value="${escapeHtml(cell.editValue)}"
+                                data-row-index="${row.index}"
+                                data-column-key="${escapeHtml(cell.key)}"
+                                aria-label="Edit ${escapeHtml(cell.key)} for row ${row.index + 1}"
+                            />
+                        </td>
+                    `;
+                }).join('')}
+                <td class="attribute-row-action"><button type="button" class="attribute-row-button" data-feature-index="${row.index}">Zoom</button></td>
+            </tr>
+        `;
+    }).join('');
 
     const mobileCards = model.rows.map((row) => `
         <article class="attribute-card">
@@ -326,31 +450,37 @@ function renderAttributeView() {
         </article>
     `).join('');
 
-    container.innerHTML = `
-        <div class="attribute-shell">
-            <div class="attribute-table-wrap">
-                <table class="attribute-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            ${desktopHead}
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>${desktopRows}</tbody>
-                </table>
+    if (desktopContainer) {
+        desktopContainer.innerHTML = `
+            <div class="attribute-shell attribute-shell-desktop">
+                <div class="attribute-table-wrap attribute-table-wrap-desktop">
+                    <table class="attribute-table attribute-table-desktop">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                ${desktopHead}
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>${desktopRows}</tbody>
+                    </table>
+                </div>
+                ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
             </div>
-            <div class="attribute-cards">${mobileCards}</div>
-            ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
-        </div>
-    `;
+        `;
+        wireAttributeZoomButtons(desktopContainer, model);
+        wireDesktopAttributeGrid(desktopContainer, activeInfo, model);
+    }
 
-    Array.from(container.querySelectorAll('[data-feature-index]')).forEach((button) => {
-        button.addEventListener('click', () => {
-            const row = model.rows[Number(button.dataset.featureIndex)];
-            zoomToFeature(row);
-        });
-    });
+    if (mobileContainer) {
+        mobileContainer.innerHTML = `
+            <div class="attribute-shell">
+                <div class="attribute-cards">${mobileCards}</div>
+                ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
+            </div>
+        `;
+        wireAttributeZoomButtons(mobileContainer, model);
+    }
 }
 
 function openLayerProperties(layerOrId) {
@@ -818,13 +948,26 @@ document.addEventListener('DOMContentLoaded', () => {
         zoomSelectionButton.addEventListener('click', () => zoomToSelection());
     }
 
+    const handleAttributeLayerChange = (event) => {
+        activeAttributeLayerId = event.target.value || null;
+        renderAttributeView();
+    };
+
     const attributeLayerSelect = document.getElementById('attributeLayerSelect');
     if (attributeLayerSelect) {
-        attributeLayerSelect.addEventListener('change', (event) => {
-            activeAttributeLayerId = event.target.value || null;
-            renderAttributeView();
-        });
+        attributeLayerSelect.addEventListener('change', handleAttributeLayerChange);
     }
+
+    const desktopAttributeLayerSelect = document.getElementById('desktopAttributeLayerSelect');
+    if (desktopAttributeLayerSelect) {
+        desktopAttributeLayerSelect.addEventListener('change', handleAttributeLayerChange);
+    }
+
+    const desktopAttributeDrawer = document.getElementById('desktopAttributeDrawer');
+    const desktopAttributeDrawerToggle = document.getElementById('desktopAttributeDrawerToggle');
+    initializeDesktopAttributeDrawer(desktopAttributeDrawer, desktopAttributeDrawerToggle, map, {
+        defaultOpen: false,
+    });
 
     updateSelectionSummary();
     renderImportSummary(null);

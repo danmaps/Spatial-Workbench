@@ -24,6 +24,43 @@ function stringifyValue(value) {
   return String(value);
 }
 
+function createEditableValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function parseEditedValue(nextValue, originalValue) {
+  const value = typeof nextValue === 'string' ? nextValue.trim() : '';
+
+  if (value === '') {
+    if (typeof originalValue === 'string') return '';
+    return null;
+  }
+
+  if (typeof originalValue === 'number') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : originalValue;
+  }
+
+  if (typeof originalValue === 'boolean') {
+    const normalized = value.toLowerCase();
+    if (['true', 'yes', '1'].includes(normalized)) return true;
+    if (['false', 'no', '0'].includes(normalized)) return false;
+    return originalValue;
+  }
+
+  if (Array.isArray(originalValue) || (originalValue && typeof originalValue === 'object')) {
+    try {
+      return JSON.parse(value);
+    } catch (_) {
+      return originalValue;
+    }
+  }
+
+  return value;
+}
+
 function getAttributeModel(layerInfo, options = {}) {
   const maxRows = Number.isFinite(options.maxRows) ? options.maxRows : 25;
   const geojson = layerInfo?.geojson || null;
@@ -44,6 +81,7 @@ function getAttributeModel(layerInfo, options = {}) {
     const cells = orderedColumns.map((column) => ({
       key: column,
       value: stringifyValue(properties[column]),
+      editValue: createEditableValue(properties[column]),
       rawValue: properties[column],
     }));
 
@@ -73,5 +111,7 @@ function getAttributeModel(layerInfo, options = {}) {
 module.exports = {
   normalizeToFeatures,
   stringifyValue,
+  createEditableValue,
+  parseEditedValue,
   getAttributeModel,
 };

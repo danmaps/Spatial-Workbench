@@ -1,4 +1,10 @@
-const { normalizeToFeatures, stringifyValue, getAttributeModel } = require('./attribute-view');
+const {
+  normalizeToFeatures,
+  stringifyValue,
+  createEditableValue,
+  parseEditedValue,
+  getAttributeModel,
+} = require('./attribute-view');
 
 describe('attribute view helpers', () => {
   test('normalizeToFeatures returns features for feature collections and single features', () => {
@@ -21,6 +27,15 @@ describe('attribute view helpers', () => {
     expect(stringifyValue(true)).toBe('True');
     expect(stringifyValue([1, 2, 3])).toBe('1, 2, 3');
     expect(stringifyValue({ status: 'ok' })).toBe('{"status":"ok"}');
+  });
+
+  test('editable helpers preserve strings and coerce common typed edits', () => {
+    expect(createEditableValue(null)).toBe('');
+    expect(createEditableValue({ status: 'ok' })).toBe('{"status":"ok"}');
+    expect(parseEditedValue('42', 1)).toBe(42);
+    expect(parseEditedValue('false', true)).toBe(false);
+    expect(parseEditedValue('{"status":"done"}', { status: 'ok' })).toEqual({ status: 'done' });
+    expect(parseEditedValue('', 3)).toBeNull();
   });
 
   test('getAttributeModel builds ordered columns and rows for attribute rendering', () => {
@@ -51,6 +66,7 @@ describe('attribute view helpers', () => {
       geometryType: 'Point',
     }));
     expect(model.rows[1].cells.find((cell) => cell.key === 'active').value).toBe('True');
+    expect(model.rows[0].cells.find((cell) => cell.key === 'category').editValue).toBe('A');
   });
 
   test('getAttributeModel respects row limits and flags overflow', () => {

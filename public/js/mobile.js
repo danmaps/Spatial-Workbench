@@ -1,17 +1,28 @@
 (function () {
   const tabs = document.querySelectorAll('.mobile-tab');
-  if (!tabs.length) return;
+  const mobileBar = document.querySelector('.mobile-bar');
+  if (!tabs.length || !mobileBar) return;
+
+  const updateMobileOffset = () => {
+    const height = Math.ceil(mobileBar.getBoundingClientRect().height || 0);
+    document.documentElement.style.setProperty('--mobile-bar-offset', `${height}px`);
+    return height;
+  };
+
+  const scrollPanelIntoView = (element) => {
+    if (!element) return;
+    updateMobileOffset();
+    element.scrollIntoView({ block: 'start', behavior: 'auto' });
+  };
 
   const setActive = (view) => {
     document.body.dataset.view = view;
     tabs.forEach((t) => t.classList.toggle('active', t.dataset.view === view));
 
     if (view === 'data') {
-      const panel = document.getElementById('attributePanel');
-      if (panel) panel.scrollIntoView({ block: 'start' });
+      scrollPanelIntoView(document.getElementById('attributePanel'));
     } else if (view === 'tools') {
-      const tools = document.getElementById('toolSelection');
-      if (tools) tools.scrollIntoView({ block: 'start' });
+      scrollPanelIntoView(document.getElementById('toolSelection'));
     }
   };
 
@@ -19,6 +30,10 @@
     tab.addEventListener('click', () => setActive(tab.dataset.view));
   });
 
+  window.addEventListener('resize', updateMobileOffset);
+  window.addEventListener('orientationchange', updateMobileOffset);
+
+  updateMobileOffset();
   // Default to map on load for small screens
   setActive('map');
 })();

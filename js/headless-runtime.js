@@ -29,6 +29,10 @@ function createLayerRecord(rawLayer, fallbackIndex = 0) {
     throw new Error(`Layer ${id} is missing GeoJSON data`);
   }
 
+  const geometryType = geojson?.geometry?.type
+    || (geojson?.type === 'FeatureCollection' ? (geojson.features?.[0]?.geometry?.type || 'FeatureCollection') : geojson?.type)
+    || 'Layer';
+
   const layer = {
     __id: id,
     feature: {
@@ -43,9 +47,9 @@ function createLayerRecord(rawLayer, fallbackIndex = 0) {
     },
   };
 
-  const geometryType = geojson?.geometry?.type
-    || (geojson?.type === 'FeatureCollection' ? (geojson.features?.[0]?.geometry?.type || 'FeatureCollection') : geojson?.type)
-    || 'Layer';
+  if ((geometryType === 'Polygon' || geometryType === 'MultiPolygon') && globalThis.L?.Polygon?.prototype) {
+    Object.setPrototypeOf(layer, globalThis.L.Polygon.prototype);
+  }
 
   return {
     id,

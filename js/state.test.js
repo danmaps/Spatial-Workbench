@@ -22,6 +22,18 @@ jest.mock('./app', () => ({
 describe('state provenance helpers', () => {
   let state;
 
+  function makeLayer(id, geometryType = 'Point') {
+    return {
+      __id: id,
+      feature: { properties: { __id: id } },
+      toGeoJSON: jest.fn(() => ({
+        type: 'Feature',
+        geometry: { type: geometryType, coordinates: geometryType === 'Point' ? [0, 0] : [] },
+        properties: { __id: id },
+      })),
+    };
+  }
+
   beforeEach(() => {
     jest.resetModules();
     global.L = {
@@ -45,6 +57,86 @@ describe('state provenance helpers', () => {
     };
     tocLayers.length = 0;
     state = require('./state');
+  });
+
+  test('selection state exposes active layer, selected layers, and selected features by layer', () => {
+    const layerA = makeLayer('layer-a');
+    const layerB = makeLayer('layer-b');
+
+    state.registerLayer(layerA, 'layer-a');
+    state.registerLayer(layerB, 'layer-b');
+    tocLayers.push(layerA, layerB);
+
+    expect(state.setSelectedLayerIds(['layer-a', 'layer-b', 'missing', 'layer-a'])).toEqual(['layer-a', 'layer-b']);
+    expect(state.getSelectedLayerIds()).toEqual(['layer-a', 'layer-b']);
+    expect(state.getActiveLayerId()).toBe('layer-a');
+
+    expect(state.setActiveLayerId('layer-b')).toBe('layer-b');
+    expect(state.getActiveLayerId()).toBe('layer-b');
+
+    expect(state.setSelectedFeatureIds('layer-a', ['feature-1', 'feature-2', 'feature-1'])).toEqual(['feature-1', 'feature-2']);
+    expect(state.setSelectedFeatureIds('layer-b', ['feature-9'])).toEqual(['feature-9']);
+    expect(state.getSelectedFeaturesByLayerId()).toEqual({
+      'layer-a': ['feature-1', 'feature-2'],
+      'layer-b': ['feature-9'],
+    });
+
+    expect(state.getState().selection).toEqual({
+      activeLayerId: 'layer-b',
+      selectedLayerIds: ['layer-a', 'layer-b'],
+      selectedFeaturesByLayerId: {
+        'layer-a': ['feature-1', 'feature-2'],
+        'layer-b': ['feature-9'],
+      },
+    });
+  });
+
+  test('selection helpers update and clean up per-layer selection state', () => {
+    const layerA = makeLayer('layer-a');
+    const layerB = makeLayer('layer-b');
+
+    state.registerLayer(layerA, 'layer-a');
+    state.registerLayer(layerB, 'layer-b');
+
+    expect(state.selectLayer('layer-a', { makeActive: true })).toEqual(['layer-a']);
+    expect(state.selectLayer('layer-b')).toEqual(['layer-a', 'layer-b']);
+    expect(state.isLayerSelected('layer-a')).toBe(true);
+    expect(state.getActiveLayerId()).toBe('layer-a');
+
+    expect(state.toggleLayerSelection('layer-a')).toEqual(['layer-b']);
+    expect(state.getActiveLayerId()).toBe('layer-b');
+
+    state.setSelectedFeatureIds('layer-b', ['feature-9']);
+    state.clearSelectedFeatureIds('layer-b');
+    expect(state.getSelectedFeatureIds('layer-b')).toEqual([]);
+
+    state.removeLayer('layer-b');
+    expect(state.getSelectedLayerIds()).toEqual([]);
+    expect(state.getActiveLayerId()).toBe(null);
+
+    state.selectLayer('layer-a', { makeActive: true });
+    state.setSelectedFeatureIds('layer-a', ['feature-1']);
+    expect(state.clearLayerSelection()).toEqual([]);
+    expect(state.getSelectedLayerIds()).toEqual([]);
+    expect(state.getActiveLayerId()).toBe(null);
+    expect(state.getSelectedFeatureIds('layer-a')).toEqual(['feature-1']);
+
+    expect(state.clearSelectedFeatureIds()).toEqual({});
+    expect(state.getSelectedFeaturesByLayerId()).toEqual({});
+  });
+
+  test('getLayerInfo exposes layer selection flags in ui metadata', () => {
+    const layer = makeLayer('layer-selected');
+    state.registerLayer(layer, 'layer-selected');
+    tocLayers.push(layer);
+
+    state.selectLayer('layer-selected', { makeActive: true });
+
+    expect(state.getLayerInfo('layer-selected').ui).toEqual(expect.objectContaining({
+      selected: true,
+      active: true,
+      selectable: true,
+    }));
   });
 
   test('ensureToolHistory stores current metadata on a layer', () => {

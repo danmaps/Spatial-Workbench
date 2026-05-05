@@ -8,6 +8,12 @@
 const _registry = new Map(); // stableId -> leaflet layer
 let _layerRemoveListenerAttached = false;
 
+const _selectionState = {
+  activeLayerId: null,
+  selectedLayerIds: new Set(),
+  selectedFeaturesByLayerId: new Map(),
+};
+
 // Counter to reduce collision risk in _uuid fallback when multiple IDs are generated
 // in the same millisecond.
 let _uuidCounter = 0;
@@ -160,6 +166,134 @@ function ensureToolHistory(layer, metadata, options = {}) {
   return merged;
 }
 
+function normalizeLayerIds(layerIds) {
+  if (!Array.isArray(layerIds)) return [];
+
+  const seen = new Set();
+  const normalized = [];
+  layerIds.forEach((id) => {
+    if (typeof id !== 'string' || !id.trim()) return;
+    if (!_registry.has(id)) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push(id);
+  });
+
+  return normalized;
+}
+
+function cloneSelectedFeaturesByLayerId() {
+  const cloned = {};
+  _selectionState.selectedFeaturesByLayerId.forEach((featureIds, layerId) => {
+    cloned[layerId] = Array.from(featureIds);
+  });
+  return cloned;
+}
+
+function getActiveLayerId() {
+  return _selectionState.activeLayerId;
+}
+
+function setActiveLayerId(layerId) {
+  if (layerId === null || layerId === undefined || layerId === '') {
+    _selectionState.activeLayerId = null;
+    return null;
+  }
+
+  if (typeof layerId !== 'string' || !_registry.has(layerId)) return _selectionState.activeLayerId;
+
+  _selectionState.activeLayerId = layerId;
+  return _selectionState.activeLayerId;
+}
+
+function getSelectedLayerIds() {
+  return Array.from(_selectionState.selectedLayerIds);
+}
+
+function setSelectedLayerIds(layerIds) {
+  const normalized = normalizeLayerIds(layerIds);
+  _selectionState.selectedLayerIds = new Set(normalized);
+
+  if (_selectionState.activeLayerId && !_selectionState.selectedLayerIds.has(_selectionState.activeLayerId)) {
+    _selectionState.activeLayerId = normalized[0] || null;
+  }
+
+  if (!_selectionState.activeLayerId && normalized.length) {
+    _selectionState.activeLayerId = normalized[0];
+  }
+
+  return getSelectedLayerIds();
+}
+
+function isLayerSelected(layerId) {
+  return _selectionState.selectedLayerIds.has(layerId);
+}
+
+function selectLayer(layerId, options = {}) {
+  if (typeof layerId !== 'string' || !_registry.has(layerId)) return getSelectedLayerIds();
+
+  _selectionState.selectedLayerIds.add(layerId);
+  if (options.makeActive || !_selectionState.activeLayerId) {
+    _selectionState.activeLayerId = layerId;
+  }
+
+  return getSelectedLayerIds();
+}
+
+function deselectLayer(layerId) {
+  _selectionState.selectedLayerIds.delete(layerId);
+  if (_selectionState.activeLayerId === layerId) {
+    _selectionState.activeLayerId = getSelectedLayerIds()[0] || null;
+  }
+  return getSelectedLayerIds();
+}
+
+function toggleLayerSelection(layerId, options = {}) {
+  if (isLayerSelected(layerId)) return deselectLayer(layerId);
+  return selectLayer(layerId, options);
+}
+
+function clearLayerSelection() {
+  _selectionState.selectedLayerIds.clear();
+  _selectionState.activeLayerId = null;
+  return [];
+}
+
+function getSelectedFeaturesByLayerId() {
+  return cloneSelectedFeaturesByLayerId();
+}
+
+function getSelectedFeatureIds(layerId) {
+  if (typeof layerId !== 'string') return [];
+  return Array.from(_selectionState.selectedFeaturesByLayerId.get(layerId) || []);
+}
+
+function setSelectedFeatureIds(layerId, featureIds) {
+  if (typeof layerId !== 'string' || !_registry.has(layerId)) return getSelectedFeatureIds(layerId);
+
+  const normalized = Array.isArray(featureIds)
+    ? Array.from(new Set(featureIds.filter((id) => id !== null && id !== undefined && id !== '')))
+    : [];
+
+  if (!normalized.length) {
+    _selectionState.selectedFeaturesByLayerId.delete(layerId);
+    return [];
+  }
+
+  _selectionState.selectedFeaturesByLayerId.set(layerId, new Set(normalized));
+  return getSelectedFeatureIds(layerId);
+}
+
+function clearSelectedFeatureIds(layerId) {
+  if (typeof layerId === 'string') {
+    _selectionState.selectedFeaturesByLayerId.delete(layerId);
+    return {};
+  }
+
+  _selectionState.selectedFeaturesByLayerId.clear();
+  return {};
+}
+
 function registerLayer(layer, preferredId) {
   ensureLayerRemoveListener();
   const id = ensureStableId(layer, preferredId);
@@ -172,6 +306,11 @@ function unregisterLayer(layerOrId) {
   const id = typeof layerOrId === 'string' ? layerOrId : (layerOrId && layerOrId.__id);
   if (!id) return;
   _registry.delete(id);
+  _selectionState.selectedLayerIds.delete(id);
+  _selectionState.selectedFeaturesByLayerId.delete(id);
+  if (_selectionState.activeLayerId === id) {
+    _selectionState.activeLayerId = getSelectedLayerIds()[0] || null;
+  }
 }
 
 function getLayer(id) {
@@ -374,6 +513,8 @@ function getLayerInfo(layerOrId) {
       selectable: true,
       removable: true,
       editable: true,
+      selected: isLayerSelected(id),
+      active: getActiveLayerId() === id,
     },
     // Compatibility aliases for older code paths.
     geometryType,
@@ -441,6 +582,11 @@ function getState() {
     layerCount: layers.length,
     layers,
     bounds: map && map.getBounds ? map.getBounds() : null,
+    selection: {
+      activeLayerId: getActiveLayerId(),
+      selectedLayerIds: getSelectedLayerIds(),
+      selectedFeaturesByLayerId: getSelectedFeaturesByLayerId(),
+    },
   };
 }
 
@@ -577,6 +723,19 @@ module.exports = {
   getLayerInfo,
   getLayerBounds,
   getToolHistory,
+  getActiveLayerId,
+  setActiveLayerId,
+  getSelectedLayerIds,
+  setSelectedLayerIds,
+  isLayerSelected,
+  selectLayer,
+  deselectLayer,
+  toggleLayerSelection,
+  clearLayerSelection,
+  getSelectedFeaturesByLayerId,
+  getSelectedFeatureIds,
+  setSelectedFeatureIds,
+  clearSelectedFeatureIds,
   getLayerName,
   setLayerName,
   getChildLayerIds,

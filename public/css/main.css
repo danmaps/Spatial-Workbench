@@ -177,6 +177,32 @@ body, html {
     gap: 12px;
 }
 
+.attribute-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.03);
+    width: fit-content;
+}
+
+.attribute-mode-button {
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 5px 10px;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.attribute-mode-button.is-active {
+    background: rgba(52, 152, 219, 0.18);
+    color: var(--text-primary);
+}
+
 .desktop-attribute-drawer {
     position: absolute;
     left: 0;
@@ -237,7 +263,7 @@ body, html {
 
 .desktop-attribute-toolbar {
     display: grid;
-    grid-template-columns: auto minmax(220px, 360px) 1fr;
+    grid-template-columns: auto minmax(220px, 320px) auto 1fr;
     align-items: center;
     gap: 10px;
 }
@@ -958,6 +984,15 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 
     .attribute-cards {
         display: grid;
+    }
+
+    .attribute-mode-toggle {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .attribute-mode-button {
+        flex: 1 1 0;
     }
 
     /* Touch targets */

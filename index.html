@@ -51,6 +51,10 @@
                         <div class="desktop-attribute-toolbar">
                             <label class="attribute-label" for="desktopAttributeLayerSelect">Layer</label>
                             <select id="desktopAttributeLayerSelect" aria-label="Choose layer for desktop attribute view"></select>
+                            <div class="attribute-mode-toggle" role="group" aria-label="Desktop attribute mode">
+                                <button type="button" class="attribute-mode-button is-active" data-attribute-mode="all">All</button>
+                                <button type="button" class="attribute-mode-button" data-attribute-mode="selected">Selected</button>
+                            </div>
                             <div id="desktopAttributeSummary" class="toc-subtitle">No layer selected</div>
                         </div>
                         <div id="desktopAttributeContent" class="attribute-content desktop-attribute-content">
@@ -99,6 +103,10 @@
                     <div class="attribute-controls">
                         <label class="attribute-label" for="attributeLayerSelect">Layer</label>
                         <select id="attributeLayerSelect" aria-label="Choose layer for attribute view"></select>
+                        <div class="attribute-mode-toggle" role="group" aria-label="Attribute mode">
+                            <button type="button" class="attribute-mode-button is-active" data-attribute-mode="all">All</button>
+                            <button type="button" class="attribute-mode-button" data-attribute-mode="selected">Selected</button>
+                        </div>
                     </div>
                     <div id="attributeContent" class="attribute-content">
                         <div class="attribute-empty">Select a layer to inspect its attributes.</div>

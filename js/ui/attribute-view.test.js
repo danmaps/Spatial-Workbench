@@ -111,4 +111,35 @@ describe('attribute view helpers', () => {
     expect(model.rows[0].id).toBe('feature-a');
     expect(model.rows[1].id).toBe('layer-3-2');
   });
+
+  test('getAttributeModel can filter to selected features only', () => {
+    const model = getAttributeModel({
+      id: 'layer-4',
+      geometry: { label: 'Point', type: 'Point' },
+      geojson: {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [0, 0] },
+            properties: { __id: 'feature-a', name: 'Alpha', value: 1 },
+          },
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [1, 1] },
+            properties: { __id: 'feature-b', name: 'Bravo', value: 2 },
+          },
+        ],
+      },
+    }, {
+      mode: 'selected',
+      selectedFeatureIds: ['feature-b'],
+    });
+
+    expect(model.mode).toBe('selected');
+    expect(model.totalRows).toBe(1);
+    expect(model.filteredFromTotalRows).toBe(2);
+    expect(model.rows.map((row) => row.id)).toEqual(['feature-b']);
+    expect(model.selectedFeatureCount).toBe(1);
+  });
 });

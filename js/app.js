@@ -21,6 +21,7 @@ const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
 let openLayerMenuId = null;
 let activeDesktopAttributeCell = null;
+let activeAttributeMode = 'all';
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -200,6 +201,24 @@ function getActiveAttributeLayerId() {
 
 function setActiveAttributeLayerId(layerId) {
     return state.setActiveLayerId(layerId);
+}
+
+function getActiveAttributeMode() {
+    return activeAttributeMode === 'selected' ? 'selected' : 'all';
+}
+
+function setActiveAttributeMode(mode) {
+    activeAttributeMode = mode === 'selected' ? 'selected' : 'all';
+    return activeAttributeMode;
+}
+
+function syncAttributeModeButtons() {
+    const mode = getActiveAttributeMode();
+    Array.from(document.querySelectorAll('[data-attribute-mode]')).forEach((button) => {
+        const isActive = button.dataset.attributeMode === mode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
 }
 
 function updateSelectionSummary() {
@@ -459,23 +478,41 @@ function renderAttributeView() {
     });
 
     const activeInfo = candidateInfos.find((info) => info.id === safeActiveId) || candidateInfos[0];
-    const model = getAttributeModel(activeInfo, { maxRows: 25 });
     const selectedFeatureIds = state.getSelectedFeatureIds(activeInfo.id);
     const selectedFeatureId = selectedFeatureIds[0] || null;
+    const mode = getActiveAttributeMode();
+    const model = getAttributeModel(activeInfo, {
+        maxRows: 25,
+        mode,
+        selectedFeatureIds,
+    });
     const activeDesktopAttributeRow = model.rows.findIndex((row) => row.id === selectedFeatureId);
-    const featureCount = activeInfo.geometry?.featureCount || model.totalRows || 0;
-    const summaryText = `${featureCount} feature${featureCount === 1 ? '' : 's'} · ${model.columns.length} field${model.columns.length === 1 ? '' : 's'}`;
+    const totalFeatureCount = activeInfo.geometry?.featureCount || model.filteredFromTotalRows || model.totalRows || 0;
+    const visibleFeatureCount = model.totalRows || 0;
+    const summaryPrefix = mode === 'selected'
+        ? `${visibleFeatureCount} selected of ${totalFeatureCount}`
+        : `${visibleFeatureCount} feature${visibleFeatureCount === 1 ? '' : 's'}`;
+    const summaryText = `${summaryPrefix} · ${model.columns.length} field${model.columns.length === 1 ? '' : 's'}`;
 
     summaries.forEach((summary) => {
         summary.textContent = summaryText;
     });
     if (desktopToggleLabel) {
-        desktopToggleLabel.textContent = featureCount ? `${featureCount} feature${featureCount === 1 ? '' : 's'}` : 'No attributes';
+        const labelCount = mode === 'selected' ? visibleFeatureCount : totalFeatureCount;
+        const labelText = mode === 'selected'
+            ? `${labelCount} selected`
+            : (labelCount ? `${labelCount} feature${labelCount === 1 ? '' : 's'}` : 'No attributes');
+        desktopToggleLabel.textContent = labelText;
     }
 
+    syncAttributeModeButtons();
+
     if (!model.totalRows) {
+        const emptyMessage = mode === 'selected'
+            ? 'No selected features in this layer yet.'
+            : 'This layer does not have feature attributes to display yet.';
         containers.forEach((container) => {
-            container.innerHTML = '<div class="attribute-empty">This layer does not have feature attributes to display yet.</div>';
+            container.innerHTML = `<div class="attribute-empty">${emptyMessage}</div>`;
         });
         return;
     }
@@ -1019,6 +1056,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (desktopAttributeLayerSelect) {
         desktopAttributeLayerSelect.addEventListener('change', handleAttributeLayerChange);
     }
+
+    Array.from(document.querySelectorAll('[data-attribute-mode]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            setActiveAttributeMode(button.dataset.attributeMode);
+            syncAttributeModeButtons();
+            renderAttributeView();
+        });
+    });
 
     const desktopAttributeDrawer = document.getElementById('desktopAttributeDrawer');
     const desktopAttributeDrawerToggle = document.getElementById('desktopAttributeDrawerToggle');

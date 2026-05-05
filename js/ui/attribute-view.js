@@ -64,7 +64,18 @@ function parseEditedValue(nextValue, originalValue) {
 function getAttributeModel(layerInfo, options = {}) {
   const maxRows = Number.isFinite(options.maxRows) ? options.maxRows : 25;
   const geojson = layerInfo?.geojson || null;
-  const features = normalizeToFeatures(geojson);
+  const allFeatures = normalizeToFeatures(geojson);
+  const selectedFeatureIds = Array.isArray(options.selectedFeatureIds)
+    ? Array.from(new Set(options.selectedFeatureIds.filter((id) => id !== null && id !== undefined && id !== '')))
+    : [];
+  const selectedFeatureIdSet = new Set(selectedFeatureIds);
+  const selectedOnly = options.mode === 'selected';
+  const features = selectedOnly
+    ? allFeatures.filter((feature, index) => {
+      const featureId = feature?.properties?.__id || feature?.id || `${layerInfo?.id || 'feature'}-${index + 1}`;
+      return selectedFeatureIdSet.has(featureId);
+    })
+    : allFeatures;
   const columns = new Set();
 
   features.forEach((feature) => {
@@ -105,6 +116,9 @@ function getAttributeModel(layerInfo, options = {}) {
     visibleRows: rows.length,
     hasMoreRows: features.length > rows.length,
     hasAttributes: orderedColumns.length > 0,
+    mode: selectedOnly ? 'selected' : 'all',
+    selectedFeatureCount: selectedFeatureIds.length,
+    filteredFromTotalRows: allFeatures.length,
   };
 }
 

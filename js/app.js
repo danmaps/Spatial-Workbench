@@ -6,6 +6,11 @@ const state = require('./state');
 const { renderAISettings } = require('./ui/ai-settings');
 const { getAttributeModel, parseEditedValue } = require('./ui/attribute-view');
 const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-drawer');
+const {
+    getLayerSelectionVisualState,
+    getFeatureHighlightStyle,
+    getLayerSelectionFeatureIds,
+} = require('./ui/selection-style');
 
 // Initialize the map
 const map = L.map('map').setView([34, -117], 7);
@@ -15,6 +20,9 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 
 const drawnItems = new L.FeatureGroup();
 map.addLayer(drawnItems);
+
+const selectionHighlights = new L.FeatureGroup();
+map.addLayer(selectionHighlights);
 
 // Set up an array to keep track of layers added to the TOC
 const tocLayers = [];
@@ -329,6 +337,51 @@ function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0)
     state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
     refreshSidebarState();
     closeLayerMenu();
+}
+
+function addSelectionHighlightFeature(feature, geometryType, isActive) {
+    const style = getFeatureHighlightStyle({ geometryType, isActive });
+    if (!feature) return;
+
+    const layer = L.geoJSON(feature, {
+        interactive: false,
+        style: () => style.kind === 'point' ? undefined : style,
+        pointToLayer: (_feature, latlng) => L.circleMarker(latlng, style),
+    });
+
+    if (typeof layer.eachLayer === 'function') {
+        layer.eachLayer((child) => {
+            if (typeof child.bringToFront === 'function') child.bringToFront();
+        });
+    }
+
+    selectionHighlights.addLayer(layer);
+}
+
+function syncMapSelectionHighlights() {
+    if (!selectionHighlights) return;
+    selectionHighlights.clearLayers();
+
+    tocLayers.forEach((layer) => {
+        const layerId = state.ensureStableId(layer);
+        if (!layerId || !state.isLayerSelected(layerId)) return;
+
+        const info = state.getLayerInfo(layerId);
+        const geometryType = info?.geometryType || info?.geometry?.type || 'Geometry';
+        const isActiveLayer = state.getActiveLayerId() === layerId;
+        const selectedFeatureIds = state.getSelectedFeatureIds(layerId);
+        const targets = getAttributeLayerTargets(layer);
+        const selectedFeatures = selectedFeatureIds.length
+            ? targets.filter((target, index) => selectedFeatureIds.includes(getFeatureSelectionId(target, layerId, index)))
+            : targets;
+
+        selectedFeatures.forEach((target, index) => {
+            if (!target?.feature) return;
+            const featureId = getFeatureSelectionId(target, layerId, index);
+            const isActiveFeature = isActiveLayer && (!selectedFeatureIds.length || selectedFeatureIds[0] === featureId);
+            addSelectionHighlightFeature(target.feature, geometryType, isActiveFeature);
+        });
+    });
 }
 
 function bindLayerSelectionInteraction(layer) {
@@ -773,8 +826,16 @@ function renderToc() {
         const sourceBadge = getLayerSourceBadge(layer);
         const menuOpen = openLayerMenuId === stableId;
 
+        const isSelected = state.isLayerSelected(stableId);
+        const isActive = state.getActiveLayerId() === stableId;
+        const visualState = getLayerSelectionVisualState({ isSelected, isActive });
+        const featureSelection = getLayerSelectionFeatureIds({
+            featureIds: state.getSelectedFeatureIds(stableId),
+            totalFeatureCount: info?.geometry?.featureCount || 0,
+        });
+
         const item = document.createElement('div');
-        item.className = `layer-message ${state.isLayerSelected(stableId) ? 'selected' : ''} ${menuOpen ? 'menu-open' : ''}`;
+        item.className = `layer-message ${visualState.tocClasses.join(' ')} ${menuOpen ? 'menu-open' : ''}`.trim();
         item.id = `message-${stableId}`;
         item.dataset.layerId = stableId;
         item.tabIndex = 0;
@@ -797,9 +858,7 @@ function renderToc() {
             } else {
                 state.deselectLayer(stableId);
             }
-            renderToc();
-            updateSelectionSummary();
-            renderAttributeView();
+            refreshSidebarState();
         });
 
         const textWrap = document.createElement('div');
@@ -814,7 +873,17 @@ function renderToc() {
             beginRenameLayer(layer, title);
         });
 
+        const meta = document.createElement('div');
+        meta.className = 'layer-meta';
+        meta.textContent = [
+            visualState.label,
+            featureSelection.summary,
+            info?.geometry?.label || getGeometryLabel(info?.geometryType),
+            sourceBadge.label,
+        ].filter(Boolean).join(' · ');
+
         textWrap.appendChild(title);
+        textWrap.appendChild(meta);
         left.appendChild(checkbox);
         left.appendChild(textWrap);
 
@@ -856,9 +925,7 @@ function renderToc() {
         actionList.appendChild(createActionButton('fas fa-table', 'View attributes', () => {
             closeLayerMenu();
             state.selectLayer(stableId, { makeActive: true });
-            renderToc();
-            updateSelectionSummary();
-            renderAttributeView();
+            refreshSidebarState();
         }));
         actionList.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => {
             closeLayerMenu();
@@ -880,9 +947,7 @@ function renderToc() {
 
         item.addEventListener('click', () => {
             state.toggleLayerSelection(stableId, { makeActive: true });
-            renderToc();
-            updateSelectionSummary();
-            renderAttributeView();
+            refreshSidebarState();
         });
 
         item.addEventListener('keydown', (event) => {
@@ -890,9 +955,7 @@ function renderToc() {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
             state.toggleLayerSelection(stableId, { makeActive: true });
-            renderToc();
-            updateSelectionSummary();
-            renderAttributeView();
+            refreshSidebarState();
         });
 
         tocContent.appendChild(item);
@@ -903,6 +966,7 @@ function refreshSidebarState() {
     renderToc();
     updateSelectionSummary();
     renderAttributeView();
+    syncMapSelectionHighlights();
 }
 
 function addToolHistoryEntry(layer, entry) {
@@ -1074,6 +1138,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSelectionSummary();
     renderImportSummary(null);
     renderAttributeView();
+    syncMapSelectionHighlights();
 });
 
 function renderToolList(tools) {

@@ -72,6 +72,10 @@ describe('BufferTool', () => {
       'Input Layer': 'input-1',
       Distance: 10,
       Units: 'miles',
+    }, {
+      getLayer: mockGetLayer,
+      applyResult: mockApplyResult,
+      state: { selection: {} },
     });
 
     expect(turf.buffer).toHaveBeenCalledWith(sourceGeoJSON, 10, { units: 'miles' });
@@ -86,6 +90,7 @@ describe('BufferTool', () => {
           name: 'Buffer',
           parentLayerId: 'input-1',
           params: expect.objectContaining({ 'Input Layer': 'input-1', Distance: 10, Units: 'miles' }),
+          target: expect.objectContaining({ mode: 'layer', selectedFeatureCount: 0, totalFeatureCount: 2 }),
         }),
       }),
     });
@@ -93,6 +98,67 @@ describe('BufferTool', () => {
     expect(tool.getStatus()).toEqual(expect.objectContaining({
       code: 0,
       message: 'Buffered layer added to map.',
+    }));
+  });
+
+  test('run buffers only selected features when a layer selection exists', async () => {
+    const sourceGeoJSON = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'feature-1', id: 1 } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __id: 'feature-2', id: 2 } },
+      ],
+    };
+
+    mockGetLayer.mockReturnValue({
+      toGeoJSON: jest.fn(() => sourceGeoJSON),
+    });
+
+    turf.buffer.mockReturnValue({
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { id: 2 } },
+      ],
+    });
+
+    const tool = new BufferTool();
+    await tool.run({
+      'Input Layer': 'input-1',
+      Distance: 10,
+      Units: 'miles',
+    }, {
+      getLayer: mockGetLayer,
+      applyResult: mockApplyResult,
+      state: {
+        selection: {
+          activeLayerId: 'input-1',
+          selectedLayerIds: ['input-1'],
+          selectedFeaturesByLayerId: { 'input-1': ['feature-2'] },
+        },
+      },
+    });
+
+    expect(turf.buffer).toHaveBeenCalledWith({
+      type: 'FeatureCollection',
+      features: [
+        expect.objectContaining({ properties: expect.objectContaining({ __id: 'feature-2', id: 2 }) }),
+      ],
+    }, 10, { units: 'miles' });
+    expect(mockApplyResult).toHaveBeenCalledWith({
+      addGeojson: expect.objectContaining({
+        toolMetadata: expect.objectContaining({
+          target: expect.objectContaining({
+            mode: 'selection',
+            selectedFeatureIds: ['feature-2'],
+            selectedFeatureCount: 1,
+            totalFeatureCount: 2,
+          }),
+        }),
+      }),
+    });
+    expect(tool.getStatus()).toEqual(expect.objectContaining({
+      code: 0,
+      message: 'Buffered 1 selected feature(s).',
     }));
   });
 });

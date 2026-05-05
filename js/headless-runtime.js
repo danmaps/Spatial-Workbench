@@ -67,6 +67,16 @@ function createHeadlessRuntime(input = {}) {
   const added = [];
   const removed = [];
   const bounds = createBoundsFromBbox(input.bbox || input.bounds || null);
+  const inputSelection = input.selection || {};
+  const selection = {
+    activeLayerId: typeof inputSelection.activeLayerId === 'string' ? inputSelection.activeLayerId : null,
+    selectedLayerIds: Array.isArray(inputSelection.selectedLayerIds) ? [...new Set(inputSelection.selectedLayerIds.filter((id) => registry.has(id)))] : [],
+    selectedFeaturesByLayerId: Object.entries(inputSelection.selectedFeaturesByLayerId || {}).reduce((acc, [layerId, featureIds]) => {
+      if (!registry.has(layerId) || !Array.isArray(featureIds)) return acc;
+      acc[layerId] = [...new Set(featureIds.filter(Boolean))];
+      return acc;
+    }, {}),
+  };
 
   function getLayer(id) {
     return registry.get(id)?.layer || null;
@@ -125,6 +135,7 @@ function createHeadlessRuntime(input = {}) {
         layerCount: registry.size,
         layers: listLayers(),
         bounds,
+        selection: deepClone(selection),
       };
     },
     getResponseState() {
@@ -138,6 +149,7 @@ function createHeadlessRuntime(input = {}) {
         added: deepClone(added),
         removed: [...removed],
         bbox: bounds?.bbox || null,
+        selection: deepClone(selection),
       };
     },
   };

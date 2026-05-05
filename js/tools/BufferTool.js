@@ -4,7 +4,8 @@
 
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { getLayer, listLayers, applyResult } = require('../state');
+const { listLayers, applyResult } = require('../state');
+const { resolveTargetLayerData } = require('./targeting');
 
 /**
  * Represents a tool for adding a buffer to the selected layer.
@@ -30,15 +31,11 @@ class BufferTool extends Tool {
     async run(params, context = {}) {
         const inputLayerId = params['Input Layer'];
         const distance = parseFloat(params['Distance']);
-        const units = params['Units'];
-    
-        const resolveLayer = context.getLayer || getLayer;
         const applyToolResult = context.applyResult || applyResult;
-        const layer = resolveLayer(inputLayerId);
-        const selectedLayerGeoJSON = layer ? layer.toGeoJSON() : null;
+        const target = resolveTargetLayerData(inputLayerId, context);
     
-        if (!selectedLayerGeoJSON) {
-            this.setStatus(2, 'No layer selected.');
+        if (!target.ok || !target.targetGeoJSON) {
+            this.setStatus(2, target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');
             return;
         }
 
@@ -47,19 +44,30 @@ class BufferTool extends Tool {
             return;
         }
     
-        const buffered = turf.buffer(selectedLayerGeoJSON, distance, {units: units});
+        const buffered = turf.buffer(target.targetGeoJSON, distance, {units: params['Units']});
 
         buffered.toolMetadata = {
             name: this.name,
-            params,
-            parentLayerId: inputLayerId,
+            params: {
+                ...params,
+                'Input Layer': target.layerId,
+            },
+            parentLayerId: target.layerId,
+            target: {
+                mode: target.mode,
+                selectedFeatureIds: target.selectedFeatureIds,
+                selectedFeatureCount: target.selectedFeatureCount,
+                totalFeatureCount: target.totalFeatureCount,
+            },
             timestamp: new Date().toISOString()
         };
 
         const res = applyToolResult({ addGeojson: buffered });
 
         if (res && res.ok) {
-            this.setStatus(0, 'Buffered layer added to map.');
+            this.setStatus(0, target.mode === 'selection'
+                ? `Buffered ${target.selectedFeatureCount} selected feature(s).`
+                : 'Buffered layer added to map.');
             return res;
         } else {
             this.setStatus(2, 'Failed to add buffered layer to map.');

@@ -19,10 +19,7 @@ map.addLayer(drawnItems);
 // Set up an array to keep track of layers added to the TOC
 const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
-const selectedLayerIds = new Set();
 let openLayerMenuId = null;
-let activeAttributeLayerId = null;
-let activeDesktopAttributeRow = null;
 let activeDesktopAttributeCell = null;
 
 let drawControl = new L.Control.Draw({
@@ -152,13 +149,10 @@ function removeLayerWithGuard(layer) {
 
     if (childIds.length) {
         state.removeLayerTree(stableId);
-        childIds.forEach((id) => selectedLayerIds.delete(id));
     } else {
         state.removeLayer(stableId);
     }
 
-    selectedLayerIds.delete(stableId);
-    if (activeAttributeLayerId === stableId) activeAttributeLayerId = null;
     updateDataContent();
 }
 
@@ -196,33 +190,47 @@ function toggleLayerMenu(stableId) {
     renderToc();
 }
 
+function getSelectedLayerIds() {
+    return state.getSelectedLayerIds().filter((id) => state.getLayer(id));
+}
+
+function getActiveAttributeLayerId() {
+    return state.getActiveLayerId();
+}
+
+function setActiveAttributeLayerId(layerId) {
+    return state.setActiveLayerId(layerId);
+}
+
 function updateSelectionSummary() {
+    const selectedLayerIds = getSelectedLayerIds();
     const button = document.getElementById('zoomSelectionButton');
     const summary = document.getElementById('selectionSummary');
-    if (button) button.disabled = selectedLayerIds.size === 0;
+    if (button) button.disabled = selectedLayerIds.length === 0;
     if (summary) {
-        summary.textContent = selectedLayerIds.size ? `${selectedLayerIds.size} selected` : 'No selection';
+        summary.textContent = selectedLayerIds.length ? `${selectedLayerIds.length} selected` : 'No selection';
     }
 }
 
 function getSelectedLayers() {
-    return Array.from(selectedLayerIds)
+    return getSelectedLayerIds()
         .map((id) => state.getLayer(id))
         .filter(Boolean);
 }
 
 function syncActiveAttributeLayer() {
-    const selectedIds = Array.from(selectedLayerIds).filter((id) => state.getLayer(id));
+    const selectedIds = getSelectedLayerIds();
+    const activeAttributeLayerId = getActiveAttributeLayerId();
 
     if (selectedIds.includes(activeAttributeLayerId)) return;
     if (selectedIds.length) {
-        activeAttributeLayerId = selectedIds[0];
+        setActiveAttributeLayerId(selectedIds[0]);
         return;
     }
 
     if (activeAttributeLayerId && state.getLayer(activeAttributeLayerId)) return;
     const firstLayer = tocLayers[0];
-    activeAttributeLayerId = firstLayer ? state.ensureStableId(firstLayer) : null;
+    setActiveAttributeLayerId(firstLayer ? state.ensureStableId(firstLayer) : null);
 }
 
 function buildFeaturePopupContent(row) {
@@ -289,18 +297,24 @@ function updateAttributeFeatureProperty(layerId, rowIndex, propertyKey, nextValu
     return true;
 }
 
-function wireAttributeZoomButtons(root, model) {
+function wireAttributeZoomButtons(root, activeInfo, model) {
     Array.from(root.querySelectorAll('[data-feature-index]')).forEach((button) => {
         button.addEventListener('click', () => {
             const row = model.rows[Number(button.dataset.featureIndex)];
+            if (!row) return;
+            state.setSelectedFeatureIds(activeInfo.id, [row.id]);
             zoomToFeature(row);
+            renderAttributeView();
         });
     });
 }
 
 function wireDesktopAttributeGrid(container, activeInfo, model) {
     const syncGridSelection = (rowIndex, columnKey) => {
-        activeDesktopAttributeRow = rowIndex;
+        const row = model.rows[rowIndex];
+        if (!row) return;
+
+        state.setSelectedFeatureIds(activeInfo.id, [row.id]);
         activeDesktopAttributeCell = columnKey;
 
         Array.from(container.querySelectorAll('tbody tr')).forEach((rowEl) => {
@@ -375,10 +389,11 @@ function renderAttributeView() {
         return;
     }
 
+    const activeAttributeLayerId = getActiveAttributeLayerId();
     const safeActiveId = candidateInfos.some((info) => info.id === activeAttributeLayerId)
         ? activeAttributeLayerId
         : candidateInfos[0].id;
-    activeAttributeLayerId = safeActiveId;
+    setActiveAttributeLayerId(safeActiveId);
 
     const optionMarkup = candidateInfos.map((info) => `
         <option value="${escapeHtml(info.id)}" ${info.id === safeActiveId ? 'selected' : ''}>${escapeHtml(info.displayName || info.id)}</option>
@@ -392,6 +407,9 @@ function renderAttributeView() {
 
     const activeInfo = candidateInfos.find((info) => info.id === safeActiveId) || candidateInfos[0];
     const model = getAttributeModel(activeInfo, { maxRows: 25 });
+    const selectedFeatureIds = state.getSelectedFeatureIds(activeInfo.id);
+    const selectedFeatureId = selectedFeatureIds[0] || null;
+    const activeDesktopAttributeRow = model.rows.findIndex((row) => row.id === selectedFeatureId);
     const featureCount = activeInfo.geometry?.featureCount || model.totalRows || 0;
     const summaryText = `${featureCount} feature${featureCount === 1 ? '' : 's'} · ${model.columns.length} field${model.columns.length === 1 ? '' : 's'}`;
 
@@ -468,7 +486,7 @@ function renderAttributeView() {
                 ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
             </div>
         `;
-        wireAttributeZoomButtons(desktopContainer, model);
+        wireAttributeZoomButtons(desktopContainer, activeInfo, model);
         wireDesktopAttributeGrid(desktopContainer, activeInfo, model);
     }
 
@@ -479,7 +497,7 @@ function renderAttributeView() {
                 ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
             </div>
         `;
-        wireAttributeZoomButtons(mobileContainer, model);
+        wireAttributeZoomButtons(mobileContainer, activeInfo, model);
     }
 }
 
@@ -595,7 +613,7 @@ function zoomToLayer(layerOrId) {
 }
 
 function zoomToSelection() {
-    const selectedLayers = Array.from(selectedLayerIds)
+    const selectedLayers = getSelectedLayerIds()
         .map((id) => state.getLayer(id))
         .filter(Boolean);
 
@@ -666,7 +684,7 @@ function renderToc() {
         const menuOpen = openLayerMenuId === stableId;
 
         const item = document.createElement('div');
-        item.className = `layer-message ${selectedLayerIds.has(stableId) ? 'selected' : ''} ${menuOpen ? 'menu-open' : ''}`;
+        item.className = `layer-message ${state.isLayerSelected(stableId) ? 'selected' : ''} ${menuOpen ? 'menu-open' : ''}`;
         item.id = `message-${stableId}`;
         item.dataset.layerId = stableId;
         item.tabIndex = 0;
@@ -681,15 +699,13 @@ function renderToc() {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.className = 'layer-select';
-        checkbox.checked = selectedLayerIds.has(stableId);
+        checkbox.checked = state.isLayerSelected(stableId);
         checkbox.addEventListener('click', (event) => event.stopPropagation());
         checkbox.addEventListener('change', () => {
             if (checkbox.checked) {
-                selectedLayerIds.add(stableId);
-                activeAttributeLayerId = stableId;
+                state.selectLayer(stableId, { makeActive: true });
             } else {
-                selectedLayerIds.delete(stableId);
-                if (activeAttributeLayerId === stableId) activeAttributeLayerId = null;
+                state.deselectLayer(stableId);
             }
             renderToc();
             updateSelectionSummary();
@@ -749,8 +765,7 @@ function renderToc() {
         }));
         actionList.appendChild(createActionButton('fas fa-table', 'View attributes', () => {
             closeLayerMenu();
-            selectedLayerIds.add(stableId);
-            activeAttributeLayerId = stableId;
+            state.selectLayer(stableId, { makeActive: true });
             renderToc();
             updateSelectionSummary();
             renderAttributeView();
@@ -774,13 +789,7 @@ function renderToc() {
         item.appendChild(row);
 
         item.addEventListener('click', () => {
-            if (selectedLayerIds.has(stableId)) {
-                selectedLayerIds.delete(stableId);
-                if (activeAttributeLayerId === stableId) activeAttributeLayerId = null;
-            } else {
-                selectedLayerIds.add(stableId);
-                activeAttributeLayerId = stableId;
-            }
+            state.toggleLayerSelection(stableId, { makeActive: true });
             renderToc();
             updateSelectionSummary();
             renderAttributeView();
@@ -790,13 +799,7 @@ function renderToc() {
             if (event.target !== item) return;
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
-            if (selectedLayerIds.has(stableId)) {
-                selectedLayerIds.delete(stableId);
-                if (activeAttributeLayerId === stableId) activeAttributeLayerId = null;
-            } else {
-                selectedLayerIds.add(stableId);
-                activeAttributeLayerId = stableId;
-            }
+            state.toggleLayerSelection(stableId, { makeActive: true });
             renderToc();
             updateSelectionSummary();
             renderAttributeView();
@@ -893,8 +896,6 @@ map.on('draw:deleted', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
         if (layer && layer.__id) {
-            selectedLayerIds.delete(layer.__id);
-            if (activeAttributeLayerId === layer.__id) activeAttributeLayerId = null;
             // Let state.removeLayer handle removal from drawnItems for tracked layers
             state.removeLayer(layer.__id);
         } else {
@@ -949,7 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const handleAttributeLayerChange = (event) => {
-        activeAttributeLayerId = event.target.value || null;
+        setActiveAttributeLayerId(event.target.value || null);
         renderAttributeView();
     };
 

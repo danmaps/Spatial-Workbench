@@ -86,4 +86,29 @@ describe('attribute view helpers', () => {
     expect(model.totalRows).toBe(3);
     expect(model.hasMoreRows).toBe(true);
   });
+
+  test('getAttributeModel keeps stable feature row ids for selection syncing', () => {
+    const model = getAttributeModel({
+      id: 'layer-3',
+      geometry: { label: 'Point', type: 'Point' },
+      geojson: {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [0, 0] },
+            properties: { __id: 'feature-a', name: 'Alpha' },
+          },
+          {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [1, 1] },
+            properties: { name: 'Bravo' },
+          },
+        ],
+      },
+    });
+
+    expect(model.rows[0].id).toBe('feature-a');
+    expect(model.rows[1].id).toBe('layer-3-2');
+  });
 });

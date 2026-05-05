@@ -4,7 +4,6 @@
 
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { map } = require('../app');
 const { getLayer, listLayers, applyResult } = require('../state');
 
 /**
@@ -28,12 +27,14 @@ class BufferTool extends Tool {
     /**
      * Executes the BufferTool logic without reading from the DOM.
      */
-    async run(params) {
+    async run(params, context = {}) {
         const inputLayerId = params['Input Layer'];
         const distance = parseFloat(params['Distance']);
         const units = params['Units'];
     
-        const layer = getLayer(inputLayerId);
+        const resolveLayer = context.getLayer || getLayer;
+        const applyToolResult = context.applyResult || applyResult;
+        const layer = resolveLayer(inputLayerId);
         const selectedLayerGeoJSON = layer ? layer.toGeoJSON() : null;
     
         if (!selectedLayerGeoJSON) {
@@ -55,7 +56,7 @@ class BufferTool extends Tool {
             timestamp: new Date().toISOString()
         };
 
-        const res = applyResult({ addGeojson: buffered });
+        const res = applyToolResult({ addGeojson: buffered });
 
         if (res && res.ok) {
             this.setStatus(0, 'Buffered layer added to map.');

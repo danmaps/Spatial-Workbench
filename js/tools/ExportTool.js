@@ -11,12 +11,13 @@ class ExportTool extends Tool {
 
         this.description = "Export data";
     }
-    async run(params) {
+    async run(params, context = {}) {
         console.log("Exporting data...");
         const inputLayerId = params['Layer'];
         const format = params['Format'];
+        const resolveLayer = context.getLayer || getLayer;
         if (format === 'GeoJSON') {
-            const layer = getLayer(inputLayerId);
+            const layer = resolveLayer(inputLayerId);
             const selectedLayerGeoJSON = layer ? layer.toGeoJSON() : null;
 
             if (!selectedLayerGeoJSON) {

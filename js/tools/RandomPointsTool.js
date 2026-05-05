@@ -53,7 +53,9 @@ class RandomPointsTool extends Tool {
     /**
      * Executes the RandomPointsTool logic without reading from the DOM.
      */
-    async run(params, context) {
+    async run(params, context = {}) {
+        const resolveLayer = context.getLayer || getLayer;
+        const applyToolResult = context.applyResult || applyResult;
         const pointsCount = parseInt(params['Points Count'], 10);
         if (!Number.isInteger(pointsCount) || pointsCount <= 0) {
             this.setStatus(2, 'Points Count must be a positive integer.');
@@ -64,7 +66,7 @@ class RandomPointsTool extends Tool {
         const polygonId = params['Polygon'] || null;
         
         if (insidePolygon) {
-            const polygonLayer = polygonId ? getLayer(polygonId) : null;
+            const polygonLayer = polygonId ? resolveLayer(polygonId) : null;
             if (!polygonLayer) {
                 this.setStatus(2, 'No polygon selected.');
                 return;
@@ -92,7 +94,7 @@ class RandomPointsTool extends Tool {
 
             const featureCollection = buildRandomPointsResult(this.name, params, features, polygonId);
 
-            const res = applyResult({ addGeojson: featureCollection });
+            const res = applyToolResult({ addGeojson: featureCollection });
             if (res && res.ok) {
                 this.setStatus(0, `Added ${features.length} point(s).`);
                 return res;
@@ -113,7 +115,7 @@ class RandomPointsTool extends Tool {
                 pt.properties = pt.properties || {};
             });
             const featureCollection = buildRandomPointsResult(this.name, params, features);
-            const res = applyResult({ addGeojson: featureCollection });
+            const res = applyToolResult({ addGeojson: featureCollection });
             if (res && res.ok) {
                 this.setStatus(0, `Added ${features.length} point(s).`);
                 return res;

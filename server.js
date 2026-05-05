@@ -13,6 +13,7 @@ const {
   KNOWN_OLLAMA_MODELS,
   SYSTEM_PROMPT,
 } = require('./js/ai-providers');
+const { getHeadlessToolCatalog, runHeadlessTool } = require('./js/headless-runtime');
 
 const app = express();
 require('dotenv').config();
@@ -151,6 +152,51 @@ const toolSpecs = require('./js/tools/specs.json');
 
 app.get('/api/tools', (_req, res) => {
   res.json({ ok: true, tools: toolSpecs });
+});
+
+app.get('/api/run', (_req, res) => {
+  res.json({
+    ok: true,
+    method: 'POST',
+    supportedTools: getHeadlessToolCatalog(),
+    notes: [
+      'First pass: headless execution is currently limited to tools that are safe without the browser UI.',
+      'Send request state.layers with stable ids and GeoJSON so params can reference them.',
+      'Current headless subset: BufferTool, ExportTool, RandomPointsTool.',
+    ],
+    requestShape: {
+      tool: 'BufferTool',
+      params: {
+        'Input Layer': 'source-layer',
+        Distance: 5,
+        Units: 'miles',
+      },
+      state: {
+        layers: [
+          {
+            id: 'source-layer',
+            name: 'Source Layer',
+            geojson: { type: 'FeatureCollection', features: [] },
+          },
+        ],
+        bbox: [-118.5, 33.5, -117.5, 34.5],
+      },
+    },
+  });
+});
+
+app.post('/api/run', async (req, res) => {
+  try {
+    const result = await runHeadlessTool(req.body || {});
+    res.json(result);
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
+      ok: false,
+      error: error.message || 'Failed to run tool',
+      ...(error.details ? { details: error.details } : {}),
+    });
+  }
 });
 
 // Expose available providers so the frontend can build its settings UI.

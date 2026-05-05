@@ -16,8 +16,17 @@ describe('AddDataTool', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    document.body.innerHTML = `
+      <div id="toolSelection" style="display:block"></div>
+      <div id="toolDetails" class="hidden"></div>
+      <div id="toolContent"></div>
+      <div id="statusMessage" style="display:none"><span id="statusMessageText"></span></div>
+    `;
     global.L = {
       geoJSON: jest.fn(() => ({
+        getBounds: jest.fn(() => ({ isValid: () => true })),
+      })),
+      featureGroup: jest.fn(() => ({
         getBounds: jest.fn(() => ({ isValid: () => true })),
       })),
     };
@@ -50,7 +59,7 @@ describe('AddDataTool', () => {
     }));
     expect(result.importSummary.warnings[0]).toContain('Row 3 skipped');
 
-    const geojson = mockApplyResult.mock.calls[0][0].addGeojson;
+    const geojson = mockApplyResult.mock.calls[0][0].addGeojson[0];
     expect(geojson.features).toHaveLength(2);
     expect(geojson.features[0].properties.importSummary.importedCount).toBe(2);
   });
@@ -76,7 +85,34 @@ describe('AddDataTool', () => {
     const result = await tool.handleGeoJSON(file, { Input: file.name });
 
     expect(result.importSummary.importedCount).toBe(1);
-    const geojson = mockApplyResult.mock.calls[0][0].addGeojson;
+    const geojson = mockApplyResult.mock.calls[0][0].addGeojson[0];
     expect(geojson.features[0].properties.importSummary.fileType).toBe('geojson');
+  });
+
+  test('loadSampleData loads bundled datasets as normal map additions', async () => {
+    const tool = new AddDataTool();
+
+    const result = await tool.loadSampleData();
+
+    expect(mockApplyResult).toHaveBeenCalledTimes(1);
+    const additions = mockApplyResult.mock.calls[0][0].addGeojson;
+    expect(additions).toHaveLength(2);
+    expect(additions[0].features[0].properties.importSummary.fileName).toBe('sample-cities.geojson');
+    expect(additions[1].features[0].properties.importSummary.fileName).toBe('sample-study-area.geojson');
+    expect(result.sampleData).toEqual(expect.objectContaining({
+      layerCount: 2,
+      featureCount: 4,
+    }));
+    expect(tool.getStatus().message).toContain('Loaded 2 sample layer(s)');
+  });
+
+  test('renderUI shows a visible sample data action', () => {
+    const tool = new AddDataTool();
+
+    tool.renderUI();
+
+    const button = document.getElementById('loadSampleDataButton');
+    expect(button).not.toBeNull();
+    expect(button.textContent).toBe('Load Sample Data');
   });
 });

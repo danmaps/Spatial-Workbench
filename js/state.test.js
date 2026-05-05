@@ -200,6 +200,14 @@ describe('state provenance helpers', () => {
     expect(result.ok).toBe(true);
     expect(result.added).toHaveLength(1);
     expect(tocLayers).toHaveLength(1);
+
+    const groupLayer = state.getLayer(result.added[0]);
+    const groupGeojson = groupLayer.toGeoJSON();
+    expect(groupGeojson.features.map((feature) => feature.properties.__id)).toEqual([
+      `${result.added[0]}-1`,
+      `${result.added[0]}-2`,
+      `${result.added[0]}-3`,
+    ]);
   });
 
   test('applyResult coalesces arrays of features into one result layer', () => {

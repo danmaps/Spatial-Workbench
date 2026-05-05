@@ -102,6 +102,30 @@ function cloneMetadata(metadata) {
   return JSON.parse(JSON.stringify(metadata));
 }
 
+function ensureFeatureIdentifiers(geojson, baseId) {
+  if (!geojson || typeof geojson !== 'object') return geojson;
+
+  const assignId = (feature, fallbackId) => {
+    if (!feature || feature.type !== 'Feature') return;
+    if (!feature.properties || typeof feature.properties !== 'object') feature.properties = {};
+    const existingId = feature.properties.__id || feature.id;
+    const stableId = existingId || fallbackId || _uuid();
+    feature.properties.__id = stableId;
+    if (feature.id === undefined || feature.id === null || feature.id === '') feature.id = stableId;
+  };
+
+  if (geojson.type === 'FeatureCollection' && Array.isArray(geojson.features)) {
+    geojson.features.forEach((feature, index) => assignId(feature, `${baseId || 'feature'}-${index + 1}`));
+    return geojson;
+  }
+
+  if (geojson.type === 'Feature') {
+    assignId(geojson, baseId || 'feature-1');
+  }
+
+  return geojson;
+}
+
 function sanitizeMetadata(metadata) {
   const cloned = cloneMetadata(metadata);
   if (!cloned) return null;
@@ -659,6 +683,7 @@ function applyResult(toolResult) {
 
         const id = registerLayer(groupLayer);
         ensureStableId(groupLayer, id);
+        ensureFeatureIdentifiers(gj, id);
 
         // Attach feature object on group layer for metadata/history
         if (!groupLayer.feature) {
@@ -685,6 +710,7 @@ function applyResult(toolResult) {
         added.push(groupLayer.__id);
       } else {
         // Single Feature (or empty collection) – add individually as before.
+        ensureFeatureIdentifiers(gj);
         const layer = L.geoJSON(gj);
         layer.eachLayer((child) => {
           const preferredId = child?.feature?.properties?.__id;

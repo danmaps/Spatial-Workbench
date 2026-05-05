@@ -285,6 +285,59 @@ function getAttributeLayerTargets(layer) {
     return layer?.feature ? [layer] : [];
 }
 
+function ensureFeatureSelectionId(feature, fallbackId) {
+    if (!feature || feature.type !== 'Feature') return null;
+    if (!feature.properties || typeof feature.properties !== 'object') feature.properties = {};
+    const stableId = feature.properties.__id || feature.id || fallbackId || null;
+    if (!stableId) return null;
+    feature.properties.__id = stableId;
+    if (feature.id === undefined || feature.id === null || feature.id === '') feature.id = stableId;
+    return stableId;
+}
+
+function getFeatureSelectionId(targetLayer, parentLayerId, fallbackIndex) {
+    if (!targetLayer?.feature) return null;
+    return ensureFeatureSelectionId(targetLayer.feature, `${parentLayerId || state.ensureStableId(targetLayer)}-${fallbackIndex + 1}`);
+}
+
+function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0) {
+    const layerId = parentLayerId || state.ensureStableId(targetLayer);
+    if (!layerId) return;
+
+    const featureId = getFeatureSelectionId(targetLayer, layerId, fallbackIndex);
+    state.selectLayer(layerId, { makeActive: true });
+    state.setActiveLayerId(layerId);
+    state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
+    refreshSidebarState();
+    closeLayerMenu();
+}
+
+function bindLayerSelectionInteraction(layer) {
+    if (!layer || layer.__selectionInteractionBound) return;
+
+    const parentLayerId = state.ensureStableId(layer, layer?.feature?.properties?.__id);
+
+    if (typeof layer.eachLayer === 'function') {
+        let childIndex = 0;
+        layer.eachLayer((child) => {
+            const fallbackIndex = childIndex++;
+            if (!child?.feature || child.__selectionInteractionBound) return;
+            getFeatureSelectionId(child, parentLayerId, fallbackIndex);
+            if (typeof child.on === 'function') {
+                child.on('click', () => applyMapFeatureSelection(child, parentLayerId, fallbackIndex));
+                child.__selectionInteractionBound = true;
+            }
+        });
+    }
+
+    if (layer?.feature && typeof layer.on === 'function') {
+        getFeatureSelectionId(layer, parentLayerId, 0);
+        layer.on('click', () => applyMapFeatureSelection(layer, parentLayerId, 0));
+    }
+
+    layer.__selectionInteractionBound = true;
+}
+
 function updateAttributeFeatureProperty(layerId, rowIndex, propertyKey, nextValue, originalValue) {
     const layer = state.getLayer(layerId);
     const targets = getAttributeLayerTargets(layer);
@@ -866,6 +919,7 @@ map.on(L.Draw.Event.CREATED, function (e) {
 
     // Assign a stable id immediately.
     const stableId = state.registerLayer(layer);
+    bindLayerSelectionInteraction(layer);
     addToolHistoryEntry(layer, {
         name: 'Draw',
         timestamp: new Date().toISOString(),
@@ -882,6 +936,7 @@ map.on('draw:edited', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
         const stableId = state.registerLayer(layer);
+        bindLayerSelectionInteraction(layer);
         addToolHistoryEntry(layer, {
             name: 'Edit',
             timestamp: new Date().toISOString(),
@@ -911,6 +966,7 @@ map.on('layeradd', function (e) {
     // if layer has a feature.toolMetadata, add the layer to the TOC
     if (layer.hasOwnProperty('feature') && layer.feature.toolMetadata) {
         const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
+        bindLayerSelectionInteraction(layer);
         if (!tocLayers.includes(layer)) tocLayers.push(layer);
         const importSummary = layer.feature?.properties?.importSummary;
         if (importSummary) renderImportSummary(importSummary);

@@ -5,6 +5,8 @@ jest.mock('@turf/turf', () => ({
   randomPoint: jest.fn(),
   bbox: jest.fn(() => [0, 0, 1, 1]),
   booleanPointInPolygon: jest.fn(() => true),
+  centroid: jest.fn(),
+  clustersDbscan: jest.fn(),
 }));
 
 jest.mock('./state', () => ({
@@ -26,6 +28,8 @@ describe('headless runtime', () => {
     turf.bbox.mockReturnValue([0, 0, 1, 1]);
     turf.booleanPointInPolygon.mockReset();
     turf.booleanPointInPolygon.mockReturnValue(true);
+    turf.centroid.mockReset();
+    turf.clustersDbscan.mockReset();
   });
 
   test('runHeadlessTool executes BufferTool against request-scoped layers', async () => {
@@ -218,6 +222,75 @@ describe('headless runtime', () => {
       activeLayerId: 'source-layer',
       selectedLayerIds: ['source-layer'],
       selectedFeaturesByLayerId: { 'source-layer': ['feature-2'] },
+    }));
+  });
+
+  test('runHeadlessTool executes GroupTool against selected features', async () => {
+    const { runHeadlessTool } = require('./headless-runtime');
+
+    turf.clustersDbscan.mockReturnValue({
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __sourceFeatureId: 'feature-2', cluster: 0, dbscan: 'core' } },
+      ],
+    });
+
+    const result = await runHeadlessTool({
+      tool: 'GroupTool',
+      params: {
+        Layer: 'source-layer',
+        Distance: 2,
+        Units: 'kilometers',
+      },
+      state: {
+        layers: [
+          {
+            id: 'source-layer',
+            name: 'Source Layer',
+            geojson: {
+              type: 'FeatureCollection',
+              features: [
+                { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'feature-1' } },
+                { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __id: 'feature-2' } },
+              ],
+            },
+          },
+        ],
+        selection: {
+          activeLayerId: 'source-layer',
+          selectedLayerIds: ['source-layer'],
+          selectedFeaturesByLayerId: {
+            'source-layer': ['feature-2'],
+          },
+        },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.tool).toBe('GroupTool');
+    expect(result.status).toEqual(expect.objectContaining({
+      code: 0,
+      message: 'Grouped 1 selected feature(s) into 1 group(s).',
+    }));
+    expect(turf.clustersDbscan).toHaveBeenCalledWith({
+      type: 'FeatureCollection',
+      features: [
+        expect.objectContaining({ properties: { __sourceFeatureId: 'feature-2' } }),
+      ],
+    }, 2, { units: 'kilometers' });
+    expect(result.state.added).toHaveLength(1);
+    expect(result.state.layers).toHaveLength(2);
+    expect(result.state.layers[1]).toEqual(expect.objectContaining({
+      name: 'Group',
+      geojson: expect.objectContaining({
+        type: 'FeatureCollection',
+        features: [
+          expect.objectContaining({ properties: expect.objectContaining({ __id: 'feature-2', groupId: 'group-0' }) }),
+        ],
+        toolMetadata: expect.objectContaining({
+          target: expect.objectContaining({ mode: 'selection', selectedFeatureIds: ['feature-2'] }),
+        }),
+      }),
     }));
   });
 

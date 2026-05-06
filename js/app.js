@@ -1,6 +1,6 @@
 /* global L, turf */  // Tell ESLint that L and turf are global variables
 
-const toolNames = ['RandomPointsTool', 'BufferTool', 'ExportTool', 'GenerateAIFeatures', 'AddDataTool']; // Keep this up to date
+const toolNames = ['RandomPointsTool', 'BufferTool', 'GroupTool', 'ExportTool', 'GenerateAIFeatures', 'AddDataTool']; // Keep this up to date
 
 const state = require('./state');
 const { renderAISettings } = require('./ui/ai-settings');

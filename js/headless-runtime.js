@@ -1,5 +1,6 @@
 const { BufferTool } = require('./tools/BufferTool');
 const { ExportTool } = require('./tools/ExportTool');
+const { GroupTool } = require('./tools/GroupTool');
 const { RandomPointsTool } = require('./tools/RandomPointsTool');
 
 function deepClone(value) {
@@ -158,6 +159,7 @@ function createHeadlessRuntime(input = {}) {
 const HEADLESS_TOOLS = {
   BufferTool,
   ExportTool,
+  GroupTool,
   RandomPointsTool,
 };
 

@@ -18,13 +18,13 @@ Headless execution is intentionally limited to tools that can already run from s
 
 - `BufferTool`
 - `ExportTool`
+- `GroupTool`
 - `RandomPointsTool`
 
 Not yet supported headlessly:
 
 - `AddDataTool` (browser `File`/`FileReader` flow)
 - `GenerateAIFeatures` (currently coupled to browser-side settings/localStorage)
-- `GroupTool` (needs cleanup before being exposed as a reliable API surface)
 
 ## Request shape
 
@@ -117,3 +117,4 @@ It is designed to be:
 2. make `AddDataTool` accept JSON/file-path friendly server inputs
 3. decouple AI settings from browser localStorage for headless AI generation
 4. standardize tool result envelopes across all tools
+5. expand GroupTool output options beyond per-feature group attribution if we want hulls/centroids later

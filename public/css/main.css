@@ -131,7 +131,6 @@ body, html {
 .tool-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
 }
 
@@ -141,14 +140,61 @@ body, html {
     letter-spacing: 0.01em;
 }
 
-.tool-doc-link {
+.tool-details-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.tool-details-title-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.selected-tool-doc-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
     text-decoration: none;
-    border-left: 1px solid var(--border-color);
-    padding-left: 12px;
+    flex-shrink: 0;
+    transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.selected-tool-doc-link:hover,
+.selected-tool-doc-link:focus-visible {
+    color: var(--text-primary);
+    border-color: #3a4148;
+    background-color: var(--hover-bg);
+}
+
+.selected-tool-doc-link i {
+    font-size: 14px;
+}
+
+#toolName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+    .tool-details-header {
+        align-items: flex-start;
+    }
+
+    .selected-tool-doc-link {
+        margin-top: 2px;
+    }
+}
+
+.tool-doc-link {
+    display: none;
 }
 
 .tool-doc-link:hover {
@@ -160,6 +206,18 @@ body, html {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+}
+
+.toc-header-primary,
+.toc-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.toc-header-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
 }
 
 .toc-subtitle {
@@ -968,6 +1026,15 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 /* Responsive design */
 @media (max-width: 768px) {
     .mobile-bar { display: flex; }
+
+    .toc-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .toc-header-actions {
+        justify-content: space-between;
+    }
 
     .app-layout {
         display: flex;

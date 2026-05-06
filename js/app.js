@@ -7,6 +7,11 @@ const { renderAISettings } = require('./ui/ai-settings');
 const { getAttributeModel, parseEditedValue } = require('./ui/attribute-view');
 const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-drawer');
 const {
+    MAP_INTERACTION_MODES,
+    normalizeMapInteractionMode,
+    shouldOpenPopupForMapInteractionMode,
+} = require('./ui/map-interaction-mode');
+const {
     getLayerSelectionVisualState,
     getFeatureHighlightStyle,
     getLayerSelectionFeatureIds,
@@ -30,6 +35,7 @@ const loadedTools = {}; // Object to store instantiated tools
 let openLayerMenuId = null;
 let activeDesktopAttributeCell = null;
 let activeAttributeMode = 'all';
+let activeMapInteractionMode = MAP_INTERACTION_MODES.SELECT;
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -274,6 +280,46 @@ function buildFeaturePopupContent(row) {
     `;
 }
 
+function getFeaturePopupRow(layerId, featureId, fallbackIndex = 0) {
+    const layer = state.getLayer(layerId);
+    const model = getAttributeModel(layer, {
+        layerId,
+        selectedFeatureIds: featureId ? [featureId] : [],
+    });
+
+    if (!model?.rows?.length) return null;
+    return model.rows.find((row) => row.id === featureId) || model.rows[fallbackIndex] || model.rows[0] || null;
+}
+
+function openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex = 0) {
+    const row = getFeaturePopupRow(layerId, featureId, fallbackIndex);
+    if (!row) return false;
+
+    const popupContent = buildFeaturePopupContent(row);
+
+    if (targetLayer && typeof targetLayer.bindPopup === 'function' && typeof targetLayer.openPopup === 'function') {
+        targetLayer.bindPopup(popupContent).openPopup();
+        return true;
+    }
+
+    try {
+        const previewLayer = L.geoJSON(row.feature);
+        const bounds = previewLayer.getBounds && previewLayer.getBounds();
+        if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+            map.openPopup(popupContent, bounds.getCenter());
+            return true;
+        }
+
+        const marker = previewLayer.getLayers && previewLayer.getLayers()[0];
+        if (marker && typeof marker.getLatLng === 'function') {
+            map.openPopup(popupContent, marker.getLatLng());
+            return true;
+        }
+    } catch (_) {}
+
+    return false;
+}
+
 function zoomToFeature(row) {
     if (!row?.feature) return false;
 
@@ -335,8 +381,24 @@ function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0)
     state.selectLayer(layerId, { makeActive: true });
     state.setActiveLayerId(layerId);
     state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
+
+    if (shouldOpenPopupForMapInteractionMode(activeMapInteractionMode)) {
+        openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex);
+    } else if (map && typeof map.closePopup === 'function') {
+        map.closePopup();
+    }
+
     refreshSidebarState();
     closeLayerMenu();
+}
+
+function setActiveMapInteractionMode(mode) {
+    activeMapInteractionMode = normalizeMapInteractionMode(mode);
+    Array.from(document.querySelectorAll('[data-map-interaction-mode]')).forEach((button) => {
+        const isActive = button.dataset.mapInteractionMode === activeMapInteractionMode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
 }
 
 function addSelectionHighlightFeature(feature, geometryType, isActive) {
@@ -973,9 +1035,28 @@ function addToolHistoryEntry(layer, entry) {
     state.ensureToolHistory(layer, entry);
 }
 
+function setSelectedToolDocsLink(tool) {
+    const docsLink = document.getElementById('selectedToolDocsLink');
+    if (!docsLink) return;
+
+    if (!tool) {
+        docsLink.classList.add('hidden');
+        docsLink.setAttribute('href', '#');
+        docsLink.setAttribute('aria-label', 'Selected tool documentation');
+        docsLink.setAttribute('title', 'Open selected tool documentation');
+        return;
+    }
+
+    docsLink.href = `/tool-docs/${encodeURIComponent(tool.constructor.name)}.html`;
+    docsLink.classList.remove('hidden');
+    docsLink.setAttribute('aria-label', `${tool.name} documentation`);
+    docsLink.setAttribute('title', `${tool.name} documentation`);
+}
+
 document.getElementById('backButton').addEventListener('click', function() {
     document.getElementById('toolSelection').style.display = 'block';
     document.getElementById('toolDetails').classList.add('hidden');
+    setSelectedToolDocsLink(null);
     const statusMessage = document.getElementById('statusMessageText');
     statusMessage.textContent = '';
     document.getElementById('statusMessage').style.display = 'none';
@@ -1106,6 +1187,13 @@ document.addEventListener('DOMContentLoaded', () => {
         zoomSelectionButton.addEventListener('click', () => zoomToSelection());
     }
 
+    Array.from(document.querySelectorAll('[data-map-interaction-mode]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            setActiveMapInteractionMode(button.dataset.mapInteractionMode);
+        });
+    });
+    setActiveMapInteractionMode(activeMapInteractionMode);
+
     const handleAttributeLayerChange = (event) => {
         setActiveAttributeLayerId(event.target.value || null);
         renderAttributeView();
@@ -1154,25 +1242,14 @@ function renderToolList(tools) {
         toolName.className = 'tool-title';
         toolName.textContent = tool.name;
 
-        const toolDocsLink = document.createElement('a');
-        toolDocsLink.className = 'tool-doc-link';
-        toolDocsLink.href = `/tool-docs/${encodeURIComponent(tool.constructor.name)}.html`;
-        toolDocsLink.target = '_blank';
-        toolDocsLink.rel = 'noopener noreferrer';
-        toolDocsLink.textContent = 'Docs';
-        toolDocsLink.setAttribute('aria-label', `${tool.name} documentation`);
-        toolDocsLink.addEventListener('click', (event) => {
-            event.stopPropagation();
-        });
-
         toolHeader.appendChild(toolName);
-        toolHeader.appendChild(toolDocsLink);
         toolDiv.appendChild(toolHeader);
 
         toolDiv.addEventListener('click', () => {
             const toolNameElement = document.getElementById('toolName');
             if (toolNameElement) {
                 toolNameElement.setAttribute('tool', tool.constructor.name);
+                setSelectedToolDocsLink(tool);
                 tool.renderUI();
             } else {
                 console.error("Element with ID 'toolName' not found.");

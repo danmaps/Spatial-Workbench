@@ -62,10 +62,18 @@ class Tool {
         const toolSelection = document.getElementById('toolSelection');
         const toolDetails = document.getElementById('toolDetails');
         const toolContent = document.getElementById('toolContent');
+        const selectedToolDocsLink = document.getElementById('selectedToolDocsLink');
 
         toolSelection.style.display = 'none';
         toolDetails.classList.remove('hidden');
         toolContent.innerHTML = ''; // Clear existing content
+
+        if (selectedToolDocsLink) {
+            selectedToolDocsLink.href = `/tool-docs/${encodeURIComponent(this.constructor.name)}.html`;
+            selectedToolDocsLink.classList.remove('hidden');
+            selectedToolDocsLink.setAttribute('aria-label', `${this.name} documentation`);
+            selectedToolDocsLink.setAttribute('title', `${this.name} documentation`);
+        }
 
         const toolName = document.createElement('h2');
         // add tool name to toolContent as attribute "tool"

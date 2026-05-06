@@ -45,7 +45,7 @@ function renderToolNav(specs = [], currentKey = null) {
   }).join('');
 }
 
-function renderLayout({ title, eyebrow, content, specs = [], currentKey = null }) {
+function renderLayout({ title, content, specs = [], currentKey = null }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -58,7 +58,6 @@ function renderLayout({ title, eyebrow, content, specs = [], currentKey = null }
   <div class="tool-docs-shell">
     <aside class="tool-docs-sidebar">
       <a class="tool-docs-brand" href="/tool-docs/index.html">Spatial Workbench</a>
-      <div class="tool-docs-eyebrow">${escapeHtml(eyebrow)}</div>
       <nav class="tool-docs-nav" aria-label="Tool docs navigation">
         ${renderToolNav(specs, currentKey)}
       </nav>
@@ -83,10 +82,6 @@ function renderToolDocPage(spec, specs = []) {
         <div class="tool-docs-meta-card">
           <div class="tool-docs-meta-label">Key</div>
           <div class="tool-docs-meta-value"><code>${escapeHtml(spec.key)}</code></div>
-        </div>
-        <div class="tool-docs-meta-card">
-          <div class="tool-docs-meta-label">Parameters</div>
-          <div class="tool-docs-meta-value">${parameters.length}</div>
         </div>
       </div>
     </header>
@@ -116,7 +111,6 @@ function renderToolDocPage(spec, specs = []) {
 
   return renderLayout({
     title: `${spec.name} · Spatial Workbench Docs`,
-    eyebrow: 'Source-driven tool docs',
     content,
     specs,
     currentKey: spec.key,
@@ -131,7 +125,6 @@ function renderDocsIndex(specs = []) {
           <div class="tool-docs-card-title">${escapeHtml(spec.name)}</div>
           <div class="tool-docs-card-key"><code>${escapeHtml(spec.key)}</code></div>
         </div>
-        <div class="tool-docs-card-count">${Array.isArray(spec.parameters) ? spec.parameters.length : 0} params</div>
       </div>
       <p class="tool-docs-card-description">${escapeHtml(spec.description || 'No description is available for this tool yet.')}</p>
       <a class="tool-docs-card-link" href="${getToolDocPath(spec.key)}">Open tool page</a>
@@ -141,7 +134,6 @@ function renderDocsIndex(specs = []) {
     <header class="tool-docs-header">
       <div class="tool-docs-kicker">Reference</div>
       <h1>Tool docs</h1>
-      <p class="tool-docs-description">A first-pass documentation surface generated from each tool’s source-defined spec.</p>
     </header>
 
     <section class="tool-docs-section">
@@ -151,7 +143,6 @@ function renderDocsIndex(specs = []) {
 
   return renderLayout({
     title: 'Spatial Workbench Tool Docs',
-    eyebrow: 'Source-driven tool docs',
     content,
     specs,
   });

@@ -1146,7 +1146,29 @@ function renderToolList(tools) {
     tools.forEach(tool => {
         const toolDiv = document.createElement('div');
         toolDiv.className = 'tool';
-        toolDiv.textContent = tool.name;
+
+        const toolHeader = document.createElement('div');
+        toolHeader.className = 'tool-header';
+
+        const toolName = document.createElement('div');
+        toolName.className = 'tool-title';
+        toolName.textContent = tool.name;
+
+        const toolDocsLink = document.createElement('a');
+        toolDocsLink.className = 'tool-doc-link';
+        toolDocsLink.href = `/tool-docs/${encodeURIComponent(tool.constructor.name)}.html`;
+        toolDocsLink.target = '_blank';
+        toolDocsLink.rel = 'noopener noreferrer';
+        toolDocsLink.textContent = 'Docs';
+        toolDocsLink.setAttribute('aria-label', `${tool.name} documentation`);
+        toolDocsLink.addEventListener('click', (event) => {
+            event.stopPropagation();
+        });
+
+        toolHeader.appendChild(toolName);
+        toolHeader.appendChild(toolDocsLink);
+        toolDiv.appendChild(toolHeader);
+
         toolDiv.addEventListener('click', () => {
             const toolNameElement = document.getElementById('toolName');
             if (toolNameElement) {

@@ -1,6 +1,20 @@
 /* global L, turf */  // Tell ESLint that L and turf are global variables
 
 const { instantiateTools } = require('./runtime/toolRegistry');
+const state = require('./state');
+const { renderAISettings } = require('./ui/ai-settings');
+const { getAttributeModel, parseEditedValue } = require('./ui/attribute-view');
+const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-drawer');
+const {
+    MAP_INTERACTION_MODES,
+    normalizeMapInteractionMode,
+    shouldOpenPopupForMapInteractionMode,
+} = require('./ui/map-interaction-mode');
+const {
+    getLayerSelectionVisualState,
+    getFeatureHighlightStyle,
+    getLayerSelectionFeatureIds,
+} = require('./ui/selection-style');
 
 // Initialize the map
 const map = L.map('map').setView([34, -117], 7);
@@ -11,19 +25,16 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 const drawnItems = new L.FeatureGroup();
 map.addLayer(drawnItems);
 
-document.getElementById('backButton').addEventListener('click', function() {
-    document.getElementById('toolSelection').style.display = 'block';
-    document.getElementById('toolDetails').classList.add('hidden');
-    const statusMessage = document.getElementById('statusMessageText');
-    statusMessage.textContent = "";
-    document.getElementById('statusMessage').style.display = 'none';
-});
+const selectionHighlights = new L.FeatureGroup();
+map.addLayer(selectionHighlights);
 
 // Set up an array to keep track of layers added to the TOC
 const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
-
-const state = require('./state');
+let openLayerMenuId = null;
+let activeDesktopAttributeCell = null;
+let activeAttributeMode = 'all';
+let activeMapInteractionMode = MAP_INTERACTION_MODES.SELECT;
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -34,6 +45,1021 @@ let drawControl = new L.Control.Draw({
     },
 });
 map.addControl(drawControl);
+
+function getLayerHistorySummary(layer) {
+    const info = state.getLayerInfo(layer);
+    const history = info?.provenance?.history || [];
+    return history.map((entry) => entry.name || 'Unknown step');
+}
+
+function getGeometryLabel(geometryType) {
+    const type = geometryType || 'Layer';
+    if (type === 'Point' || type === 'MultiPoint') return 'Point';
+    if (type === 'LineString' || type === 'MultiLineString') return 'Line';
+    if (type === 'Polygon' || type === 'MultiPolygon') return 'Polygon';
+    return type;
+}
+
+function getDefaultLayerName(layer) {
+    const info = state.getLayerInfo(layer);
+    if (!info) return 'Layer';
+
+    const importSummary = info.properties?.importSummary;
+    const metadata = info.metadata || {};
+    const parentName = metadata.parentLayerId ? state.getLayerName(metadata.parentLayerId) : '';
+    const geometryLabel = getGeometryLabel(info.geometryType);
+
+    if (importSummary?.fileName) {
+        return importSummary.fileName.replace(/\.[^/.]+$/, '');
+    }
+
+    if (metadata.name === 'Draw') {
+        const index = tocLayers
+            .filter((candidate) => {
+                const candidateInfo = state.getLayerInfo(candidate);
+                return getGeometryLabel(candidateInfo?.geometryType) === geometryLabel;
+            })
+            .findIndex((candidate) => state.ensureStableId(candidate) === info.id);
+        return `${geometryLabel} ${index + 1}`;
+    }
+
+    if (metadata.name === 'Buffer' && parentName) return `Buffer of ${parentName}`;
+    if (metadata.name === 'Random Points' && parentName) return `Random points from ${parentName}`;
+    if (metadata.name === 'Group' && parentName) return `Grouped ${parentName}`;
+    if (metadata.name === 'Add Data') return geometryLabel;
+    if (metadata.name && parentName) return `${metadata.name} from ${parentName}`;
+    if (metadata.name) return `${metadata.name} ${geometryLabel}`;
+
+    return geometryLabel;
+}
+
+function getLayerLabel(layer, fallbackMessage) {
+    const info = state.getLayerInfo(layer);
+    const explicitName = state.getLayerName(layer);
+    const preferredName = explicitName || info?.displayName || getDefaultLayerName(layer);
+    if (preferredName) return preferredName;
+    return fallbackMessage || info?.label || info?.id || 'Layer';
+}
+
+function getLayerSourceBadge(layer) {
+    const info = state.getLayerInfo(layer);
+    const source = info?.source || {};
+
+    if (source.kind === 'imported') return { label: source.label, tone: 'imported' };
+    if (source.kind === 'derived') return { label: source.label, tone: 'derived' };
+    if (source.kind === 'manual') return { label: source.label, tone: 'manual' };
+    if (source.kind === 'ai') return { label: source.label, tone: 'ai' };
+    if (source.kind === 'tool') return { label: source.label, tone: 'tool' };
+
+    return { label: source.label || 'Layer', tone: 'default' };
+}
+
+function beginRenameLayer(layer, titleEl) {
+    const stableId = state.ensureStableId(layer);
+    const currentName = getLayerLabel(layer);
+    if (!titleEl) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'layer-rename-input';
+    input.value = currentName;
+    input.setAttribute('aria-label', `Rename layer ${stableId}`);
+
+    const commit = () => {
+        const nextName = input.value.trim() || getDefaultLayerName(layer);
+        state.setLayerName(layer, nextName);
+        renderToc();
+        updateDataContent();
+    };
+
+    input.addEventListener('click', (event) => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+        }
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            renderToc();
+        }
+    });
+    input.addEventListener('blur', commit, { once: true });
+
+    titleEl.replaceWith(input);
+    input.focus();
+    input.select();
+}
+
+function removeLayerWithGuard(layer) {
+    const stableId = state.ensureStableId(layer);
+    const label = getLayerLabel(layer);
+    const childIds = state.getChildLayerIds(stableId);
+
+    const confirmed = childIds.length
+        ? window.confirm(`Remove \"${label}\" and its ${childIds.length} derived layer${childIds.length === 1 ? '' : 's'}?`)
+        : window.confirm(`Remove \"${label}\"?`);
+
+    if (!confirmed) return;
+
+    if (childIds.length) {
+        state.removeLayerTree(stableId);
+    } else {
+        state.removeLayer(stableId);
+    }
+
+    updateDataContent();
+}
+
+function getLayerTypeForIcon(layer, type) {
+    if (type) return type;
+    const info = state.getLayerInfo(layer);
+    const geometryType = info?.geometryType;
+    if (geometryType === 'Point' || geometryType === 'MultiPoint') return 'marker';
+    if (geometryType === 'LineString' || geometryType === 'MultiLineString') return 'polyline';
+    return 'polygon';
+}
+
+function createActionButton(iconClass, title, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toc-action';
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.innerHTML = `<i class="${iconClass}"></i>`;
+    button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onClick(event);
+    });
+    return button;
+}
+
+function closeLayerMenu() {
+    if (openLayerMenuId === null) return;
+    openLayerMenuId = null;
+    renderToc();
+}
+
+function toggleLayerMenu(stableId) {
+    openLayerMenuId = openLayerMenuId === stableId ? null : stableId;
+    renderToc();
+}
+
+function getSelectedLayerIds() {
+    return state.getSelectedLayerIds().filter((id) => state.getLayer(id));
+}
+
+function getActiveAttributeLayerId() {
+    return state.getActiveLayerId();
+}
+
+function setActiveAttributeLayerId(layerId) {
+    return state.setActiveLayerId(layerId);
+}
+
+function getActiveAttributeMode() {
+    return activeAttributeMode === 'selected' ? 'selected' : 'all';
+}
+
+function setActiveAttributeMode(mode) {
+    activeAttributeMode = mode === 'selected' ? 'selected' : 'all';
+    return activeAttributeMode;
+}
+
+function syncAttributeModeButtons() {
+    const mode = getActiveAttributeMode();
+    Array.from(document.querySelectorAll('[data-attribute-mode]')).forEach((button) => {
+        const isActive = button.dataset.attributeMode === mode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+function updateSelectionSummary() {
+    const selectedLayerIds = getSelectedLayerIds();
+    const button = document.getElementById('zoomSelectionButton');
+    const summary = document.getElementById('selectionSummary');
+    if (button) button.disabled = selectedLayerIds.length === 0;
+    if (summary) {
+        summary.textContent = selectedLayerIds.length ? `${selectedLayerIds.length} selected` : 'No selection';
+    }
+}
+
+function getSelectedLayers() {
+    return getSelectedLayerIds()
+        .map((id) => state.getLayer(id))
+        .filter(Boolean);
+}
+
+function syncActiveAttributeLayer() {
+    const selectedIds = getSelectedLayerIds();
+    const activeAttributeLayerId = getActiveAttributeLayerId();
+
+    if (selectedIds.includes(activeAttributeLayerId)) return;
+    if (selectedIds.length) {
+        setActiveAttributeLayerId(selectedIds[0]);
+        return;
+    }
+
+    if (activeAttributeLayerId && state.getLayer(activeAttributeLayerId)) return;
+    const firstLayer = tocLayers[0];
+    setActiveAttributeLayerId(firstLayer ? state.ensureStableId(firstLayer) : null);
+}
+
+function buildFeaturePopupContent(row) {
+    const items = Object.entries(row.properties || {})
+        .filter(([key]) => key !== '__id')
+        .map(([key, value]) => `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—'))}</td></tr>`)
+        .join('');
+
+    return `
+        <div class="attribute-popup">
+            <div class="attribute-popup-title">${escapeHtml(row.title)}</div>
+            <table class="popupTable"><tbody>${items || '<tr><td colspan="2">No attributes</td></tr>'}</tbody></table>
+        </div>
+    `;
+}
+
+function getFeaturePopupRow(layerId, featureId, fallbackIndex = 0) {
+    const layer = state.getLayer(layerId);
+    const model = getAttributeModel(layer, {
+        layerId,
+        selectedFeatureIds: featureId ? [featureId] : [],
+    });
+
+    if (!model?.rows?.length) return null;
+    return model.rows.find((row) => row.id === featureId) || model.rows[fallbackIndex] || model.rows[0] || null;
+}
+
+function openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex = 0) {
+    const row = getFeaturePopupRow(layerId, featureId, fallbackIndex);
+    if (!row) return false;
+
+    const popupContent = buildFeaturePopupContent(row);
+
+    if (targetLayer && typeof targetLayer.bindPopup === 'function' && typeof targetLayer.openPopup === 'function') {
+        targetLayer.bindPopup(popupContent).openPopup();
+        return true;
+    }
+
+    try {
+        const previewLayer = L.geoJSON(row.feature);
+        const bounds = previewLayer.getBounds && previewLayer.getBounds();
+        if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+            map.openPopup(popupContent, bounds.getCenter());
+            return true;
+        }
+
+        const marker = previewLayer.getLayers && previewLayer.getLayers()[0];
+        if (marker && typeof marker.getLatLng === 'function') {
+            map.openPopup(popupContent, marker.getLatLng());
+            return true;
+        }
+    } catch (_) {}
+
+    return false;
+}
+
+function zoomToFeature(row) {
+    if (!row?.feature) return false;
+
+    try {
+        const previewLayer = L.geoJSON(row.feature);
+        const bounds = previewLayer.getBounds && previewLayer.getBounds();
+        if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [32, 32] });
+            map.openPopup(buildFeaturePopupContent(row), bounds.getCenter());
+            return true;
+        }
+
+        const marker = previewLayer.getLayers && previewLayer.getLayers()[0];
+        if (marker && typeof marker.getLatLng === 'function') {
+            const latlng = marker.getLatLng();
+            map.setView(latlng, Math.max(map.getZoom(), 14));
+            map.openPopup(buildFeaturePopupContent(row), latlng);
+            return true;
+        }
+    } catch (_) {}
+
+    return false;
+}
+
+function getAttributeLayerTargets(layer) {
+    if (!layer) return [];
+
+    if (typeof layer.eachLayer === 'function') {
+        const targets = [];
+        layer.eachLayer((child) => {
+            if (child?.feature) targets.push(child);
+        });
+        if (targets.length) return targets;
+    }
+
+    return layer?.feature ? [layer] : [];
+}
+
+function ensureFeatureSelectionId(feature, fallbackId) {
+    if (!feature || feature.type !== 'Feature') return null;
+    if (!feature.properties || typeof feature.properties !== 'object') feature.properties = {};
+    const stableId = feature.properties.__id || feature.id || fallbackId || null;
+    if (!stableId) return null;
+    feature.properties.__id = stableId;
+    if (feature.id === undefined || feature.id === null || feature.id === '') feature.id = stableId;
+    return stableId;
+}
+
+function getFeatureSelectionId(targetLayer, parentLayerId, fallbackIndex) {
+    if (!targetLayer?.feature) return null;
+    return ensureFeatureSelectionId(targetLayer.feature, `${parentLayerId || state.ensureStableId(targetLayer)}-${fallbackIndex + 1}`);
+}
+
+function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0) {
+    const layerId = parentLayerId || state.ensureStableId(targetLayer);
+    if (!layerId) return;
+
+    const featureId = getFeatureSelectionId(targetLayer, layerId, fallbackIndex);
+    state.selectLayer(layerId, { makeActive: true });
+    state.setActiveLayerId(layerId);
+    state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
+
+    if (shouldOpenPopupForMapInteractionMode(activeMapInteractionMode)) {
+        openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex);
+    } else if (map && typeof map.closePopup === 'function') {
+        map.closePopup();
+    }
+
+    refreshSidebarState();
+    closeLayerMenu();
+}
+
+function setActiveMapInteractionMode(mode) {
+    activeMapInteractionMode = normalizeMapInteractionMode(mode);
+    Array.from(document.querySelectorAll('[data-map-interaction-mode]')).forEach((button) => {
+        const isActive = button.dataset.mapInteractionMode === activeMapInteractionMode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+}
+
+function addSelectionHighlightFeature(feature, geometryType, isActive) {
+    const style = getFeatureHighlightStyle({ geometryType, isActive });
+    if (!feature) return;
+
+    const layer = L.geoJSON(feature, {
+        interactive: false,
+        style: () => style.kind === 'point' ? undefined : style,
+        pointToLayer: (_feature, latlng) => L.circleMarker(latlng, style),
+    });
+
+    if (typeof layer.eachLayer === 'function') {
+        layer.eachLayer((child) => {
+            if (typeof child.bringToFront === 'function') child.bringToFront();
+        });
+    }
+
+    selectionHighlights.addLayer(layer);
+}
+
+function syncMapSelectionHighlights() {
+    if (!selectionHighlights) return;
+    selectionHighlights.clearLayers();
+
+    tocLayers.forEach((layer) => {
+        const layerId = state.ensureStableId(layer);
+        if (!layerId || !state.isLayerSelected(layerId)) return;
+
+        const info = state.getLayerInfo(layerId);
+        const geometryType = info?.geometryType || info?.geometry?.type || 'Geometry';
+        const isActiveLayer = state.getActiveLayerId() === layerId;
+        const selectedFeatureIds = state.getSelectedFeatureIds(layerId);
+        const targets = getAttributeLayerTargets(layer);
+        const selectedFeatures = selectedFeatureIds.length
+            ? targets.filter((target, index) => selectedFeatureIds.includes(getFeatureSelectionId(target, layerId, index)))
+            : targets;
+
+        selectedFeatures.forEach((target, index) => {
+            if (!target?.feature) return;
+            const featureId = getFeatureSelectionId(target, layerId, index);
+            const isActiveFeature = isActiveLayer && (!selectedFeatureIds.length || selectedFeatureIds[0] === featureId);
+            addSelectionHighlightFeature(target.feature, geometryType, isActiveFeature);
+        });
+    });
+}
+
+function bindLayerSelectionInteraction(layer) {
+    if (!layer || layer.__selectionInteractionBound) return;
+
+    const parentLayerId = state.ensureStableId(layer, layer?.feature?.properties?.__id);
+
+    if (typeof layer.eachLayer === 'function') {
+        let childIndex = 0;
+        layer.eachLayer((child) => {
+            const fallbackIndex = childIndex++;
+            if (!child?.feature || child.__selectionInteractionBound) return;
+            getFeatureSelectionId(child, parentLayerId, fallbackIndex);
+            if (typeof child.on === 'function') {
+                child.on('click', () => applyMapFeatureSelection(child, parentLayerId, fallbackIndex));
+                child.__selectionInteractionBound = true;
+            }
+        });
+    }
+
+    if (layer?.feature && typeof layer.on === 'function') {
+        getFeatureSelectionId(layer, parentLayerId, 0);
+        layer.on('click', () => applyMapFeatureSelection(layer, parentLayerId, 0));
+    }
+
+    layer.__selectionInteractionBound = true;
+}
+
+function updateAttributeFeatureProperty(layerId, rowIndex, propertyKey, nextValue, originalValue) {
+    const layer = state.getLayer(layerId);
+    const targets = getAttributeLayerTargets(layer);
+    const target = targets[rowIndex];
+    if (!target?.feature) return false;
+
+    if (!target.feature.properties) target.feature.properties = {};
+    const parsedValue = parseEditedValue(nextValue, originalValue);
+    target.feature.properties[propertyKey] = parsedValue;
+    return true;
+}
+
+function wireAttributeZoomButtons(root, activeInfo, model) {
+    Array.from(root.querySelectorAll('[data-feature-index]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            const row = model.rows[Number(button.dataset.featureIndex)];
+            if (!row) return;
+            state.setSelectedFeatureIds(activeInfo.id, [row.id]);
+            zoomToFeature(row);
+            renderAttributeView();
+        });
+    });
+}
+
+function wireDesktopAttributeGrid(container, activeInfo, model) {
+    const syncGridSelection = (rowIndex, columnKey) => {
+        const row = model.rows[rowIndex];
+        if (!row) return;
+
+        state.setSelectedFeatureIds(activeInfo.id, [row.id]);
+        activeDesktopAttributeCell = columnKey;
+
+        Array.from(container.querySelectorAll('tbody tr')).forEach((rowEl) => {
+            rowEl.classList.toggle('is-selected-row', Number(rowEl.dataset.rowIndex) === rowIndex);
+        });
+
+        Array.from(container.querySelectorAll('.attribute-grid-cell')).forEach((cellEl) => {
+            const matchesRow = Number(cellEl.dataset.rowIndex) === rowIndex;
+            const matchesColumn = cellEl.dataset.columnKey === columnKey;
+            cellEl.classList.toggle('is-selected-cell', matchesRow && matchesColumn);
+        });
+    };
+
+    Array.from(container.querySelectorAll('.attribute-grid-input')).forEach((input) => {
+        input.addEventListener('focus', () => {
+            syncGridSelection(Number(input.dataset.rowIndex), input.dataset.columnKey || null);
+        });
+
+        input.addEventListener('click', () => {
+            syncGridSelection(Number(input.dataset.rowIndex), input.dataset.columnKey || null);
+        });
+
+        input.addEventListener('change', () => {
+            const rowIndex = Number(input.dataset.rowIndex);
+            const columnKey = input.dataset.columnKey;
+            const row = model.rows[rowIndex];
+            const cell = row?.cells.find((candidate) => candidate.key === columnKey);
+            if (!row || !cell) return;
+
+            const didUpdate = updateAttributeFeatureProperty(activeInfo.id, rowIndex, columnKey, input.value, cell.rawValue);
+            if (!didUpdate) return;
+
+            syncGridSelection(rowIndex, columnKey);
+            updateDataContent();
+        });
+    });
+}
+
+function renderAttributeView() {
+    syncActiveAttributeLayer();
+
+    const mobileContainer = document.getElementById('attributeContent');
+    const mobileSelector = document.getElementById('attributeLayerSelect');
+    const mobileSummary = document.getElementById('attributeSummary');
+    const desktopContainer = document.getElementById('desktopAttributeContent');
+    const desktopSelector = document.getElementById('desktopAttributeLayerSelect');
+    const desktopSummary = document.getElementById('desktopAttributeSummary');
+    const desktopToggleLabel = document.getElementById('desktopAttributeToggleLabel');
+
+    const selectors = [mobileSelector, desktopSelector].filter(Boolean);
+    const summaries = [mobileSummary, desktopSummary].filter(Boolean);
+    const containers = [mobileContainer, desktopContainer].filter(Boolean);
+    if (!selectors.length || !containers.length) return;
+
+    const selectedInfos = getSelectedLayers().map((layer) => state.getLayerInfo(layer)).filter(Boolean);
+    const candidateInfos = selectedInfos.length
+        ? selectedInfos
+        : tocLayers.map((layer) => state.getLayerInfo(layer)).filter(Boolean);
+
+    if (!candidateInfos.length) {
+        selectors.forEach((selector) => {
+            selector.innerHTML = '';
+            selector.disabled = true;
+        });
+        summaries.forEach((summary) => {
+            summary.textContent = 'No layer selected';
+        });
+        if (desktopToggleLabel) desktopToggleLabel.textContent = 'No layer selected';
+        containers.forEach((container) => {
+            container.innerHTML = '<div class="attribute-empty">Select a layer to inspect its attributes.</div>';
+        });
+        return;
+    }
+
+    const activeAttributeLayerId = getActiveAttributeLayerId();
+    const safeActiveId = candidateInfos.some((info) => info.id === activeAttributeLayerId)
+        ? activeAttributeLayerId
+        : candidateInfos[0].id;
+    setActiveAttributeLayerId(safeActiveId);
+
+    const optionMarkup = candidateInfos.map((info) => `
+        <option value="${escapeHtml(info.id)}" ${info.id === safeActiveId ? 'selected' : ''}>${escapeHtml(info.displayName || info.id)}</option>
+    `).join('');
+
+    selectors.forEach((selector) => {
+        selector.disabled = candidateInfos.length === 1;
+        selector.innerHTML = optionMarkup;
+        selector.value = safeActiveId;
+    });
+
+    const activeInfo = candidateInfos.find((info) => info.id === safeActiveId) || candidateInfos[0];
+    const selectedFeatureIds = state.getSelectedFeatureIds(activeInfo.id);
+    const selectedFeatureId = selectedFeatureIds[0] || null;
+    const mode = getActiveAttributeMode();
+    const model = getAttributeModel(activeInfo, {
+        maxRows: 25,
+        mode,
+        selectedFeatureIds,
+    });
+    const activeDesktopAttributeRow = model.rows.findIndex((row) => row.id === selectedFeatureId);
+    const totalFeatureCount = activeInfo.geometry?.featureCount || model.filteredFromTotalRows || model.totalRows || 0;
+    const visibleFeatureCount = model.totalRows || 0;
+    const summaryPrefix = mode === 'selected'
+        ? `${visibleFeatureCount} selected of ${totalFeatureCount}`
+        : `${visibleFeatureCount} feature${visibleFeatureCount === 1 ? '' : 's'}`;
+    const summaryText = `${summaryPrefix} · ${model.columns.length} field${model.columns.length === 1 ? '' : 's'}`;
+
+    summaries.forEach((summary) => {
+        summary.textContent = summaryText;
+    });
+    if (desktopToggleLabel) {
+        const labelCount = mode === 'selected' ? visibleFeatureCount : totalFeatureCount;
+        const labelText = mode === 'selected'
+            ? `${labelCount} selected`
+            : (labelCount ? `${labelCount} feature${labelCount === 1 ? '' : 's'}` : 'No attributes');
+        desktopToggleLabel.textContent = labelText;
+    }
+
+    syncAttributeModeButtons();
+
+    if (!model.totalRows) {
+        const emptyMessage = mode === 'selected'
+            ? 'No selected features in this layer yet.'
+            : 'This layer does not have feature attributes to display yet.';
+        containers.forEach((container) => {
+            container.innerHTML = `<div class="attribute-empty">${emptyMessage}</div>`;
+        });
+        return;
+    }
+
+    const desktopHead = model.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('');
+    const desktopRows = model.rows.map((row) => {
+        const isActiveRow = row.index === activeDesktopAttributeRow;
+        return `
+            <tr class="${isActiveRow ? 'is-selected-row' : ''}" data-row-index="${row.index}">
+                <td class="attribute-row-index">${row.index + 1}</td>
+                ${row.cells.map((cell) => {
+                    const isActiveCell = isActiveRow && cell.key === activeDesktopAttributeCell;
+                    return `
+                        <td class="attribute-grid-cell ${isActiveCell ? 'is-selected-cell' : ''}" data-row-index="${row.index}" data-column-key="${escapeHtml(cell.key)}">
+                            <input
+                                class="attribute-grid-input"
+                                type="text"
+                                value="${escapeHtml(cell.editValue)}"
+                                data-row-index="${row.index}"
+                                data-column-key="${escapeHtml(cell.key)}"
+                                aria-label="Edit ${escapeHtml(cell.key)} for row ${row.index + 1}"
+                            />
+                        </td>
+                    `;
+                }).join('')}
+                <td class="attribute-row-action"><button type="button" class="attribute-row-button" data-feature-index="${row.index}">Zoom</button></td>
+            </tr>
+        `;
+    }).join('');
+
+    const mobileCards = model.rows.map((row) => `
+        <article class="attribute-card">
+            <div class="attribute-card-header">
+                <div>
+                    <div class="attribute-card-title">${escapeHtml(row.title)}</div>
+                    <div class="attribute-card-meta">${escapeHtml(row.geometryType)} · Row ${row.index + 1}</div>
+                </div>
+                <button type="button" class="attribute-row-button" data-feature-index="${row.index}">Zoom</button>
+            </div>
+            <dl class="attribute-card-list">
+                ${row.cells.map((cell) => `<div><dt>${escapeHtml(cell.key)}</dt><dd>${escapeHtml(cell.value)}</dd></div>`).join('')}
+            </dl>
+        </article>
+    `).join('');
+
+    if (desktopContainer) {
+        desktopContainer.innerHTML = `
+            <div class="attribute-shell attribute-shell-desktop">
+                <div class="attribute-table-wrap attribute-table-wrap-desktop">
+                    <table class="attribute-table attribute-table-desktop">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                ${desktopHead}
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>${desktopRows}</tbody>
+                    </table>
+                </div>
+                ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
+            </div>
+        `;
+        wireAttributeZoomButtons(desktopContainer, activeInfo, model);
+        wireDesktopAttributeGrid(desktopContainer, activeInfo, model);
+    }
+
+    if (mobileContainer) {
+        mobileContainer.innerHTML = `
+            <div class="attribute-shell">
+                <div class="attribute-cards">${mobileCards}</div>
+                ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
+            </div>
+        `;
+        wireAttributeZoomButtons(mobileContainer, activeInfo, model);
+    }
+}
+
+function openLayerProperties(layerOrId) {
+    const info = state.getLayerInfo(layerOrId);
+    if (!info) return;
+
+    const title = document.getElementById('layerPropertiesTitle');
+    const body = document.getElementById('layerPropertiesBody');
+    if (!title || !body) return;
+
+    title.textContent = `${info.geometryType || 'Layer'} · ${info.id}`;
+
+    const metadataRows = [];
+    if (info.provenance?.metadata?.name) metadataRows.push(['Created By', info.provenance.metadata.name]);
+    if (info.provenance?.metadata?.timestamp) metadataRows.push(['Timestamp', info.provenance.metadata.timestamp]);
+    if (info.source?.parentLayerId) metadataRows.push(['Parent Layer', info.source.parentLayerId]);
+    metadataRows.push(['Visible', info.ui?.visible ? 'Yes' : 'No']);
+
+    const sourceRows = [];
+    if (info.source?.kind) sourceRows.push(['Source Type', info.source.label || info.source.kind]);
+    if (info.source?.input) sourceRows.push(['Input', info.source.input]);
+    if (info.source?.provider) sourceRows.push(['Provider', info.source.provider]);
+    const importSummary = info.source?.importSummary || info.properties?.importSummary;
+    if (importSummary) {
+        sourceRows.push(['Imported Features', `${importSummary.importedCount}`]);
+        if (importSummary.skippedCount) sourceRows.push(['Skipped Rows', `${importSummary.skippedCount}`]);
+        if (importSummary.detectedColumns?.lat && importSummary.detectedColumns?.lon) {
+            sourceRows.push(['Detected Columns', `${importSummary.detectedColumns.lat}, ${importSummary.detectedColumns.lon}`]);
+        }
+    }
+
+    const geometryRows = [];
+    geometryRows.push(['Geometry Type', info.geometry?.type || info.geometryType || 'Unknown']);
+    geometryRows.push(['Feature Count', `${info.geometry?.featureCount || 0}`]);
+    if (info.bounds) {
+        geometryRows.push(['Bounds', info.bounds.toBBoxString ? info.bounds.toBBoxString() : 'Available']);
+    }
+
+    const history = info.provenance?.history || info.history || [];
+    const historyList = history.length
+        ? `<ol class="properties-history">${history.map((entry) => `<li><strong>${entry.name || 'Unknown step'}</strong>${entry.timestamp ? ` <span class="text-muted">${entry.timestamp}</span>` : ''}${entry.parentLayerId ? `<div class="properties-note">from ${entry.parentLayerId}</div>` : ''}</li>`).join('')}</ol>`
+        : '<p class="properties-empty">No tool history recorded yet.</p>';
+
+    const importWarnings = Array.isArray(importSummary?.warnings) && importSummary.warnings.length
+        ? `<ul class="properties-warnings">${importSummary.warnings.map((warning) => `<li>${warning}</li>`).join('')}</ul>`
+        : '<p class="properties-empty">No import warnings.</p>';
+
+    body.innerHTML = `
+        <section class="properties-section">
+            <h6>Metadata</h6>
+            ${renderKeyValueTable(metadataRows, 'No metadata recorded.')}
+        </section>
+        <section class="properties-section">
+            <h6>Source</h6>
+            ${renderKeyValueTable(sourceRows, 'No source details available.')}
+        </section>
+        <section class="properties-section">
+            <h6>Geometry</h6>
+            ${renderKeyValueTable(geometryRows, 'No geometry details available.')}
+        </section>
+        <section class="properties-section">
+            <h6>Tool History</h6>
+            ${historyList}
+        </section>
+        <section class="properties-section">
+            <h6>Properties</h6>
+            <pre class="properties-json">${escapeHtml(JSON.stringify(info.properties || {}, null, 2))}</pre>
+        </section>
+        <section class="properties-section">
+            <h6>Import Warnings</h6>
+            ${importWarnings}
+        </section>
+    `;
+
+    const modalEl = document.getElementById('layerPropertiesModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+}
+
+function renderKeyValueTable(rows, emptyMessage) {
+    if (!rows.length) return `<p class="properties-empty">${emptyMessage}</p>`;
+    return `<table class="properties-table"><tbody>${rows.map(([key, value]) => `<tr><th>${escapeHtml(String(key))}</th><td>${escapeHtml(String(value))}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function zoomToLayer(layerOrId) {
+    const layer = typeof layerOrId === 'string' ? state.getLayer(layerOrId) : layerOrId;
+    const bounds = state.getLayerBounds(layer);
+    if (bounds && typeof map.fitBounds === 'function') {
+        map.fitBounds(bounds, { padding: [32, 32] });
+        return true;
+    }
+
+    try {
+        if (layer && typeof layer.getLatLng === 'function') {
+            map.setView(layer.getLatLng(), Math.max(map.getZoom(), 14));
+            return true;
+        }
+    } catch (_) {}
+
+    return false;
+}
+
+function zoomToSelection() {
+    const selectedLayers = getSelectedLayerIds()
+        .map((id) => state.getLayer(id))
+        .filter(Boolean);
+
+    if (!selectedLayers.length) return false;
+
+    const group = L.featureGroup(selectedLayers.filter((layer) => state.getLayerBounds(layer)));
+    if (group.getLayers().length) {
+        map.fitBounds(group.getBounds(), { padding: [32, 32] });
+        return true;
+    }
+
+    return zoomToLayer(selectedLayers[0]);
+}
+
+function renderImportSummary(summary) {
+    const container = document.getElementById('importSummary');
+    if (!container) return;
+
+    if (!summary) {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+        return;
+    }
+
+    const warningList = (summary.warnings || []).length
+        ? `<ul>${summary.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>`
+        : '<p class="mb-0">No warnings.</p>';
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="import-summary-card">
+            <div class="import-summary-header">
+                <div>
+                    <strong>Import Summary</strong>
+                    <div class="import-summary-file">${escapeHtml(summary.fileName || 'Imported data')}</div>
+                </div>
+                <button type="button" class="toc-action" id="dismissImportSummary" aria-label="Dismiss import summary">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="import-summary-grid">
+                <div><span>Imported</span><strong>${summary.importedCount}</strong></div>
+                <div><span>Skipped</span><strong>${summary.skippedCount}</strong></div>
+                <div><span>Format</span><strong>${escapeHtml(summary.fileType || 'unknown')}</strong></div>
+                <div><span>Coordinates</span><strong>${escapeHtml(summary.detectedColumns?.lat || '—')} / ${escapeHtml(summary.detectedColumns?.lon || '—')}</strong></div>
+            </div>
+            <div class="import-summary-warnings">
+                <h6>Warnings</h6>
+                ${warningList}
+            </div>
+        </div>
+    `;
+
+    const dismiss = document.getElementById('dismissImportSummary');
+    if (dismiss) dismiss.addEventListener('click', () => renderImportSummary(null));
+}
+
+function renderToc() {
+    const tocContent = document.getElementById('tocContent');
+    if (!tocContent) return;
+    tocContent.innerHTML = '';
+
+    tocLayers.forEach((layer) => {
+        const stableId = state.ensureStableId(layer);
+        const info = state.getLayerInfo(layer);
+        const history = getLayerHistorySummary(layer);
+        const sourceBadge = getLayerSourceBadge(layer);
+        const menuOpen = openLayerMenuId === stableId;
+
+        const isSelected = state.isLayerSelected(stableId);
+        const isActive = state.getActiveLayerId() === stableId;
+        const visualState = getLayerSelectionVisualState({ isSelected, isActive });
+        const featureSelection = getLayerSelectionFeatureIds({
+            featureIds: state.getSelectedFeatureIds(stableId),
+            totalFeatureCount: info?.geometry?.featureCount || 0,
+        });
+
+        const item = document.createElement('div');
+        item.className = `layer-message ${visualState.tocClasses.join(' ')} ${menuOpen ? 'menu-open' : ''}`.trim();
+        item.id = `message-${stableId}`;
+        item.dataset.layerId = stableId;
+        item.tabIndex = 0;
+        item.setAttribute('aria-label', `Layer ${getLayerLabel(layer, info?.label)}`);
+
+        const row = document.createElement('div');
+        row.className = 'layer-row';
+
+        const left = document.createElement('div');
+        left.className = 'layer-row-main';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'layer-select';
+        checkbox.checked = state.isLayerSelected(stableId);
+        checkbox.addEventListener('click', (event) => event.stopPropagation());
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked) {
+                state.selectLayer(stableId, { makeActive: true });
+            } else {
+                state.deselectLayer(stableId);
+            }
+            refreshSidebarState();
+        });
+
+        const textWrap = document.createElement('div');
+        textWrap.className = 'layer-text';
+
+        const title = document.createElement('div');
+        title.className = 'layer-title';
+        title.textContent = getLayerLabel(layer, info?.label);
+        title.title = `${getLayerLabel(layer, info?.label)} · ${stableId}`;
+        title.addEventListener('dblclick', (event) => {
+            event.stopPropagation();
+            beginRenameLayer(layer, title);
+        });
+
+        const meta = document.createElement('div');
+        meta.className = 'layer-meta';
+        meta.textContent = [
+            visualState.label,
+            featureSelection.summary,
+            info?.geometry?.label || getGeometryLabel(info?.geometryType),
+            sourceBadge.label,
+        ].filter(Boolean).join(' · ');
+
+        textWrap.appendChild(title);
+        textWrap.appendChild(meta);
+        left.appendChild(checkbox);
+        left.appendChild(textWrap);
+
+        const menuWrap = document.createElement('div');
+        menuWrap.className = 'layer-menu-wrap';
+        menuWrap.addEventListener('click', (event) => event.stopPropagation());
+
+        const menuButton = document.createElement('button');
+        menuButton.type = 'button';
+        menuButton.className = 'layer-menu-trigger';
+        menuButton.setAttribute('aria-label', `Open actions for ${getLayerLabel(layer, info?.label)}`);
+        menuButton.setAttribute('aria-haspopup', 'menu');
+        menuButton.setAttribute('aria-expanded', menuOpen ? 'true' : 'false');
+        menuButton.innerHTML = '<i class="fa-solid fa-ellipsis"></i>';
+        menuButton.addEventListener('click', () => toggleLayerMenu(stableId));
+
+        const menu = document.createElement('div');
+        menu.className = `layer-menu ${menuOpen ? 'open' : ''}`;
+        menu.setAttribute('role', 'menu');
+
+        const metaSection = document.createElement('div');
+        metaSection.className = 'layer-menu-section layer-menu-details';
+        metaSection.innerHTML = `
+            <div class="layer-menu-label">${info?.geometry?.label || getGeometryLabel(info?.geometryType)} · ${sourceBadge.label}</div>
+            <div class="layer-menu-meta">${history.length ? history.join(' → ') : (info?.geometry?.type || info?.geometryType || 'Layer')}</div>
+            <div class="layer-menu-id">${stableId}</div>
+        `;
+
+        const actionList = document.createElement('div');
+        actionList.className = 'layer-menu-section layer-menu-actions';
+        actionList.appendChild(createActionButton('fas fa-magnifying-glass-location', 'Zoom to layer', () => {
+            closeLayerMenu();
+            zoomToLayer(layer);
+        }));
+        actionList.appendChild(createActionButton('fas fa-pen', 'Rename layer', () => {
+            closeLayerMenu();
+            beginRenameLayer(layer, title);
+        }));
+        actionList.appendChild(createActionButton('fas fa-table', 'View attributes', () => {
+            closeLayerMenu();
+            state.selectLayer(stableId, { makeActive: true });
+            refreshSidebarState();
+        }));
+        actionList.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => {
+            closeLayerMenu();
+            openLayerProperties(layer);
+        }));
+        actionList.appendChild(createActionButton('fas fa-trash', 'Remove layer', () => {
+            closeLayerMenu();
+            removeLayerWithGuard(layer);
+        }));
+
+        menu.appendChild(metaSection);
+        menu.appendChild(actionList);
+        menuWrap.appendChild(menuButton);
+        menuWrap.appendChild(menu);
+
+        row.appendChild(left);
+        row.appendChild(menuWrap);
+        item.appendChild(row);
+
+        item.addEventListener('click', () => {
+            state.toggleLayerSelection(stableId, { makeActive: true });
+            refreshSidebarState();
+        });
+
+        item.addEventListener('keydown', (event) => {
+            if (event.target !== item) return;
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            state.toggleLayerSelection(stableId, { makeActive: true });
+            refreshSidebarState();
+        });
+
+        tocContent.appendChild(item);
+    });
+}
+
+function refreshSidebarState() {
+    renderToc();
+    updateSelectionSummary();
+    renderAttributeView();
+    syncMapSelectionHighlights();
+}
+
+function addToolHistoryEntry(layer, entry) {
+    state.ensureToolHistory(layer, entry);
+}
+
+function setSelectedToolDocsLink(tool) {
+    const docsLink = document.getElementById('selectedToolDocsLink');
+    if (!docsLink) return;
+
+    if (!tool) {
+        docsLink.classList.add('hidden');
+        docsLink.setAttribute('href', '#');
+        docsLink.setAttribute('aria-label', 'Selected tool documentation');
+        docsLink.setAttribute('title', 'Open selected tool documentation');
+        return;
+    }
+
+    docsLink.href = `/tool-docs/${encodeURIComponent(tool.constructor.name)}.html`;
+    docsLink.classList.remove('hidden');
+    docsLink.setAttribute('aria-label', `${tool.name} documentation`);
+    docsLink.setAttribute('title', `${tool.name} documentation`);
+}
+
+document.getElementById('backButton').addEventListener('click', function() {
+    document.getElementById('toolSelection').style.display = 'block';
+    document.getElementById('toolDetails').classList.add('hidden');
+    setSelectedToolDocsLink(null);
+    const statusMessage = document.getElementById('statusMessageText');
+    statusMessage.textContent = '';
+    document.getElementById('statusMessage').style.display = 'none';
+});
 
 // Function to get a tool instance by name
 function getToolByName(name) {
@@ -61,6 +1087,8 @@ function updateDataContent() {
             tool.renderUI();
         }
     }
+
+    refreshSidebarState();
 }
 
 // Event listeners remain the same...
@@ -70,39 +1098,32 @@ map.on(L.Draw.Event.CREATED, function (e) {
     
     drawnItems.addLayer(layer);
 
-
-    
     // Assign a stable id immediately.
     const stableId = state.registerLayer(layer);
+    bindLayerSelectionInteraction(layer);
+    addToolHistoryEntry(layer, {
+        name: 'Draw',
+        timestamp: new Date().toISOString(),
+        geometryType: type,
+    });
 
-    let message = '';
-    if (type === 'marker') {
-        message = `${stableId}`;
-    } else {
-        let vertices = layer.getLatLngs()[0];
-        message = `${stableId} ${type} (${vertices.length} vertices)`;
-    }
+    if (!tocLayers.includes(layer)) tocLayers.push(layer);
 
-    addToToc(layer, message, type);
+    refreshSidebarState();
     updateDataContent();
 });
 
 map.on('draw:edited', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
-        removeMessageForLayer(layer);
         const stableId = state.registerLayer(layer);
-
-        // Markers don't have getLatLngs().
-        let message = '';
-        if (layer && typeof layer.getLatLngs === 'function') {
-            let vertices = layer.getLatLngs()[0] || [];
-            message = `${stableId} (${vertices.length} vertices)`;
-        } else {
-            message = `${stableId} (edited)`;
-        }
-
-        addToToc(layer, message);
+        bindLayerSelectionInteraction(layer);
+        addToolHistoryEntry(layer, {
+            name: 'Edit',
+            timestamp: new Date().toISOString(),
+            layerId: stableId,
+        });
+        if (!tocLayers.includes(layer)) tocLayers.push(layer);
     });
     updateDataContent();
 });
@@ -117,41 +1138,22 @@ map.on('draw:deleted', function (e) {
             // Fall back to direct removal for untracked layers
             drawnItems.removeLayer(layer);
         }
-        removeMessageForLayer(layer);
     });
     updateDataContent();
 });
 
 map.on('layeradd', function (e) {
     let layer = e.layer;
-    // console.log(layer)
     // if layer has a feature.toolMetadata, add the layer to the TOC
     if (layer.hasOwnProperty('feature') && layer.feature.toolMetadata) {
         const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
-        let featureType = layer.feature.geometry.type;
-        let message = `${stableId} ${featureType}`;
-        addToToc(layer, message);
+        bindLayerSelectionInteraction(layer);
+        if (!tocLayers.includes(layer)) tocLayers.push(layer);
+        const importSummary = layer.feature?.properties?.importSummary;
+        if (importSummary) renderImportSummary(importSummary);
+        refreshSidebarState();
     }
 });
-let layerMessageMap = new Map();
-
-function addToToc(layer, message, type) {
-    // map types to fontawesome icons
-    let iconMap = {
-        marker: 'fa-solid fa-location-pin',
-        rectangle: 'fa-solid fa-draw-polygon',
-        circle: 'fa-solid fa-draw-polygon',
-        polyline: 'fa-solid fa-draw-polygon',
-        polygon: 'fa-solid fa-draw-circle',
-    };
-    const stableId = state.ensureStableId(layer);
-    let messageId = `message-${stableId}`;
-    document.getElementById('tocContent').innerHTML += `<p class="layer-message" id="${messageId}"><i class="${iconMap[type]}"></i> ${message}</p>`;
-    if (Array.isArray(tocLayers) && !tocLayers.includes(layer)) {
-        tocLayers.push(layer);
-    }
-    layerMessageMap.set(layer, messageId);
-}
 
 // Load tools dynamically and store them in the loadedTools object
 document.addEventListener('DOMContentLoaded', () => {
@@ -159,6 +1161,65 @@ document.addEventListener('DOMContentLoaded', () => {
         loadedTools[tool.constructor.name] = tool;
     }
     renderToolList(Object.values(loadedTools));
+
+    // Render AI Settings panel
+    const aiSettingsContent = document.getElementById('aiSettingsContent');
+    if (aiSettingsContent) renderAISettings(aiSettingsContent);
+
+    // Wire up AI Settings back button
+    const aiSettingsBack = document.getElementById('aiSettingsBack');
+    if (aiSettingsBack) {
+        aiSettingsBack.addEventListener('click', () => {
+            document.getElementById('aiSettingsPanel').classList.add('hidden');
+            document.getElementById('toolSelection').style.display = 'block';
+        });
+    }
+
+    const zoomSelectionButton = document.getElementById('zoomSelectionButton');
+    if (zoomSelectionButton) {
+        zoomSelectionButton.addEventListener('click', () => zoomToSelection());
+    }
+
+    Array.from(document.querySelectorAll('[data-map-interaction-mode]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            setActiveMapInteractionMode(button.dataset.mapInteractionMode);
+        });
+    });
+    setActiveMapInteractionMode(activeMapInteractionMode);
+
+    const handleAttributeLayerChange = (event) => {
+        setActiveAttributeLayerId(event.target.value || null);
+        renderAttributeView();
+    };
+
+    const attributeLayerSelect = document.getElementById('attributeLayerSelect');
+    if (attributeLayerSelect) {
+        attributeLayerSelect.addEventListener('change', handleAttributeLayerChange);
+    }
+
+    const desktopAttributeLayerSelect = document.getElementById('desktopAttributeLayerSelect');
+    if (desktopAttributeLayerSelect) {
+        desktopAttributeLayerSelect.addEventListener('change', handleAttributeLayerChange);
+    }
+
+    Array.from(document.querySelectorAll('[data-attribute-mode]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            setActiveAttributeMode(button.dataset.attributeMode);
+            syncAttributeModeButtons();
+            renderAttributeView();
+        });
+    });
+
+    const desktopAttributeDrawer = document.getElementById('desktopAttributeDrawer');
+    const desktopAttributeDrawerToggle = document.getElementById('desktopAttributeDrawerToggle');
+    initializeDesktopAttributeDrawer(desktopAttributeDrawer, desktopAttributeDrawerToggle, map, {
+        defaultOpen: false,
+    });
+
+    updateSelectionSummary();
+    renderImportSummary(null);
+    renderAttributeView();
+    syncMapSelectionHighlights();
 });
 
 function renderToolList(tools) {
@@ -166,11 +1227,22 @@ function renderToolList(tools) {
     tools.forEach(tool => {
         const toolDiv = document.createElement('div');
         toolDiv.className = 'tool';
-        toolDiv.textContent = tool.name;
+
+        const toolHeader = document.createElement('div');
+        toolHeader.className = 'tool-header';
+
+        const toolName = document.createElement('div');
+        toolName.className = 'tool-title';
+        toolName.textContent = tool.name;
+
+        toolHeader.appendChild(toolName);
+        toolDiv.appendChild(toolHeader);
+
         toolDiv.addEventListener('click', () => {
             const toolNameElement = document.getElementById('toolName');
             if (toolNameElement) {
                 toolNameElement.setAttribute('tool', tool.constructor.name);
+                setSelectedToolDocsLink(tool);
                 tool.renderUI();
             } else {
                 console.error("Element with ID 'toolName' not found.");
@@ -178,19 +1250,29 @@ function renderToolList(tools) {
         });
         toolContainer.appendChild(toolDiv);
     });
+
+    // Add AI Settings entry at the bottom
+    const settingsDiv = document.createElement('div');
+    settingsDiv.className = 'tool ai-settings-trigger';
+    settingsDiv.innerHTML = '<i class="fas fa-robot me-2"></i>AI Settings';
+    settingsDiv.addEventListener('click', () => {
+        document.getElementById('toolSelection').style.display = 'none';
+        document.getElementById('aiSettingsPanel').classList.remove('hidden');
+    });
+    toolContainer.appendChild(settingsDiv);
 }
 
-function removeMessageForLayer(layer) {
-    let messageId = layerMessageMap.get(layer);
-    if (messageId) {
-        let messageElement = document.getElementById(messageId);
-        // console.log(`removing ${messageElement}`);
-        if (messageElement) {
-            messageElement.remove();
-        }
-        layerMessageMap.delete(layer); // Remove association
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('.layer-menu-wrap')) {
+        closeLayerMenu();
     }
-}
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        closeLayerMenu();
+    }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     updateDataContent();
@@ -201,7 +1283,10 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         map,
         drawnItems,
-        tocLayers
+        tocLayers,
+        zoomToLayer,
+        zoomToSelection,
+        openLayerProperties,
+        renderImportSummary,
     };
 }
-

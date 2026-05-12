@@ -8,6 +8,12 @@
 const _registry = new Map(); // stableId -> leaflet layer
 let _layerRemoveListenerAttached = false;
 
+const _selectionState = {
+  activeLayerId: null,
+  selectedLayerIds: new Set(),
+  selectedFeaturesByLayerId: new Map(),
+};
+
 // Counter to reduce collision risk in _uuid fallback when multiple IDs are generated
 // in the same millisecond.
 let _uuidCounter = 0;
@@ -70,6 +76,14 @@ function ensureLayerRemoveListener() {
   _layerRemoveListenerAttached = true;
 }
 
+function ensureLayerFeature(layer) {
+  if (!layer.feature) {
+    layer.feature = { type: 'Feature', properties: {} };
+  }
+  if (!layer.feature.properties) layer.feature.properties = {};
+  return layer.feature;
+}
+
 function ensureStableId(layer, preferredId) {
   if (!layer) return null;
 
@@ -77,14 +91,231 @@ function ensureStableId(layer, preferredId) {
   if (!layer.__id) layer.__id = preferredId || _uuid();
 
   // Persist on GeoJSON feature properties.
-  // Leaflet.Draw-created layers often don't have .feature; ensure it exists.
-  if (!layer.feature) {
-    layer.feature = { type: 'Feature', properties: {} };
-  }
-  if (!layer.feature.properties) layer.feature.properties = {};
-  if (!layer.feature.properties.__id) layer.feature.properties.__id = layer.__id;
+  const feature = ensureLayerFeature(layer);
+  if (!feature.properties.__id) feature.properties.__id = layer.__id;
 
   return layer.__id;
+}
+
+function cloneMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return null;
+  return JSON.parse(JSON.stringify(metadata));
+}
+
+function ensureFeatureIdentifiers(geojson, baseId) {
+  if (!geojson || typeof geojson !== 'object') return geojson;
+
+  const assignId = (feature, fallbackId) => {
+    if (!feature || feature.type !== 'Feature') return;
+    if (!feature.properties || typeof feature.properties !== 'object') feature.properties = {};
+    const existingId = feature.properties.__id || feature.id;
+    const stableId = existingId || fallbackId || _uuid();
+    feature.properties.__id = stableId;
+    if (feature.id === undefined || feature.id === null || feature.id === '') feature.id = stableId;
+  };
+
+  if (geojson.type === 'FeatureCollection' && Array.isArray(geojson.features)) {
+    geojson.features.forEach((feature, index) => assignId(feature, `${baseId || 'feature'}-${index + 1}`));
+    return geojson;
+  }
+
+  if (geojson.type === 'Feature') {
+    assignId(geojson, baseId || 'feature-1');
+  }
+
+  return geojson;
+}
+
+function sanitizeMetadata(metadata) {
+  const cloned = cloneMetadata(metadata);
+  if (!cloned) return null;
+
+  if (cloned.params && typeof cloned.params === 'object') {
+    if (cloned.params.Input && typeof cloned.params.Input === 'object' && cloned.params.Input.name) {
+      cloned.params.Input = cloned.params.Input.name;
+    }
+  }
+
+  return cloned;
+}
+
+function getToolMetadata(layer) {
+  if (!layer || !layer.feature) return null;
+  return layer.feature.toolMetadata || layer.feature.properties?.toolMetadata || null;
+}
+
+function ensureToolHistory(layer, metadata, options = {}) {
+  if (!layer) return [];
+
+  const feature = ensureLayerFeature(layer);
+  const properties = feature.properties || (feature.properties = {});
+
+  let history = Array.isArray(properties.toolHistory)
+    ? properties.toolHistory.map((entry) => cloneMetadata(entry)).filter(Boolean)
+    : [];
+
+  if (!history.length && Array.isArray(feature.toolHistory)) {
+    history = feature.toolHistory.map((entry) => cloneMetadata(entry)).filter(Boolean);
+  }
+
+  const sourceMetadata = sanitizeMetadata(metadata || getToolMetadata(layer));
+  const inheritFromLayer = options.inheritFromLayer || null;
+  const seenKeys = new Set();
+  const merged = [];
+
+  function pushUnique(entry) {
+    if (!entry) return;
+    const key = JSON.stringify(entry);
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    merged.push(entry);
+  }
+
+  if (inheritFromLayer) {
+    const parentHistory = getToolHistory(inheritFromLayer);
+    parentHistory.forEach(pushUnique);
+  }
+
+  history.forEach(pushUnique);
+  if (sourceMetadata) pushUnique(sourceMetadata);
+
+  properties.toolHistory = merged;
+  feature.toolHistory = merged;
+
+  if (sourceMetadata) {
+    feature.toolMetadata = sourceMetadata;
+    properties.toolMetadata = sourceMetadata;
+  }
+
+  return merged;
+}
+
+function normalizeLayerIds(layerIds) {
+  if (!Array.isArray(layerIds)) return [];
+
+  const seen = new Set();
+  const normalized = [];
+  layerIds.forEach((id) => {
+    if (typeof id !== 'string' || !id.trim()) return;
+    if (!_registry.has(id)) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push(id);
+  });
+
+  return normalized;
+}
+
+function cloneSelectedFeaturesByLayerId() {
+  const cloned = {};
+  _selectionState.selectedFeaturesByLayerId.forEach((featureIds, layerId) => {
+    cloned[layerId] = Array.from(featureIds);
+  });
+  return cloned;
+}
+
+function getActiveLayerId() {
+  return _selectionState.activeLayerId;
+}
+
+function setActiveLayerId(layerId) {
+  if (layerId === null || layerId === undefined || layerId === '') {
+    _selectionState.activeLayerId = null;
+    return null;
+  }
+
+  if (typeof layerId !== 'string' || !_registry.has(layerId)) return _selectionState.activeLayerId;
+
+  _selectionState.activeLayerId = layerId;
+  return _selectionState.activeLayerId;
+}
+
+function getSelectedLayerIds() {
+  return Array.from(_selectionState.selectedLayerIds);
+}
+
+function setSelectedLayerIds(layerIds) {
+  const normalized = normalizeLayerIds(layerIds);
+  _selectionState.selectedLayerIds = new Set(normalized);
+
+  if (_selectionState.activeLayerId && !_selectionState.selectedLayerIds.has(_selectionState.activeLayerId)) {
+    _selectionState.activeLayerId = normalized[0] || null;
+  }
+
+  if (!_selectionState.activeLayerId && normalized.length) {
+    _selectionState.activeLayerId = normalized[0];
+  }
+
+  return getSelectedLayerIds();
+}
+
+function isLayerSelected(layerId) {
+  return _selectionState.selectedLayerIds.has(layerId);
+}
+
+function selectLayer(layerId, options = {}) {
+  if (typeof layerId !== 'string' || !_registry.has(layerId)) return getSelectedLayerIds();
+
+  _selectionState.selectedLayerIds.add(layerId);
+  if (options.makeActive || !_selectionState.activeLayerId) {
+    _selectionState.activeLayerId = layerId;
+  }
+
+  return getSelectedLayerIds();
+}
+
+function deselectLayer(layerId) {
+  _selectionState.selectedLayerIds.delete(layerId);
+  if (_selectionState.activeLayerId === layerId) {
+    _selectionState.activeLayerId = getSelectedLayerIds()[0] || null;
+  }
+  return getSelectedLayerIds();
+}
+
+function toggleLayerSelection(layerId, options = {}) {
+  if (isLayerSelected(layerId)) return deselectLayer(layerId);
+  return selectLayer(layerId, options);
+}
+
+function clearLayerSelection() {
+  _selectionState.selectedLayerIds.clear();
+  _selectionState.activeLayerId = null;
+  return [];
+}
+
+function getSelectedFeaturesByLayerId() {
+  return cloneSelectedFeaturesByLayerId();
+}
+
+function getSelectedFeatureIds(layerId) {
+  if (typeof layerId !== 'string') return [];
+  return Array.from(_selectionState.selectedFeaturesByLayerId.get(layerId) || []);
+}
+
+function setSelectedFeatureIds(layerId, featureIds) {
+  if (typeof layerId !== 'string' || !_registry.has(layerId)) return getSelectedFeatureIds(layerId);
+
+  const normalized = Array.isArray(featureIds)
+    ? Array.from(new Set(featureIds.filter((id) => id !== null && id !== undefined && id !== '')))
+    : [];
+
+  if (!normalized.length) {
+    _selectionState.selectedFeaturesByLayerId.delete(layerId);
+    return [];
+  }
+
+  _selectionState.selectedFeaturesByLayerId.set(layerId, new Set(normalized));
+  return getSelectedFeatureIds(layerId);
+}
+
+function clearSelectedFeatureIds(layerId) {
+  if (typeof layerId === 'string') {
+    _selectionState.selectedFeaturesByLayerId.delete(layerId);
+    return {};
+  }
+
+  _selectionState.selectedFeaturesByLayerId.clear();
+  return {};
 }
 
 function registerLayer(layer, preferredId) {
@@ -99,10 +330,221 @@ function unregisterLayer(layerOrId) {
   const id = typeof layerOrId === 'string' ? layerOrId : (layerOrId && layerOrId.__id);
   if (!id) return;
   _registry.delete(id);
+  _selectionState.selectedLayerIds.delete(id);
+  _selectionState.selectedFeaturesByLayerId.delete(id);
+  if (_selectionState.activeLayerId === id) {
+    _selectionState.activeLayerId = getSelectedLayerIds()[0] || null;
+  }
 }
 
 function getLayer(id) {
   return _registry.get(id) || null;
+}
+
+function getGeometryType(layer) {
+  const geo = (layer && typeof layer.toGeoJSON === 'function') ? layer.toGeoJSON() : null;
+  if (!geo) return (layer && layer.featureType) || null;
+  if (geo.geometry) return geo.geometry.type;
+  // FeatureCollection (group layer) – derive a summary geometry type
+  if (geo.type === 'FeatureCollection' && Array.isArray(geo.features) && geo.features.length > 0) {
+    const types = new Set(geo.features.map(f => f && f.geometry && f.geometry.type).filter(Boolean));
+    if (types.size === 1) return types.values().next().value;
+    return 'Mixed';
+  }
+  return (layer && layer.featureType) || null;
+}
+
+function getGeometryLabel(geometryType) {
+  const type = geometryType || 'Layer';
+  if (type === 'Point' || type === 'MultiPoint') return 'Point';
+  if (type === 'LineString' || type === 'MultiLineString') return 'Line';
+  if (type === 'Polygon' || type === 'MultiPolygon') return 'Polygon';
+  return type;
+}
+
+function getFeatureCountFromGeoJSON(geojson) {
+  if (!geojson) return 0;
+  if (geojson.type === 'FeatureCollection') return Array.isArray(geojson.features) ? geojson.features.length : 0;
+  return 1;
+}
+
+function getLayerBounds(layer) {
+  if (!layer) return null;
+  try {
+    if (typeof layer.getBounds === 'function') {
+      const bounds = layer.getBounds();
+      if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) return bounds;
+    }
+  } catch (_) {}
+
+  try {
+    if (typeof layer.getLatLng === 'function') {
+      const latlng = layer.getLatLng();
+      if (latlng && typeof L !== 'undefined' && L && typeof L.latLngBounds === 'function') {
+        return L.latLngBounds([latlng, latlng]);
+      }
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+function getToolHistory(layer) {
+  if (!layer || !layer.feature) return [];
+  const history = layer.feature.properties?.toolHistory || layer.feature.toolHistory || [];
+  return Array.isArray(history) ? history.map((entry) => cloneMetadata(entry)).filter(Boolean) : [];
+}
+
+function getLayerName(layerOrId) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return '';
+
+  const feature = ensureLayerFeature(layer);
+  const properties = feature.properties || {};
+  return [
+    properties.name,
+    properties.title,
+    properties.layerName,
+    feature.properties?.displayName,
+  ].find((value) => typeof value === 'string' && value.trim()) || '';
+}
+
+function setLayerName(layerOrId, name) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return false;
+
+  const feature = ensureLayerFeature(layer);
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  feature.properties.name = trimmed;
+  feature.properties.layerName = trimmed;
+  feature.properties.displayName = trimmed;
+  return true;
+}
+
+function getChildLayerIds(parentId) {
+  if (!parentId) return [];
+
+  const ids = [];
+  _registry.forEach((layer, id) => {
+    const metadata = getToolMetadata(layer);
+    if (metadata?.parentLayerId === parentId) ids.push(id);
+  });
+
+  return ids;
+}
+
+function removeLayerTree(id) {
+  const descendants = [];
+  const queue = [...getChildLayerIds(id)];
+  const seen = new Set(queue);
+
+  while (queue.length) {
+    const childId = queue.shift();
+    descendants.push(childId);
+    const nested = getChildLayerIds(childId);
+    nested.forEach((nestedId) => {
+      if (seen.has(nestedId)) return;
+      seen.add(nestedId);
+      queue.push(nestedId);
+    });
+  }
+
+  descendants.slice().reverse().forEach((childId) => removeLayer(childId));
+  const removedRoot = removeLayer(id);
+  return {
+    removed: removedRoot ? [id, ...descendants] : descendants,
+    descendantIds: descendants,
+    ok: removedRoot,
+  };
+}
+
+function getLayerInfo(layerOrId) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return null;
+
+  const { map, drawnItems } = getAppRefs();
+  const id = ensureStableId(layer, layer?.feature?.properties?.__id);
+  const geojson = typeof layer.toGeoJSON === 'function' ? layer.toGeoJSON() : null;
+  const geometryType = getGeometryType(layer);
+  const geometryLabel = getGeometryLabel(geometryType);
+  const properties = geojson?.properties || layer.feature?.properties || {};
+  const metadata = sanitizeMetadata(getToolMetadata(layer));
+  const history = getToolHistory(layer);
+  const bounds = getLayerBounds(layer);
+  const name = getLayerName(layer);
+  const featureCount = getFeatureCountFromGeoJSON(geojson);
+
+  let sourceKind = 'unknown';
+  let sourceLabel = 'Layer';
+  const importSummary = properties?.importSummary || null;
+
+  if (importSummary) {
+    sourceKind = 'imported';
+    sourceLabel = 'Imported';
+  } else if (metadata?.parentLayerId) {
+    sourceKind = 'derived';
+    sourceLabel = 'Derived';
+  } else if (metadata?.name === 'Draw' || metadata?.name === 'Edit') {
+    sourceKind = 'manual';
+    sourceLabel = 'Manual';
+  } else if (metadata?.provider || metadata?.name === 'Generate AI Features') {
+    sourceKind = 'ai';
+    sourceLabel = 'AI';
+  } else if (metadata?.name) {
+    sourceKind = 'tool';
+    sourceLabel = metadata.name;
+  }
+
+  const displayName = name || (importSummary?.fileName
+    ? importSummary.fileName.replace(/\.[^/.]+$/, '')
+    : geometryLabel || id || 'Layer');
+
+  const visible = !!(
+    (map && typeof map.hasLayer === 'function' && map.hasLayer(layer)) ||
+    (drawnItems && typeof drawnItems.hasLayer === 'function' && drawnItems.hasLayer(layer))
+  );
+
+  return {
+    id,
+    label: geometryType ? `${geometryType} (${id})` : id,
+    name,
+    displayName,
+    properties,
+    geojson,
+    bounds,
+    geometry: {
+      type: geometryType,
+      label: geometryLabel,
+      featureCount,
+      bounds,
+    },
+    source: {
+      kind: sourceKind,
+      label: sourceLabel,
+      parentLayerId: metadata?.parentLayerId || null,
+      input: metadata?.params?.Input || null,
+      provider: metadata?.provider || null,
+      importedFileName: importSummary?.fileName || null,
+      importSummary,
+      metadata,
+    },
+    provenance: {
+      metadata,
+      history,
+    },
+    ui: {
+      visible,
+      selectable: true,
+      removable: true,
+      editable: true,
+      selected: isLayerSelected(id),
+      active: getActiveLayerId() === id,
+    },
+    // Compatibility aliases for older code paths.
+    geometryType,
+    metadata,
+    history,
+  };
 }
 
 function removeLayer(id) {
@@ -141,13 +583,17 @@ function listLayers() {
     // Ensure the layer is both ID'd and registered.
     const preferredId = layer?.feature?.properties?.__id;
     const id = registerLayer(layer, preferredId);
-    const geo = (layer && typeof layer.toGeoJSON === 'function') ? layer.toGeoJSON() : null;
-    const geomType = geo && geo.geometry ? geo.geometry.type : (layer && layer.featureType) || null;
+    const geomType = getGeometryType(layer);
+    const info = getLayerInfo(layer);
     return {
       id,
       geometryType: geomType,
       // Best-effort label. Tools can choose to display id or a friendlier string.
-      label: geomType ? `${geomType} (${id})` : id,
+      label: info?.displayName || (geomType ? `${geomType} (${id})` : id),
+      displayName: info?.displayName || '',
+      featureCount: info?.geometry?.featureCount || 0,
+      source: info?.source || null,
+      ui: info?.ui || null,
     };
   });
 }
@@ -160,10 +606,52 @@ function getState() {
     layerCount: layers.length,
     layers,
     bounds: map && map.getBounds ? map.getBounds() : null,
+    selection: {
+      activeLayerId: getActiveLayerId(),
+      selectedLayerIds: getSelectedLayerIds(),
+      selectedFeaturesByLayerId: getSelectedFeaturesByLayerId(),
+    },
   };
 }
 
 // ToolResult is intentionally minimal for now.
+function isGeoJSONFeature(value) {
+  return !!value && value.type === 'Feature' && value.geometry && typeof value.geometry.type === 'string';
+}
+
+function isAggregateFeatureGeometry(geometryType) {
+  return geometryType === 'MultiPoint'
+    || geometryType === 'MultiLineString'
+    || geometryType === 'MultiPolygon'
+    || geometryType === 'GeometryCollection';
+}
+
+function shouldAddAsSingleResultLayer(gj) {
+  if (!gj || typeof gj !== 'object') return false;
+  if (gj.type === 'FeatureCollection' || gj.type === 'GeometryCollection') return true;
+  if (isGeoJSONFeature(gj) && isAggregateFeatureGeometry(gj.geometry?.type)) return true;
+  return false;
+}
+
+function coalesceAdditions(addGeojson) {
+  if (!addGeojson) return [];
+  if (!Array.isArray(addGeojson)) return [addGeojson];
+  if (addGeojson.length === 0) return [];
+
+  const everyItemIsFeature = addGeojson.every(isGeoJSONFeature);
+  if (everyItemIsFeature) {
+    const sharedMetadata = addGeojson.find(item => item && item.toolMetadata)?.toolMetadata || null;
+    const collection = {
+      type: 'FeatureCollection',
+      features: addGeojson,
+    };
+    if (sharedMetadata) collection.toolMetadata = sharedMetadata;
+    return [collection];
+  }
+
+  return addGeojson;
+}
+
 // { addGeojson?: Feature|FeatureCollection|Array<Feature|FeatureCollection>, removeLayerIds?: string[] }
 function applyResult(toolResult) {
   ensureLayerRemoveListener();
@@ -181,37 +669,69 @@ function applyResult(toolResult) {
   }
 
   // Additions
-  let toAdd = toolResult.addGeojson;
-  if (!toAdd) return { ok: true, added, removed, errors };
-  if (!Array.isArray(toAdd)) toAdd = [toAdd];
+  const toAdd = coalesceAdditions(toolResult.addGeojson);
+  if (!toAdd.length) return { ok: true, added, removed, errors };
 
   for (const gj of toAdd) {
     try {
-      const layer = L.geoJSON(gj);
-      layer.eachLayer((child) => {
-        // Pull through any existing __id from feature, otherwise mint one.
-        const preferredId = child?.feature?.properties?.__id;
-        const id = registerLayer(child, preferredId);
-        // Ensure the feature property is set even if Leaflet didn't attach it yet.
-        ensureStableId(child, preferredId || id);
+      const parentLayer = gj?.toolMetadata?.parentLayerId ? getLayer(gj.toolMetadata.parentLayerId) : null;
+      const isCollection = shouldAddAsSingleResultLayer(gj);
 
-        // Apply any tool metadata stored on the GeoJSON (prefer top-level, but accept per-feature too).
+      if (isCollection) {
+        // Add the entire result dataset as a single group layer (one layer in TOC).
+        const groupLayer = L.geoJSON(gj);
+
+        const id = registerLayer(groupLayer);
+        ensureStableId(groupLayer, id);
+        ensureFeatureIdentifiers(gj, id);
+
+        // Attach feature object on group layer for metadata/history
+        if (!groupLayer.feature) {
+          groupLayer.feature = { type: 'Feature', properties: {} };
+        }
+        if (!groupLayer.feature.properties) groupLayer.feature.properties = {};
+        groupLayer.feature.properties.__id = id;
+
+        // Apply tool metadata / history
         try {
-          const md = (gj && gj.toolMetadata) || (child.feature && child.feature.toolMetadata) || (child.feature && child.feature.properties && child.feature.properties.toolMetadata);
-          if (child.feature && md) child.feature.toolMetadata = md;
+          const md = gj.toolMetadata || null;
+          ensureToolHistory(groupLayer, md, { inheritFromLayer: parentLayer });
         } catch (e) {
           if (DEBUG) console.warn('applyResult: toolMetadata attach failed', e);
         }
 
         // Add to map + editable group
-        try { child.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
-        try { drawnItems.addLayer(child); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
+        try { groupLayer.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
+        try { drawnItems.addLayer(groupLayer); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
 
-        // Track in TOC
-        if (Array.isArray(tocLayers) && !tocLayers.includes(child)) tocLayers.push(child);
+        // Track in TOC as a single entry
+        if (Array.isArray(tocLayers) && !tocLayers.includes(groupLayer)) tocLayers.push(groupLayer);
 
-        added.push(child.__id);
-      });
+        added.push(groupLayer.__id);
+      } else {
+        // Single Feature (or empty collection) – add individually as before.
+        ensureFeatureIdentifiers(gj);
+        const layer = L.geoJSON(gj);
+        layer.eachLayer((child) => {
+          const preferredId = child?.feature?.properties?.__id;
+          const id = registerLayer(child, preferredId);
+          ensureStableId(child, preferredId || id);
+
+          try {
+            const md = (gj && gj.toolMetadata) || (child.feature && child.feature.toolMetadata) || (child.feature && child.feature.properties && child.feature.properties.toolMetadata);
+            ensureToolHistory(child, md, { inheritFromLayer: parentLayer });
+          } catch (e) {
+            if (DEBUG) console.warn('applyResult: toolMetadata attach failed', e);
+          }
+
+          try { child.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
+          try { drawnItems.addLayer(child); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
+
+          if (Array.isArray(tocLayers) && !tocLayers.includes(child)) tocLayers.push(child);
+
+          added.push(child.__id);
+        });
+      }
     } catch (e) {
       errors.push(String(e && e.message ? e.message : e));
       if (DEBUG) console.warn('applyResult: addGeojson failed', e);
@@ -223,8 +743,29 @@ function applyResult(toolResult) {
 
 module.exports = {
   ensureStableId,
+  ensureToolHistory,
   registerLayer,
   getLayer,
+  getLayerInfo,
+  getLayerBounds,
+  getToolHistory,
+  getActiveLayerId,
+  setActiveLayerId,
+  getSelectedLayerIds,
+  setSelectedLayerIds,
+  isLayerSelected,
+  selectLayer,
+  deselectLayer,
+  toggleLayerSelection,
+  clearLayerSelection,
+  getSelectedFeaturesByLayerId,
+  getSelectedFeatureIds,
+  setSelectedFeatureIds,
+  clearSelectedFeatureIds,
+  getLayerName,
+  setLayerName,
+  getChildLayerIds,
+  removeLayerTree,
   getMap,
   listLayers,
   getState,

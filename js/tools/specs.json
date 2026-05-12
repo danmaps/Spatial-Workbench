@@ -100,7 +100,7 @@
   {
     "key": "GroupTool",
     "name": "Group",
-    "description": "Group",
+    "description": "Groups nearby features by distance and adds the grouped result as a new layer",
     "headlessSupported": false,
     "parameters": [
       {
@@ -113,13 +113,14 @@
         "name": "Distance",
         "description": "distance threshold",
         "type": "float",
-        "defaultValue": 10
+        "defaultValue": 10,
+        "min": 0
       },
       {
         "name": "Units",
         "description": "The units for the distance",
         "type": "dropdown",
-        "defaultValue": "miles",
+        "defaultValue": "kilometers",
         "options": [
           "feet",
           "miles",

@@ -32,6 +32,9 @@ You draw features, run tools, see what happens, and iterate.
   - Grouping by distance
   - Export to GeoJSON
 - Upload external data (GeoJSON, CSV, XLSX with coordinates)
+- See post-import summaries and coordinate warnings after Add Data ingest
+- Zoom to individual layers or the current layer selection from the Contents pane
+- Open on-demand layer properties for metadata, source, geometry, and tool history
 - Generate geometry using AI prompts
 - Inspect tool parameters and outputs directly
 
@@ -62,6 +65,9 @@ Tools are defined declaratively using a small model:
 - The UI is generated automatically
 - Execution updates the map and GeoJSON state
 - Tool metadata can be attached to outputs
+- Layer identity, geometry, provenance, source, and UI hooks are normalized through a canonical layer model in `js/state.js` (see `docs/layer-model.md`)
+- TOC row behavior and per-layer actions follow a minimal row + ellipsis-menu model (see `docs/toc-action-model.md`)
+- New tool work should follow the in-repo implementation guide (see `docs/creating-new-tools.md`)
 
 This mirrors how desktop GIS geoprocessing tools work, but in a much smaller, hackable form.
 
@@ -121,3 +127,24 @@ npm install
 npm run build
 npm start
 ```
+
+## Production / service mode
+
+For a durable deployment, build the frontend bundle and run the Express server directly instead of `nodemon`:
+
+```bash
+npm install
+npm run build
+PORT=3003 npm run start:prod
+```
+
+Recommended environment variables:
+
+```bash
+PORT=3003
+CORS_ORIGINS=https://workbench.dannymcvey.com
+# Optional fallback key for server-side AI requests
+# OPENAI_API_KEY=...
+```
+
+A `systemd --user` service can wrap the production start command and restart it automatically on failure.

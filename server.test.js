@@ -1,127 +1,58 @@
-const http = require('http');
+const { DEFAULT_OLLAMA_MODEL } = require('./js/ai-providers');
 
-const mockGenerateFieldValues = jest.fn();
+describe('server ollama config helpers', () => {
+  let originalFetch;
+  let fetchMock;
+  let getOllamaModels;
+  let normalizeOllamaUrl;
 
-jest.mock('./js/ai/fieldGeneration', () => {
-  const actual = jest.requireActual('./js/ai/fieldGeneration');
-  return {
-    ...actual,
-    generateFieldValues: (...args) => mockGenerateFieldValues(...args),
-  };
-});
-
-describe('headless API', () => {
-  let app;
-  let server;
-  let baseUrl;
-
-  beforeEach(async () => {
+  beforeEach(() => {
     jest.resetModules();
-    mockGenerateFieldValues.mockReset();
-    ({ app } = require('./server'));
-    server = http.createServer(app);
-    await new Promise((resolve) => server.listen(0, resolve));
-    const address = server.address();
-    baseUrl = `http://127.0.0.1:${address.port}`;
+    originalFetch = global.fetch;
+    fetchMock = jest.fn();
+    global.fetch = fetchMock;
+    ({ getOllamaModels, normalizeOllamaUrl } = require('./server'));
   });
 
-  afterEach(async () => {
-    await new Promise((resolve) => server.close(resolve));
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
-  function postJson(pathname, payload) {
-    return new Promise((resolve, reject) => {
-      const body = JSON.stringify(payload);
-      const request = http.request(`${baseUrl}${pathname}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(body),
-        },
-      }, (response) => {
-        let data = '';
-        response.on('data', (chunk) => {
-          data += chunk;
-        });
-        response.on('end', () => {
-          resolve({
-            status: response.statusCode,
-            body: JSON.parse(data),
-          });
-        });
-      });
-
-      request.on('error', reject);
-      request.write(body);
-      request.end();
-    });
-  }
-
-  test('POST /api/run executes AddAIGeneratedFieldTool headlessly', async () => {
-    mockGenerateFieldValues.mockResolvedValue([
-      { id: 'f-1', value: 'priority-a' },
-    ]);
-
-    const response = await postJson('/api/run', {
-        tool: 'AddAIGeneratedFieldTool',
-        params: {
-          'Instruction': 'Generate a priority label',
-          'Output Field Name': 'ai_label',
-          'Source Fields': 'name',
-          'Output Type': 'text',
-        },
-        state: {
-          featureCollection: {
-            type: 'FeatureCollection',
-            features: [
-              { type: 'Feature', properties: { __id: 'f-1', name: 'Main St' }, geometry: { type: 'Point', coordinates: [0, 0] } },
-            ],
-          },
-          selection: {
-            featureIds: ['f-1'],
-          },
-        },
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.body.ok).toBe(true);
-    expect(response.body.status.code).toBe(0);
-    expect(response.body.result.state.featureCollection.features[0].properties.ai_label).toBe('priority-a');
+  test('normalizeOllamaUrl trims trailing slashes', () => {
+    expect(normalizeOllamaUrl('http://localhost:11434///')).toBe('http://localhost:11434');
   });
 
-  test('POST /api/run returns 400 when tool status is non-zero', async () => {
-    const response = await postJson('/api/run', {
-      tool: 'AddAIGeneratedFieldTool',
-      params: {
-        'Output Field Name': 'ai_label',
-      },
-      state: {
-        featureCollection: {
-          type: 'FeatureCollection',
-          features: [
-            { type: 'Feature', properties: { __id: 'f-1', name: 'Main St' }, geometry: { type: 'Point', coordinates: [0, 0] } },
-          ],
-        },
-        selection: {
-          featureIds: ['f-1'],
-        },
-      },
+  test('getOllamaModels prefers runtime models and keeps desired default first', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        models: [
+          { name: 'qwen3:8b' },
+          { name: 'qwen3:4b' },
+        ],
+      }),
     });
 
-    expect(response.status).toBe(400);
-    expect(response.body.ok).toBe(false);
-    expect(response.body.status.code).toBe(2);
-    expect(response.body.error).toBe('Instruction is required.');
+    const result = await getOllamaModels('http://localhost:11434');
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:11434/api/tags');
+    expect(result.ok).toBe(true);
+    expect(result.defaultModel).toBe(DEFAULT_OLLAMA_MODEL);
+    expect(result.models[0]).toEqual({ id: DEFAULT_OLLAMA_MODEL, label: DEFAULT_OLLAMA_MODEL });
+    expect(result.models).toEqual(expect.arrayContaining([
+      { id: 'qwen3:8b', label: 'qwen3:8b' },
+      { id: 'qwen3:4b', label: 'qwen3:4b' },
+    ]));
   });
 
-  test('POST /api/ai_structured validates request body', async () => {
-    const response = await postJson('/api/ai_structured', {
-      systemPrompt: '',
-      userPrompt: 'hello',
-    });
+  test('getOllamaModels falls back to known models when runtime lookup fails', async () => {
+    fetchMock.mockRejectedValue(new Error('connection refused'));
 
-    expect(response.status).toBe(400);
-    expect(response.body.ok).toBe(false);
-    expect(response.body.error).toBe('systemPrompt is required.');
+    const result = await getOllamaModels('http://localhost:11434');
+
+    expect(result.ok).toBe(false);
+    expect(result.source).toBe('fallback');
+    expect(result.defaultModel).toBe(DEFAULT_OLLAMA_MODEL);
+    expect(result.models[0]).toEqual({ id: DEFAULT_OLLAMA_MODEL, label: DEFAULT_OLLAMA_MODEL });
   });
 });

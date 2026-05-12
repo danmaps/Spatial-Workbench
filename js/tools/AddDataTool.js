@@ -11,6 +11,58 @@ if (typeof window !== 'undefined' && window.XLSX) {
     XLSX = null;
 }
 
+const BUNDLED_SAMPLE_DATASETS = [
+    {
+        id: 'sample-cities',
+        fileName: 'sample-cities.geojson',
+        label: 'Sample Cities',
+        data: {
+            type: 'FeatureCollection',
+            features: [
+                {
+                    type: 'Feature',
+                    properties: { name: 'Los Angeles', kind: 'city', population: 3898747 },
+                    geometry: { type: 'Point', coordinates: [-118.2437, 34.0522] },
+                },
+                {
+                    type: 'Feature',
+                    properties: { name: 'San Diego', kind: 'city', population: 1386932 },
+                    geometry: { type: 'Point', coordinates: [-117.1611, 32.7157] },
+                },
+                {
+                    type: 'Feature',
+                    properties: { name: 'Las Vegas', kind: 'city', population: 641903 },
+                    geometry: { type: 'Point', coordinates: [-115.1398, 36.1699] },
+                },
+            ],
+        },
+    },
+    {
+        id: 'sample-study-area',
+        fileName: 'sample-study-area.geojson',
+        label: 'Sample Study Area',
+        data: {
+            type: 'FeatureCollection',
+            features: [
+                {
+                    type: 'Feature',
+                    properties: { name: 'Southern California Study Area', kind: 'study-area' },
+                    geometry: {
+                        type: 'Polygon',
+                        coordinates: [[
+                            [-119.3, 33.2],
+                            [-116.0, 33.2],
+                            [-116.0, 35.2],
+                            [-119.3, 35.2],
+                            [-119.3, 33.2],
+                        ]],
+                    },
+                },
+            ],
+        },
+    },
+];
+
 class AddDataTool extends Tool {
     constructor() {
         super("Add Data", [
@@ -40,20 +92,99 @@ class AddDataTool extends Tool {
         }
     }
 
+    buildImportSummary({ fileName, fileType, importedCount, skippedCount = 0, detectedColumns = {}, warnings = [] }) {
+        return {
+            fileName,
+            fileType,
+            importedCount,
+            skippedCount,
+            detectedColumns,
+            warnings,
+        };
+    }
+
+    attachImportSummary(geojson, summary) {
+        if (!summary) return geojson;
+        const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+        const enrichFeature = (feature) => {
+            feature.properties = feature.properties || {};
+            feature.properties.importSummary = summary;
+            if (warnings.length) feature.properties.importWarnings = warnings;
+            return feature;
+        };
+
+        if (geojson.type === 'FeatureCollection') {
+            geojson.features = (geojson.features || []).map(enrichFeature);
+        } else if (geojson.type === 'Feature') {
+            enrichFeature(geojson);
+        }
+
+        return geojson;
+    }
+
+    createSampleDataset(dataset) {
+        const featureCount = dataset.data.type === 'FeatureCollection'
+            ? (dataset.data.features || []).length
+            : 1;
+        const geojson = JSON.parse(JSON.stringify(dataset.data));
+        const importSummary = this.buildImportSummary({
+            fileName: dataset.fileName,
+            fileType: 'geojson',
+            importedCount: featureCount,
+            skippedCount: 0,
+            warnings: [],
+        });
+
+        geojson.toolMetadata = {
+            name: this.name,
+            params: { Input: dataset.label, Source: 'Bundled Sample Data' },
+            timestamp: new Date().toISOString(),
+        };
+
+        this.attachImportSummary(geojson, importSummary);
+        return geojson;
+    }
+
+    async loadSampleData() {
+        const sampleLayers = BUNDLED_SAMPLE_DATASETS.map((dataset) => this.createSampleDataset(dataset));
+        const res = this.addToMap(sampleLayers);
+        const featureCount = sampleLayers.reduce((total, layer) => total + ((layer.features || []).length || 0), 0);
+        this.setStatus(0, `Loaded ${sampleLayers.length} sample layer(s) with ${featureCount} feature(s).`);
+        return {
+            ...res,
+            sampleData: {
+                layerCount: sampleLayers.length,
+                featureCount,
+                datasets: BUNDLED_SAMPLE_DATASETS.map(({ id, label, fileName }) => ({ id, label, fileName })),
+            },
+        };
+    }
+
     handleGeoJSON(file, params) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
                     const geojson = JSON.parse(e.target.result);
+                    const featureCount = geojson.type === 'FeatureCollection'
+                        ? (geojson.features || []).length
+                        : 1;
+                    const importSummary = this.buildImportSummary({
+                        fileName: file.name,
+                        fileType: 'geojson',
+                        importedCount: featureCount,
+                        skippedCount: 0,
+                        warnings: [],
+                    });
                     geojson.toolMetadata = {
                         name: this.name,
                         params: { ...params, Input: file.name },
                         timestamp: new Date().toISOString()
                     };
+                    this.attachImportSummary(geojson, importSummary);
                     const res = this.addToMap(geojson);
-                    this.setStatus(0, 'GeoJSON added to map.');
-                    resolve(res);
+                    this.setStatus(0, `Imported ${featureCount} GeoJSON feature(s).`);
+                    resolve({ ...res, importSummary });
                 } catch (error) {
                     reject(new Error('Error loading GeoJSON file: ' + error.message));
                 }
@@ -75,23 +206,60 @@ class AddDataTool extends Tool {
         if (!override) {
             const headers = Object.keys(data[0]);
             latCol = headers.find(h => h.toLowerCase().includes('lat')) || '';
-            longCol = headers.find(h => h.toLowerCase().includes('lon')) || '';
+            longCol = headers.find(h => {
+                const lowered = h.toLowerCase();
+                return lowered.includes('lon') || lowered.includes('lng') || lowered.includes('long');
+            }) || '';
         }
 
         if (!latCol || !longCol) {
             throw new Error('Could not identify latitude/longitude columns');
         }
 
-        const geojson = {
-            type: 'FeatureCollection',
-            features: data.map(row => ({
+        const warnings = [];
+        const skippedSamples = [];
+        const features = [];
+
+        data.forEach((row, index) => {
+            const latRaw = row[latCol];
+            const lonRaw = row[longCol];
+            const lat = parseFloat(latRaw);
+            const lon = parseFloat(lonRaw);
+
+            if (Number.isNaN(lat) || Number.isNaN(lon)) {
+                skippedSamples.push(`Row ${index + 2} skipped: invalid coordinates (${latRaw}, ${lonRaw})`);
+                return;
+            }
+
+            features.push({
                 type: 'Feature',
                 geometry: {
                     type: 'Point',
-                    coordinates: [parseFloat(row[longCol]), parseFloat(row[latCol])]
+                    coordinates: [lon, lat]
                 },
                 properties: row
-            })).filter(f => !isNaN(f.geometry.coordinates[0]) && !isNaN(f.geometry.coordinates[1])),
+            });
+        });
+
+        if (skippedSamples.length) {
+            warnings.push(...skippedSamples.slice(0, 5));
+            if (skippedSamples.length > 5) {
+                warnings.push(`${skippedSamples.length - 5} more row(s) were skipped for invalid coordinates.`);
+            }
+        }
+
+        const importSummary = this.buildImportSummary({
+            fileName: file.name,
+            fileType,
+            importedCount: features.length,
+            skippedCount: data.length - features.length,
+            detectedColumns: { lat: latCol, lon: longCol },
+            warnings,
+        });
+
+        const geojson = {
+            type: 'FeatureCollection',
+            features,
             toolMetadata: {
                 name: this.name,
                 params: { ...params, Input: file.name, 'Lat Column': latCol, 'Long Column': longCol },
@@ -99,9 +267,12 @@ class AddDataTool extends Tool {
             }
         };
 
+        this.attachImportSummary(geojson, importSummary);
+
         const res = this.addToMap(geojson);
-        this.setStatus(0, 'Tabular data added to map.');
-        return res;
+        const warningSummary = importSummary.skippedCount ? ` ${importSummary.skippedCount} row(s) skipped.` : '';
+        this.setStatus(0, `Imported ${importSummary.importedCount} feature(s) from ${file.name}.${warningSummary}`.trim());
+        return { ...res, importSummary };
     }
 
     async readTabularFile(file, fileType) {
@@ -136,11 +307,24 @@ class AddDataTool extends Tool {
     }
 
     addToMap(geojson) {
-        const res = applyResult({ addGeojson: geojson });
-        // Fit bounds best-effort using a temporary layer
+        const additions = Array.isArray(geojson) ? geojson : [geojson];
+        const res = applyResult({ addGeojson: additions });
+        // Fit bounds best-effort using temporary layer(s)
         try {
-            const tmp = L.geoJSON(geojson);
-            map.fitBounds(tmp.getBounds());
+            const bounds = [];
+            additions.forEach((item) => {
+                const tmp = L.geoJSON(item);
+                const tmpBounds = tmp.getBounds && tmp.getBounds();
+                if (tmpBounds && typeof tmpBounds.isValid === 'function' && tmpBounds.isValid()) {
+                    bounds.push(tmpBounds);
+                }
+            });
+            if (bounds.length === 1) {
+                map.fitBounds(bounds[0]);
+            } else if (bounds.length > 1 && typeof L !== 'undefined' && L && typeof L.featureGroup === 'function') {
+                const group = L.featureGroup(bounds.map((_, index) => L.geoJSON(additions[index])));
+                map.fitBounds(group.getBounds());
+            }
         } catch (_) {}
         return res;
     }
@@ -156,7 +340,7 @@ class AddDataTool extends Tool {
         const override = document.getElementById('param-Override Columns');
         const latCol = document.getElementById('param-Lat Column');
         const longCol = document.getElementById('param-Long Column');
-        
+
         latCol.style.display = 'none';
         longCol.style.display = 'none';
 
@@ -164,6 +348,23 @@ class AddDataTool extends Tool {
             latCol.style.display = e.target.checked ? 'block' : 'none';
             longCol.style.display = e.target.checked ? 'block' : 'none';
         });
+
+        const toolContent = document.getElementById('toolContent');
+        const executeButton = toolContent.querySelector('button:last-of-type');
+        if (!toolContent || !executeButton) return;
+
+        const sampleHint = document.createElement('p');
+        sampleHint.textContent = 'Or load a bundled sample dataset for a quick demo.';
+
+        const sampleButton = document.createElement('button');
+        sampleButton.type = 'button';
+        sampleButton.id = 'loadSampleDataButton';
+        sampleButton.textContent = 'Load Sample Data';
+        sampleButton.addEventListener('click', () => this.loadSampleData());
+
+        toolContent.insertBefore(sampleHint, executeButton);
+        toolContent.insertBefore(sampleButton, executeButton);
+        toolContent.insertBefore(document.createElement('br'), executeButton);
     }
 }
 
@@ -172,4 +373,3 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
     window.AddDataTool = AddDataTool;
 }
-

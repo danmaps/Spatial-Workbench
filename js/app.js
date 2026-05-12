@@ -1,6 +1,9 @@
 /* global L, turf */  // Tell ESLint that L and turf are global variables
 
-const { instantiateTools } = require('./runtime/toolRegistry');
+const toolSpecs = require('./tools/specs.json');
+const toolNames = toolSpecs
+    .map((spec) => spec && spec.key)
+    .filter((toolKey, index, list) => typeof toolKey === 'string' && toolKey && list.indexOf(toolKey) === index);
 const state = require('./state');
 const { renderAISettings } = require('./ui/ai-settings');
 const { getAttributeModel, parseEditedValue } = require('./ui/attribute-view');

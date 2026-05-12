@@ -67,7 +67,7 @@ describe('ai settings helpers', () => {
     ]);
   });
 
-  test('renderAISettings loads live provider config and saves selected ollama model', async () => {
+  test('renderAISettings loads live provider config, saves selected ollama model, and shows issue link', async () => {
     global.fetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -92,9 +92,12 @@ describe('ai settings helpers', () => {
     const providerSelect = root.querySelector('#ai-provider');
     const modelSelect = root.querySelector('#ai-model-select');
     const saveButton = Array.from(root.querySelectorAll('button')).find((button) => button.textContent === 'Save');
+    const issuesLink = root.querySelector('.settings-meta-link');
 
     expect(providerSelect.value).toBe('ollama');
     expect(modelSelect.value).toBe(DEFAULT_OLLAMA_MODEL);
+    expect(issuesLink).not.toBeNull();
+    expect(issuesLink.href).toBe('https://github.com/danmaps/Spatial-Workbench/issues');
 
     modelSelect.value = 'qwen3:4b';
     modelSelect.dispatchEvent(new Event('change'));

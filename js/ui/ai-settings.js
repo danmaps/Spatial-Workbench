@@ -235,6 +235,13 @@ async function renderAISettings(container) {
     }
   });
 
+  const issuesLink = document.createElement('a');
+  issuesLink.className = 'settings-meta-link';
+  issuesLink.href = 'https://github.com/danmaps/Spatial-Workbench/issues';
+  issuesLink.target = '_blank';
+  issuesLink.rel = 'noopener noreferrer';
+  issuesLink.textContent = 'Report an issue ↗';
+
   // Assemble
   const btnRow = document.createElement('div');
   btnRow.style.display = 'flex';
@@ -243,6 +250,10 @@ async function renderAISettings(container) {
   btnRow.appendChild(saveBtn);
   btnRow.appendChild(testBtn);
   btnRow.appendChild(clearBtn);
+
+  const footerRow = document.createElement('div');
+  footerRow.className = 'settings-meta-row';
+  footerRow.appendChild(issuesLink);
 
   wrapper.appendChild(providerLabel);
   wrapper.appendChild(providerSelect);
@@ -255,6 +266,7 @@ async function renderAISettings(container) {
   wrapper.appendChild(urlInput);
   wrapper.appendChild(btnRow);
   wrapper.appendChild(statusEl);
+  wrapper.appendChild(footerRow);
   container.appendChild(wrapper);
 
   try {

@@ -664,6 +664,10 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     flex: 1;
 }
 
+.layer-text > * + * {
+    margin-top: 4px;
+}
+
 .layer-title {
     font-size: 13px;
     font-weight: 600;

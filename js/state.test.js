@@ -270,7 +270,6 @@ describe('state provenance helpers', () => {
     expect(tocLayers).toHaveLength(1);
     expect(state.getLayer('single-1')).not.toBeNull();
   });
-
   test('setLayerName persists a user-facing layer name', () => {
     const layer = {
       __id: 'layer-1',

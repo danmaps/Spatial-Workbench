@@ -943,8 +943,23 @@ function renderToc() {
             sourceBadge.label,
         ].filter(Boolean).join(' · ');
 
+        const badges = document.createElement('div');
+        badges.className = 'layer-badges';
+
+        const sourceEl = document.createElement('span');
+        sourceEl.className = `layer-badge source-${sourceBadge.tone}`;
+        sourceEl.textContent = sourceBadge.label;
+
+        const typeEl = document.createElement('span');
+        typeEl.className = 'layer-badge layer-badge-type';
+        typeEl.textContent = getGeometryLabel(info?.geometryType);
+
+        badges.appendChild(sourceEl);
+        badges.appendChild(typeEl);
+
         textWrap.appendChild(title);
         textWrap.appendChild(meta);
+        textWrap.appendChild(badges);
         left.appendChild(checkbox);
         left.appendChild(textWrap);
 

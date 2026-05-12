@@ -1,7 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { getLayer, listLayers } = require('../state');
-const { generateFieldValues } = require('../ai/fieldGeneration');
+const { generateFieldValues, coerceGeneratedValue } = require('../ai/fieldGeneration');
 const { normalizeHeadlessState, selectFeatureIds, updateFeatures } = require('../runtime/headlessState');
 
 function splitFieldList(value) {
@@ -11,22 +11,13 @@ function splitFieldList(value) {
     .filter(Boolean);
 }
 
-function coerceOutputValue(value, outputType) {
-  if (value === null || value === undefined) return null;
-  if (outputType === 'number') {
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : null;
-  }
-  if (outputType === 'boolean') {
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      if (normalized === 'true') return true;
-      if (normalized === 'false') return false;
-    }
-    return null;
-  }
-  return String(value);
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 class AddAIGeneratedFieldTool extends Tool {
@@ -97,7 +88,7 @@ class AddAIGeneratedFieldTool extends Tool {
 
     const generatedById = new Map(generated.map((item) => [item.id, item.value]));
     const { state: nextState, updatedCount } = updateFeatures(state, eligibleFeatures.map((feature) => feature.properties.__id), (feature) => {
-      const nextValue = coerceOutputValue(generatedById.get(feature.properties.__id), options.outputType);
+      const nextValue = coerceGeneratedValue(generatedById.get(feature.properties.__id), options.outputType);
       feature.properties[options.outputFieldName] = nextValue;
       feature.toolMetadata = {
         name: this.name,
@@ -142,7 +133,7 @@ class AddAIGeneratedFieldTool extends Tool {
       outputType: options.outputType,
     });
 
-    const nextValue = coerceOutputValue(generated[0] && generated[0].value, options.outputType);
+    const nextValue = coerceGeneratedValue(generated[0] && generated[0].value, options.outputType);
     layer.feature = layer.feature || feature;
     layer.feature.properties = layer.feature.properties || {};
     layer.feature.properties[options.outputFieldName] = nextValue;
@@ -155,7 +146,7 @@ class AddAIGeneratedFieldTool extends Tool {
     if (typeof layer.bindPopup === 'function') {
       let popupContent = "<table class='popupTable'>";
       for (const [key, value] of Object.entries(layer.feature.properties)) {
-        popupContent += `<tr><td><b>${key}</b></td><td>${value}</td></tr>`;
+        popupContent += `<tr><td><b>${escapeHtml(key)}</b></td><td>${escapeHtml(value)}</td></tr>`;
       }
       popupContent += '</table>';
       layer.bindPopup(popupContent);

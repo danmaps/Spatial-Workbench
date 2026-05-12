@@ -2,9 +2,13 @@ const http = require('http');
 
 const mockGenerateFieldValues = jest.fn();
 
-jest.mock('./js/ai/fieldGeneration', () => ({
-  generateFieldValues: (...args) => mockGenerateFieldValues(...args),
-}));
+jest.mock('./js/ai/fieldGeneration', () => {
+  const actual = jest.requireActual('./js/ai/fieldGeneration');
+  return {
+    ...actual,
+    generateFieldValues: (...args) => mockGenerateFieldValues(...args),
+  };
+});
 
 describe('headless API', () => {
   let app;
@@ -83,5 +87,30 @@ describe('headless API', () => {
     expect(response.body.ok).toBe(true);
     expect(response.body.status.code).toBe(0);
     expect(response.body.result.state.featureCollection.features[0].properties.ai_label).toBe('priority-a');
+  });
+
+  test('POST /api/run returns 400 when tool status is non-zero', async () => {
+    const response = await postJson('/api/run', {
+      tool: 'AddAIGeneratedFieldTool',
+      params: {
+        'Output Field Name': 'ai_label',
+      },
+      state: {
+        featureCollection: {
+          type: 'FeatureCollection',
+          features: [
+            { type: 'Feature', properties: { __id: 'f-1', name: 'Main St' }, geometry: { type: 'Point', coordinates: [0, 0] } },
+          ],
+        },
+        selection: {
+          featureIds: ['f-1'],
+        },
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.ok).toBe(false);
+    expect(response.body.status.code).toBe(2);
+    expect(response.body.error).toBe('Instruction is required.');
   });
 });

@@ -32,12 +32,45 @@ function createApp() {
                 params,
                 state,
             });
+            const statusCode = result && result.status ? result.status.code : 1;
+            const hasResult = result && result.result !== undefined;
+            if (statusCode !== 0 || !hasResult) {
+                return res.status(400).json({
+                    ok: false,
+                    ...result,
+                    error: (result && result.status && result.status.message) || 'Headless execution failed.',
+                });
+            }
+
             res.status(200).json({ ok: true, ...result });
         } catch (error) {
             res.status(error.statusCode || 500).json({
                 ok: false,
                 error: error.message || 'Headless execution failed.',
             });
+        }
+    });
+
+    app.post('/api/ai_structured', async (req, res) => {
+        try {
+            const {
+                systemPrompt,
+                userPrompt,
+                model = 'gpt-4o',
+                temperature = 0.2,
+                maxTokens = 1200,
+            } = req.body || {};
+            const data = await requestStructuredData({
+                systemPrompt,
+                userPrompt,
+                model,
+                temperature,
+                maxTokens,
+            });
+            res.status(200).json(data);
+        } catch (error) {
+            console.error('Error fetching structured AI data:', error);
+            res.status(500).json({ error: 'Failed to connect to OpenAI' });
         }
     });
 

@@ -1,8 +1,12 @@
 const mockGenerateFieldValues = jest.fn();
 
-jest.mock('../ai/fieldGeneration', () => ({
-  generateFieldValues: (...args) => mockGenerateFieldValues(...args),
-}));
+jest.mock('../ai/fieldGeneration', () => {
+  const actual = jest.requireActual('../ai/fieldGeneration');
+  return {
+    ...actual,
+    generateFieldValues: (...args) => mockGenerateFieldValues(...args),
+  };
+});
 
 describe('AddAIGeneratedFieldTool', () => {
   let AddAIGeneratedFieldTool;

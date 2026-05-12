@@ -1173,6 +1173,24 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     width: 100%;
 }
 
+.settings-meta-row {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.settings-meta-link {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+.settings-meta-link:hover,
+.settings-meta-link:focus {
+    color: var(--text-primary);
+    text-decoration: underline;
+}
+
 #aiSettingsPanel {
     animation: fadeIn 0.3s ease-out;
 }

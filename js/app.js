@@ -34,6 +34,127 @@ function getLayerHistorySummary(layer) {
     return history.map((entry) => entry.name || 'Unknown step');
 }
 
+function getGeometryLabel(geometryType) {
+    const type = geometryType || 'Layer';
+    if (type === 'Point' || type === 'MultiPoint') return 'Point';
+    if (type === 'LineString' || type === 'MultiLineString') return 'Line';
+    if (type === 'Polygon' || type === 'MultiPolygon') return 'Polygon';
+    return type;
+}
+
+function getDefaultLayerName(layer) {
+    const info = state.getLayerInfo(layer);
+    if (!info) return 'Layer';
+
+    const importSummary = info.properties?.importSummary;
+    const metadata = info.metadata || {};
+    const parentName = metadata.parentLayerId ? state.getLayerName(metadata.parentLayerId) : '';
+    const geometryLabel = getGeometryLabel(info.geometryType);
+
+    if (importSummary?.fileName) {
+        return importSummary.fileName.replace(/\.[^/.]+$/, '');
+    }
+
+    if (metadata.name === 'Draw') {
+        const index = tocLayers
+            .filter((candidate) => {
+                const candidateInfo = state.getLayerInfo(candidate);
+                return getGeometryLabel(candidateInfo?.geometryType) === geometryLabel;
+            })
+            .findIndex((candidate) => state.ensureStableId(candidate) === info.id);
+        return `${geometryLabel} ${index + 1}`;
+    }
+
+    if (metadata.name === 'Buffer' && parentName) return `Buffer of ${parentName}`;
+    if (metadata.name === 'Random Points' && parentName) return `Random points from ${parentName}`;
+    if (metadata.name === 'Group' && parentName) return `Grouped ${parentName}`;
+    if (metadata.name === 'Add Data') return geometryLabel;
+    if (metadata.name && parentName) return `${metadata.name} from ${parentName}`;
+    if (metadata.name) return `${metadata.name} ${geometryLabel}`;
+
+    return geometryLabel;
+}
+
+function getLayerLabel(layer, fallbackMessage) {
+    const info = state.getLayerInfo(layer);
+    const explicitName = state.getLayerName(layer);
+    const preferredName = explicitName || getDefaultLayerName(layer);
+    if (preferredName) return preferredName;
+    return fallbackMessage || info?.label || info?.id || 'Layer';
+}
+
+function getLayerSourceBadge(layer) {
+    const info = state.getLayerInfo(layer);
+    const metadata = info?.metadata || {};
+    const importSummary = info?.properties?.importSummary;
+
+    if (importSummary) return { label: 'Imported', tone: 'imported' };
+    if (metadata.parentLayerId) return { label: 'Derived', tone: 'derived' };
+    if (metadata.name === 'Draw' || metadata.name === 'Edit') return { label: 'Manual', tone: 'manual' };
+    if (metadata.provider || metadata.name === 'Generate AI Features') return { label: 'AI', tone: 'ai' };
+    if (metadata.name) return { label: metadata.name, tone: 'tool' };
+
+    return { label: 'Layer', tone: 'default' };
+}
+
+function beginRenameLayer(layer, titleEl) {
+    const stableId = state.ensureStableId(layer);
+    const currentName = getLayerLabel(layer);
+    if (!titleEl) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'layer-rename-input';
+    input.value = currentName;
+    input.setAttribute('aria-label', `Rename layer ${stableId}`);
+
+    const commit = () => {
+        const nextName = input.value.trim() || getDefaultLayerName(layer);
+        state.setLayerName(layer, nextName);
+        renderToc();
+        updateDataContent();
+    };
+
+    input.addEventListener('click', (event) => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+        }
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            renderToc();
+        }
+    });
+    input.addEventListener('blur', commit, { once: true });
+
+    titleEl.replaceWith(input);
+    input.focus();
+    input.select();
+}
+
+function removeLayerWithGuard(layer) {
+    const stableId = state.ensureStableId(layer);
+    const label = getLayerLabel(layer);
+    const childIds = state.getChildLayerIds(stableId);
+
+    const confirmed = childIds.length
+        ? window.confirm(`Remove \"${label}\" and its ${childIds.length} derived layer${childIds.length === 1 ? '' : 's'}?`)
+        : window.confirm(`Remove \"${label}\"?`);
+
+    if (!confirmed) return;
+
+    if (childIds.length) {
+        state.removeLayerTree(stableId);
+        childIds.forEach((id) => selectedLayerIds.delete(id));
+    } else {
+        state.removeLayer(stableId);
+    }
+
+    selectedLayerIds.delete(stableId);
+    updateDataContent();
+}
+
 function getLayerTypeForIcon(layer, type) {
     if (type) return type;
     const info = state.getLayerInfo(layer);
@@ -41,14 +162,6 @@ function getLayerTypeForIcon(layer, type) {
     if (geometryType === 'Point' || geometryType === 'MultiPoint') return 'marker';
     if (geometryType === 'LineString' || geometryType === 'MultiLineString') return 'polyline';
     return 'polygon';
-}
-
-function getLayerLabel(layer, fallbackMessage) {
-    const info = state.getLayerInfo(layer);
-    const metadata = info?.metadata || {};
-    const preferredName = info?.properties?.name || info?.properties?.title || info?.properties?.layerName || metadata.layerName;
-    if (preferredName) return `${preferredName} · ${info.id}`;
-    return fallbackMessage || info?.label || info?.id || 'Layer';
 }
 
 function createActionButton(iconClass, title, onClick) {
@@ -287,14 +400,35 @@ function renderToc() {
         const title = document.createElement('div');
         title.className = 'layer-title';
         title.textContent = getLayerLabel(layer, info?.label);
+        title.title = `${getLayerLabel(layer, info?.label)} · ${stableId}`;
+        title.addEventListener('dblclick', (event) => {
+            event.stopPropagation();
+            beginRenameLayer(layer, title);
+        });
 
         const meta = document.createElement('div');
         meta.className = 'layer-meta';
         const history = getLayerHistorySummary(layer);
         meta.textContent = history.length ? history.join(' → ') : (info?.geometryType || 'Layer');
 
+        const badges = document.createElement('div');
+        badges.className = 'layer-badges';
+
+        const sourceBadge = getLayerSourceBadge(layer);
+        const sourceEl = document.createElement('span');
+        sourceEl.className = `layer-badge source-${sourceBadge.tone}`;
+        sourceEl.textContent = sourceBadge.label;
+
+        const typeEl = document.createElement('span');
+        typeEl.className = 'layer-badge layer-badge-type';
+        typeEl.textContent = getGeometryLabel(info?.geometryType);
+
+        badges.appendChild(sourceEl);
+        badges.appendChild(typeEl);
+
         textWrap.appendChild(title);
         textWrap.appendChild(meta);
+        textWrap.appendChild(badges);
 
         left.appendChild(checkbox);
         left.appendChild(icon);
@@ -303,7 +437,9 @@ function renderToc() {
         const actions = document.createElement('div');
         actions.className = 'layer-actions';
         actions.appendChild(createActionButton('fas fa-magnifying-glass-location', 'Zoom to layer', () => zoomToLayer(layer)));
+        actions.appendChild(createActionButton('fas fa-pen', 'Rename layer', () => beginRenameLayer(layer, title)));
         actions.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => openLayerProperties(layer)));
+        actions.appendChild(createActionButton('fas fa-trash', 'Remove layer', () => removeLayerWithGuard(layer)));
 
         item.appendChild(left);
         item.appendChild(actions);

@@ -1,6 +1,6 @@
 /* global L, turf */  // Tell ESLint that L and turf are global variables
 
-const toolNames = ['RandomPointsTool', 'BufferTool', 'ExportTool', 'GenerateAIFeatures', 'GroupTool', 'AddDataTool']; // Keep this up to date
+const { instantiateTools } = require('./runtime/toolRegistry');
 
 // Initialize the map
 const map = L.map('map').setView([34, -117], 7);
@@ -155,15 +155,9 @@ function addToToc(layer, message, type) {
 
 // Load tools dynamically and store them in the loadedTools object
 document.addEventListener('DOMContentLoaded', () => {
-    // Load tools synchronously since we're using require
-    toolNames.forEach(name => {
-        try {
-            const ToolClass = require(`./tools/${name}`)[name];
-            loadedTools[name] = new ToolClass();
-        } catch (error) {
-            console.error(`Failed to load tool: ${name}`, error);
-        }
-    });
+    for (const tool of instantiateTools()) {
+        loadedTools[tool.constructor.name] = tool;
+    }
     renderToolList(Object.values(loadedTools));
 });
 

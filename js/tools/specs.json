@@ -3,6 +3,7 @@
     "key": "AddDataTool",
     "name": "Add Data",
     "description": "Upload GeoJSON or tabular data (CSV/XLSX) with coordinates",
+    "headlessSupported": false,
     "parameters": [
       {
         "name": "Input",
@@ -34,6 +35,7 @@
     "key": "BufferTool",
     "name": "Buffer",
     "description": "Makes a buffer around the input layer",
+    "headlessSupported": false,
     "parameters": [
       {
         "name": "Input Layer",
@@ -65,6 +67,7 @@
     "key": "ExportTool",
     "name": "Export",
     "description": "Export data",
+    "headlessSupported": false,
     "parameters": [
       {
         "name": "Layer",
@@ -84,6 +87,7 @@
     "key": "GenerateAIFeatures",
     "name": "Generate AI Features",
     "description": "",
+    "headlessSupported": false,
     "parameters": [
       {
         "name": "Prompt",
@@ -97,6 +101,7 @@
     "key": "GroupTool",
     "name": "Group",
     "description": "Group",
+    "headlessSupported": false,
     "parameters": [
       {
         "name": "Layer",
@@ -128,6 +133,7 @@
     "key": "RandomPointsTool",
     "name": "Random Points",
     "description": "Adds random points within selected polygon",
+    "headlessSupported": false,
     "parameters": [
       {
         "name": "Points Count",
@@ -146,6 +152,93 @@
         "description": "Polygon to add random points within.",
         "type": "dropdown",
         "defaultValue": ""
+      }
+    ]
+  },
+  {
+    "key": "AddAIGeneratedFieldTool",
+    "name": "Add AI-Generated Field",
+    "description": "Generate a new attribute field from existing feature attributes using AI",
+    "headlessSupported": true,
+    "parameters": [
+      {
+        "name": "Input Layer",
+        "description": "The input layer to enrich",
+        "type": "dropdown",
+        "defaultValue": ""
+      },
+      {
+        "name": "Source Fields",
+        "description": "Comma-separated source fields to send to AI",
+        "type": "text",
+        "defaultValue": ""
+      },
+      {
+        "name": "Instruction",
+        "description": "The instruction used to generate the new field",
+        "type": "text",
+        "defaultValue": ""
+      },
+      {
+        "name": "Output Field Name",
+        "description": "The field to write",
+        "type": "text",
+        "defaultValue": ""
+      },
+      {
+        "name": "Output Type",
+        "description": "The output field type",
+        "type": "dropdown",
+        "defaultValue": "text",
+        "options": [
+          "text",
+          "number",
+          "boolean"
+        ]
+      },
+      {
+        "name": "Overwrite Existing Field",
+        "description": "Overwrite existing values in the output field",
+        "type": "boolean",
+        "defaultValue": false
+      }
+    ]
+  },
+  {
+    "key": "ConvertTextToNumericTool",
+    "name": "Convert Text to Numeric",
+    "description": "Convert text-like numeric attributes into numeric values",
+    "headlessSupported": true,
+    "parameters": [
+      {
+        "name": "Input Layer",
+        "description": "The input layer to convert",
+        "type": "dropdown",
+        "defaultValue": ""
+      },
+      {
+        "name": "Input Field Name",
+        "description": "The text field to parse",
+        "type": "text",
+        "defaultValue": ""
+      },
+      {
+        "name": "Output Field Name",
+        "description": "The numeric field to write",
+        "type": "text",
+        "defaultValue": ""
+      },
+      {
+        "name": "Overwrite Existing Field",
+        "description": "Overwrite existing values in the output field",
+        "type": "boolean",
+        "defaultValue": false
+      },
+      {
+        "name": "Use AI Fallback",
+        "description": "Use AI when rules-based parsing fails",
+        "type": "boolean",
+        "defaultValue": true
       }
     ]
   }

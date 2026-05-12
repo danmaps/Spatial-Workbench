@@ -5,18 +5,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const { instantiateTools } = require('../js/runtime/toolRegistry');
 
 const ROOT = path.resolve(__dirname, '..');
 const OUT_PATH = path.join(ROOT, 'js', 'tools', 'specs.json');
-
-const TOOL_NAMES = [
-  'AddDataTool',
-  'BufferTool',
-  'ExportTool',
-  'GenerateAIFeatures',
-  'GroupTool',
-  'RandomPointsTool',
-];
 
 function ensureMock(modulePath, exportsObj) {
   const resolved = require.resolve(modulePath);
@@ -46,11 +38,9 @@ function loadSpecs() {
   bootstrapMocks();
   const specs = [];
 
-  for (const name of TOOL_NAMES) {
-    const ToolClass = require(path.join(ROOT, 'js', 'tools', name))[name];
-    const tool = new ToolClass();
+  for (const tool of instantiateTools()) {
     if (typeof tool.getSpec !== 'function') {
-      throw new Error(`Tool ${name} is missing getSpec()`);
+      throw new Error(`Tool ${tool.constructor.name} is missing getSpec()`);
     }
     specs.push(tool.getSpec());
   }

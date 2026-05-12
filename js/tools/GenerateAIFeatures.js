@@ -1,6 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { applyResult, getLayer } = require('../state');
+const { requestStructuredData } = require('../ai/requestStructuredData');
 
 /**
  * A tool tool for generating AI features.
@@ -22,20 +23,13 @@ class GenerateAIFeatures extends Tool {
 
     async run(params) {
         const prompt = params['Prompt'];
-
-        const response = await fetch('http://127.0.0.1:3000/api/ai_geojson', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ prompt })
+        const data = await requestStructuredData({
+            systemPrompt: "You are a helpful assistant that always only returns valid GeoJSON in response to user queries. Don't use too many vertices. Include somewhat detailed geometry and any attributes you think might be relevant. Include factual information. If you want to communicate text to the user, you may use a message property in the attributes of geometry objects. For compatibility with ArcGIS Pro, avoid multiple geometry types in the GeoJSON output. For example, don't mix points and polygons.",
+            userPrompt: prompt,
+            model: 'gpt-4o',
+            temperature: 0.5,
+            maxTokens: 1024,
         });
-    
-        if (!response.ok) {
-            throw new Error(`AI request failed with status ${response.status}`);
-        }
-
-        const data = await response.json();
         data.toolMetadata = {
             name: this.name,
             params,

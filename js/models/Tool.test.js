@@ -9,6 +9,7 @@ describe('Tool base architecture', () => {
     document.body.innerHTML = `
       <div id="toolSelection" style="display:block"></div>
       <div id="toolDetails" class="hidden"></div>
+      <a id="selectedToolDocsLink" class="hidden" href="#"></a>
       <div id="toolContent"></div>
       <div id="statusMessage" style="display:none"><span id="statusMessageText"></span></div>
       <input id="param-Count" value="7" />
@@ -112,5 +113,45 @@ describe('Tool base architecture', () => {
     expect(tool.getStatus().code).toBe(1);
     expect(tool.getStatus().message).toBe('boom');
     expect(document.getElementById('statusMessageText').textContent).toBe('boom');
+  });
+
+  test('execute wrapper re-renders with last entered params instead of defaults', async () => {
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo', [
+          { name: 'Count', type: 'int', defaultValue: 1, min: 0, max: 10 },
+          { name: 'Enabled', type: 'boolean', defaultValue: false },
+        ], 'demo', null);
+      }
+      async run() {
+        this.setStatus(0, 'ran');
+      }
+    }
+
+    const tool = new DemoTool();
+    tool.renderUI();
+    document.getElementById('param-Count').value = '7';
+    document.getElementById('param-Enabled').checked = true;
+
+    await tool.execute();
+
+    expect(document.getElementById('param-Count').value).toBe('7');
+    expect(document.getElementById('param-Enabled').checked).toBe(true);
+  });
+
+  test('renderUI exposes docs icon for the selected tool', () => {
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo Tool', [], 'demo', null);
+      }
+    }
+
+    const tool = new DemoTool();
+    tool.renderUI();
+
+    const docsLink = document.getElementById('selectedToolDocsLink');
+    expect(docsLink.classList.contains('hidden')).toBe(false);
+    expect(docsLink.getAttribute('href')).toBe('/tool-docs/DemoTool.html');
+    expect(docsLink.getAttribute('aria-label')).toBe('Demo Tool documentation');
   });
 });

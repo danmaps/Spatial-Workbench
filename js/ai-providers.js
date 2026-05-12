@@ -5,6 +5,15 @@
  * Used by both the server (proxy) and the frontend (settings UI).
  */
 
+const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
+const DEFAULT_OLLAMA_MODEL = 'qwen2.5-coder:1.5b';
+const KNOWN_OLLAMA_MODELS = [
+  DEFAULT_OLLAMA_MODEL,
+  'qwen3:8b',
+  'qwen3:4b-thinking',
+  'qwen3:4b',
+];
+
 const AI_PROVIDERS = {
   openai: {
     id: 'openai',
@@ -16,11 +25,13 @@ const AI_PROVIDERS = {
   },
   ollama: {
     id: 'ollama',
-    name: 'Ollama (local)',
-    endpoint: 'http://localhost:11434/v1/chat/completions',
-    defaultModel: 'llama3.2',
+    name: 'Built-in AI',
+    endpoint: `${DEFAULT_OLLAMA_URL}/v1/chat/completions`,
+    defaultModel: DEFAULT_OLLAMA_MODEL,
     requiresKey: false,
-    description: 'Local Ollama instance — no API key needed',
+    description: 'Built-in AI served by this Workbench backend — no API key needed',
+    defaultUrl: DEFAULT_OLLAMA_URL,
+    fallbackModels: KNOWN_OLLAMA_MODELS,
   },
 };
 
@@ -43,10 +54,21 @@ const STORAGE_KEYS = {
 
 // CommonJS + browser dual export
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { AI_PROVIDERS, DEFAULT_PROVIDER, SYSTEM_PROMPT, STORAGE_KEYS };
+  module.exports = {
+    AI_PROVIDERS,
+    DEFAULT_PROVIDER,
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_URL,
+    KNOWN_OLLAMA_MODELS,
+    SYSTEM_PROMPT,
+    STORAGE_KEYS,
+  };
 } else {
   window.AI_PROVIDERS = AI_PROVIDERS;
   window.DEFAULT_PROVIDER = DEFAULT_PROVIDER;
+  window.DEFAULT_OLLAMA_MODEL = DEFAULT_OLLAMA_MODEL;
+  window.DEFAULT_OLLAMA_URL = DEFAULT_OLLAMA_URL;
+  window.KNOWN_OLLAMA_MODELS = KNOWN_OLLAMA_MODELS;
   window.SYSTEM_PROMPT = SYSTEM_PROMPT;
   window.STORAGE_KEYS = STORAGE_KEYS;
 }

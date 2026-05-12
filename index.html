@@ -23,33 +23,58 @@
             <button class="mobile-tab" data-view="map">Map</button>
             <button class="mobile-tab" data-view="tools">Tools</button>
             <button class="mobile-tab" data-view="layers">Layers</button>
+            <button class="mobile-tab" data-view="data">Data</button>
         </div>
     </div>
     <div class="container-fluid">
-        <div class="row h-100">
+        <div class="row h-100 app-layout">
             <!-- Table of contents (left pane) -->
-            <div id="toc" class="col-md-2">
+            <div id="toc" class="col-md-2" aria-label="Layers panel">
                 <div class="toc-header">
-                    <div>
-                        <h4><i class="fas fa-list-ul me-2"></i>Contents</h4>
+                    <div class="toc-header-primary">
                         <div id="selectionSummary" class="toc-subtitle">No selection</div>
                     </div>
-                    <button id="zoomSelectionButton" class="btn btn-sm btn-outline-light" disabled>
-                        <i class="fas fa-expand me-1"></i>Zoom to selection
-                    </button>
+                    <div class="toc-header-actions">
+                        <div class="attribute-mode-toggle" role="group" aria-label="Map feature click mode">
+                            <button type="button" class="attribute-mode-button is-active" data-map-interaction-mode="select">Select</button>
+                            <button type="button" class="attribute-mode-button" data-map-interaction-mode="inspect">Inspect</button>
+                        </div>
+                        <button id="zoomSelectionButton" class="btn btn-sm btn-outline-light" disabled>
+                            <i class="fas fa-expand me-1"></i>Zoom to selection
+                        </button>
+                    </div>
                 </div>
                 <div id="tocContent" class="mt-3"></div>
             </div>
 
             <!-- Map (center pane) -->
-            <div id="map" class="col-md-8"></div>
+            <div id="mapPane" class="col-md-8 map-pane">
+                <div id="map"></div>
+                <section id="desktopAttributeDrawer" class="desktop-attribute-drawer" aria-label="Attributes drawer">
+                    <button id="desktopAttributeDrawerToggle" class="desktop-attribute-toggle" type="button" aria-label="Toggle attributes drawer" aria-expanded="false" aria-controls="desktopAttributeDrawerBody">
+                        <span id="desktopAttributeToggleLabel" class="desktop-attribute-toggle-label">No layer selected</span>
+                        <i class="fas fa-chevron-up" aria-hidden="true"></i>
+                    </button>
+                    <div id="desktopAttributeDrawerBody" class="desktop-attribute-body">
+                        <div class="desktop-attribute-toolbar">
+                            <label class="attribute-label" for="desktopAttributeLayerSelect">Layer</label>
+                            <select id="desktopAttributeLayerSelect" aria-label="Choose layer for desktop attribute view"></select>
+                            <div class="attribute-mode-toggle" role="group" aria-label="Desktop attribute mode">
+                                <button type="button" class="attribute-mode-button is-active" data-attribute-mode="all">All</button>
+                                <button type="button" class="attribute-mode-button" data-attribute-mode="selected">Selected</button>
+                            </div>
+                            <div id="desktopAttributeSummary" class="toc-subtitle">No layer selected</div>
+                        </div>
+                        <div id="desktopAttributeContent" class="attribute-content desktop-attribute-content">
+                            <div class="attribute-empty">Select a layer to inspect its attributes.</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
 
             <!-- Sidebar (right pane) -->
-            <div id="sidebar" class="col-md-2">
-                <div id="toolSelection">
-                    <div class="sidebar-header">
-                        <h4><i class="fas fa-tools me-2"></i>Tools</h4>
-                    </div>
+            <div id="sidebar" class="col-md-2" aria-label="Tools and data panel">
+                <div id="toolSelection" aria-label="Tools panel">
                     <div id="messages" class="mt-3"></div>
                 </div>
 
@@ -65,11 +90,24 @@
                 </div>
                 
                 <div id="toolDetails" class="hidden">
-                    <div class="d-flex align-items-center mb-3">
-                        <button id="backButton" class="btn-icon">
-                            <i class="fas fa-arrow-left"></i>
-                        </button>
-                        <h4 id="toolName" tool="" class="hidden mb-0 ms-3"></h4>
+                    <div class="tool-details-header mb-3">
+                        <div class="tool-details-title-row">
+                            <button id="backButton" class="btn-icon">
+                                <i class="fas fa-arrow-left"></i>
+                            </button>
+                            <h4 id="toolName" tool="" class="hidden mb-0 ms-3"></h4>
+                        </div>
+                        <a
+                            id="selectedToolDocsLink"
+                            class="selected-tool-doc-link hidden"
+                            href="#"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label="Selected tool documentation"
+                            title="Open selected tool documentation"
+                        >
+                            <i class="fas fa-book"></i>
+                        </a>
                     </div>
                     <hr>
                     <div id="toolContent">
@@ -80,6 +118,21 @@
                     </div>
                     <div id="importSummary" class="hidden"></div>
                 </div>
+
+                <section id="attributePanel" class="attribute-panel" aria-label="Attribute data panel">
+                    <div id="attributeSummary" class="toc-subtitle">No layer selected</div>
+                    <div class="attribute-controls">
+                        <label class="attribute-label" for="attributeLayerSelect">Layer</label>
+                        <select id="attributeLayerSelect" aria-label="Choose layer for attribute view"></select>
+                        <div class="attribute-mode-toggle" role="group" aria-label="Attribute mode">
+                            <button type="button" class="attribute-mode-button is-active" data-attribute-mode="all">All</button>
+                            <button type="button" class="attribute-mode-button" data-attribute-mode="selected">Selected</button>
+                        </div>
+                    </div>
+                    <div id="attributeContent" class="attribute-content">
+                        <div class="attribute-empty">Select a layer to inspect its attributes.</div>
+                    </div>
+                </section>
 
                 <div id="drawingData" class="hidden expander">
                     <div class="drawing-header">

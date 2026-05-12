@@ -1,9 +1,20 @@
 /* global L, turf */  // Tell ESLint that L and turf are global variables
 
-const toolNames = ['RandomPointsTool', 'BufferTool', 'ExportTool', 'GenerateAIFeatures', 'GroupTool', 'AddDataTool']; // Keep this up to date
-
+const { instantiateTools } = require('./runtime/toolRegistry');
 const state = require('./state');
 const { renderAISettings } = require('./ui/ai-settings');
+const { getAttributeModel, parseEditedValue } = require('./ui/attribute-view');
+const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-drawer');
+const {
+    MAP_INTERACTION_MODES,
+    normalizeMapInteractionMode,
+    shouldOpenPopupForMapInteractionMode,
+} = require('./ui/map-interaction-mode');
+const {
+    getLayerSelectionVisualState,
+    getFeatureHighlightStyle,
+    getLayerSelectionFeatureIds,
+} = require('./ui/selection-style');
 
 // Initialize the map
 const map = L.map('map').setView([34, -117], 7);
@@ -14,10 +25,16 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 const drawnItems = new L.FeatureGroup();
 map.addLayer(drawnItems);
 
+const selectionHighlights = new L.FeatureGroup();
+map.addLayer(selectionHighlights);
+
 // Set up an array to keep track of layers added to the TOC
 const tocLayers = [];
 const loadedTools = {}; // Object to store instantiated tools
-const selectedLayerIds = new Set();
+let openLayerMenuId = null;
+let activeDesktopAttributeCell = null;
+let activeAttributeMode = 'all';
+let activeMapInteractionMode = MAP_INTERACTION_MODES.SELECT;
 
 let drawControl = new L.Control.Draw({
     draw: {
@@ -30,7 +47,8 @@ let drawControl = new L.Control.Draw({
 map.addControl(drawControl);
 
 function getLayerHistorySummary(layer) {
-    const history = state.getToolHistory(layer);
+    const info = state.getLayerInfo(layer);
+    const history = info?.provenance?.history || [];
     return history.map((entry) => entry.name || 'Unknown step');
 }
 
@@ -78,23 +96,22 @@ function getDefaultLayerName(layer) {
 function getLayerLabel(layer, fallbackMessage) {
     const info = state.getLayerInfo(layer);
     const explicitName = state.getLayerName(layer);
-    const preferredName = explicitName || getDefaultLayerName(layer);
+    const preferredName = explicitName || info?.displayName || getDefaultLayerName(layer);
     if (preferredName) return preferredName;
     return fallbackMessage || info?.label || info?.id || 'Layer';
 }
 
 function getLayerSourceBadge(layer) {
     const info = state.getLayerInfo(layer);
-    const metadata = info?.metadata || {};
-    const importSummary = info?.properties?.importSummary;
+    const source = info?.source || {};
 
-    if (importSummary) return { label: 'Imported', tone: 'imported' };
-    if (metadata.parentLayerId) return { label: 'Derived', tone: 'derived' };
-    if (metadata.name === 'Draw' || metadata.name === 'Edit') return { label: 'Manual', tone: 'manual' };
-    if (metadata.provider || metadata.name === 'Generate AI Features') return { label: 'AI', tone: 'ai' };
-    if (metadata.name) return { label: metadata.name, tone: 'tool' };
+    if (source.kind === 'imported') return { label: source.label, tone: 'imported' };
+    if (source.kind === 'derived') return { label: source.label, tone: 'derived' };
+    if (source.kind === 'manual') return { label: source.label, tone: 'manual' };
+    if (source.kind === 'ai') return { label: source.label, tone: 'ai' };
+    if (source.kind === 'tool') return { label: source.label, tone: 'tool' };
 
-    return { label: 'Layer', tone: 'default' };
+    return { label: source.label || 'Layer', tone: 'default' };
 }
 
 function beginRenameLayer(layer, titleEl) {
@@ -146,12 +163,10 @@ function removeLayerWithGuard(layer) {
 
     if (childIds.length) {
         state.removeLayerTree(stableId);
-        childIds.forEach((id) => selectedLayerIds.delete(id));
     } else {
         state.removeLayer(stableId);
     }
 
-    selectedLayerIds.delete(stableId);
     updateDataContent();
 }
 
@@ -178,12 +193,515 @@ function createActionButton(iconClass, title, onClick) {
     return button;
 }
 
+function closeLayerMenu() {
+    if (openLayerMenuId === null) return;
+    openLayerMenuId = null;
+    renderToc();
+}
+
+function toggleLayerMenu(stableId) {
+    openLayerMenuId = openLayerMenuId === stableId ? null : stableId;
+    renderToc();
+}
+
+function getSelectedLayerIds() {
+    return state.getSelectedLayerIds().filter((id) => state.getLayer(id));
+}
+
+function getActiveAttributeLayerId() {
+    return state.getActiveLayerId();
+}
+
+function setActiveAttributeLayerId(layerId) {
+    return state.setActiveLayerId(layerId);
+}
+
+function getActiveAttributeMode() {
+    return activeAttributeMode === 'selected' ? 'selected' : 'all';
+}
+
+function setActiveAttributeMode(mode) {
+    activeAttributeMode = mode === 'selected' ? 'selected' : 'all';
+    return activeAttributeMode;
+}
+
+function syncAttributeModeButtons() {
+    const mode = getActiveAttributeMode();
+    Array.from(document.querySelectorAll('[data-attribute-mode]')).forEach((button) => {
+        const isActive = button.dataset.attributeMode === mode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
 function updateSelectionSummary() {
+    const selectedLayerIds = getSelectedLayerIds();
     const button = document.getElementById('zoomSelectionButton');
     const summary = document.getElementById('selectionSummary');
-    if (button) button.disabled = selectedLayerIds.size === 0;
+    if (button) button.disabled = selectedLayerIds.length === 0;
     if (summary) {
-        summary.textContent = selectedLayerIds.size ? `${selectedLayerIds.size} selected` : 'No selection';
+        summary.textContent = selectedLayerIds.length ? `${selectedLayerIds.length} selected` : 'No selection';
+    }
+}
+
+function getSelectedLayers() {
+    return getSelectedLayerIds()
+        .map((id) => state.getLayer(id))
+        .filter(Boolean);
+}
+
+function syncActiveAttributeLayer() {
+    const selectedIds = getSelectedLayerIds();
+    const activeAttributeLayerId = getActiveAttributeLayerId();
+
+    if (selectedIds.includes(activeAttributeLayerId)) return;
+    if (selectedIds.length) {
+        setActiveAttributeLayerId(selectedIds[0]);
+        return;
+    }
+
+    if (activeAttributeLayerId && state.getLayer(activeAttributeLayerId)) return;
+    const firstLayer = tocLayers[0];
+    setActiveAttributeLayerId(firstLayer ? state.ensureStableId(firstLayer) : null);
+}
+
+function buildFeaturePopupContent(row) {
+    const items = Object.entries(row.properties || {})
+        .filter(([key]) => key !== '__id')
+        .map(([key, value]) => `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—'))}</td></tr>`)
+        .join('');
+
+    return `
+        <div class="attribute-popup">
+            <div class="attribute-popup-title">${escapeHtml(row.title)}</div>
+            <table class="popupTable"><tbody>${items || '<tr><td colspan="2">No attributes</td></tr>'}</tbody></table>
+        </div>
+    `;
+}
+
+function getFeaturePopupRow(layerId, featureId, fallbackIndex = 0) {
+    const layer = state.getLayer(layerId);
+    const model = getAttributeModel(layer, {
+        layerId,
+        selectedFeatureIds: featureId ? [featureId] : [],
+    });
+
+    if (!model?.rows?.length) return null;
+    return model.rows.find((row) => row.id === featureId) || model.rows[fallbackIndex] || model.rows[0] || null;
+}
+
+function openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex = 0) {
+    const row = getFeaturePopupRow(layerId, featureId, fallbackIndex);
+    if (!row) return false;
+
+    const popupContent = buildFeaturePopupContent(row);
+
+    if (targetLayer && typeof targetLayer.bindPopup === 'function' && typeof targetLayer.openPopup === 'function') {
+        targetLayer.bindPopup(popupContent).openPopup();
+        return true;
+    }
+
+    try {
+        const previewLayer = L.geoJSON(row.feature);
+        const bounds = previewLayer.getBounds && previewLayer.getBounds();
+        if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+            map.openPopup(popupContent, bounds.getCenter());
+            return true;
+        }
+
+        const marker = previewLayer.getLayers && previewLayer.getLayers()[0];
+        if (marker && typeof marker.getLatLng === 'function') {
+            map.openPopup(popupContent, marker.getLatLng());
+            return true;
+        }
+    } catch (_) {}
+
+    return false;
+}
+
+function zoomToFeature(row) {
+    if (!row?.feature) return false;
+
+    try {
+        const previewLayer = L.geoJSON(row.feature);
+        const bounds = previewLayer.getBounds && previewLayer.getBounds();
+        if (bounds && typeof bounds.isValid === 'function' && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [32, 32] });
+            map.openPopup(buildFeaturePopupContent(row), bounds.getCenter());
+            return true;
+        }
+
+        const marker = previewLayer.getLayers && previewLayer.getLayers()[0];
+        if (marker && typeof marker.getLatLng === 'function') {
+            const latlng = marker.getLatLng();
+            map.setView(latlng, Math.max(map.getZoom(), 14));
+            map.openPopup(buildFeaturePopupContent(row), latlng);
+            return true;
+        }
+    } catch (_) {}
+
+    return false;
+}
+
+function getAttributeLayerTargets(layer) {
+    if (!layer) return [];
+
+    if (typeof layer.eachLayer === 'function') {
+        const targets = [];
+        layer.eachLayer((child) => {
+            if (child?.feature) targets.push(child);
+        });
+        if (targets.length) return targets;
+    }
+
+    return layer?.feature ? [layer] : [];
+}
+
+function ensureFeatureSelectionId(feature, fallbackId) {
+    if (!feature || feature.type !== 'Feature') return null;
+    if (!feature.properties || typeof feature.properties !== 'object') feature.properties = {};
+    const stableId = feature.properties.__id || feature.id || fallbackId || null;
+    if (!stableId) return null;
+    feature.properties.__id = stableId;
+    if (feature.id === undefined || feature.id === null || feature.id === '') feature.id = stableId;
+    return stableId;
+}
+
+function getFeatureSelectionId(targetLayer, parentLayerId, fallbackIndex) {
+    if (!targetLayer?.feature) return null;
+    return ensureFeatureSelectionId(targetLayer.feature, `${parentLayerId || state.ensureStableId(targetLayer)}-${fallbackIndex + 1}`);
+}
+
+function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0) {
+    const layerId = parentLayerId || state.ensureStableId(targetLayer);
+    if (!layerId) return;
+
+    const featureId = getFeatureSelectionId(targetLayer, layerId, fallbackIndex);
+    state.selectLayer(layerId, { makeActive: true });
+    state.setActiveLayerId(layerId);
+    state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
+
+    if (shouldOpenPopupForMapInteractionMode(activeMapInteractionMode)) {
+        openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex);
+    } else if (map && typeof map.closePopup === 'function') {
+        map.closePopup();
+    }
+
+    refreshSidebarState();
+    closeLayerMenu();
+}
+
+function setActiveMapInteractionMode(mode) {
+    activeMapInteractionMode = normalizeMapInteractionMode(mode);
+    Array.from(document.querySelectorAll('[data-map-interaction-mode]')).forEach((button) => {
+        const isActive = button.dataset.mapInteractionMode === activeMapInteractionMode;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+}
+
+function addSelectionHighlightFeature(feature, geometryType, isActive) {
+    const style = getFeatureHighlightStyle({ geometryType, isActive });
+    if (!feature) return;
+
+    const layer = L.geoJSON(feature, {
+        interactive: false,
+        style: () => style.kind === 'point' ? undefined : style,
+        pointToLayer: (_feature, latlng) => L.circleMarker(latlng, style),
+    });
+
+    if (typeof layer.eachLayer === 'function') {
+        layer.eachLayer((child) => {
+            if (typeof child.bringToFront === 'function') child.bringToFront();
+        });
+    }
+
+    selectionHighlights.addLayer(layer);
+}
+
+function syncMapSelectionHighlights() {
+    if (!selectionHighlights) return;
+    selectionHighlights.clearLayers();
+
+    tocLayers.forEach((layer) => {
+        const layerId = state.ensureStableId(layer);
+        if (!layerId || !state.isLayerSelected(layerId)) return;
+
+        const info = state.getLayerInfo(layerId);
+        const geometryType = info?.geometryType || info?.geometry?.type || 'Geometry';
+        const isActiveLayer = state.getActiveLayerId() === layerId;
+        const selectedFeatureIds = state.getSelectedFeatureIds(layerId);
+        const targets = getAttributeLayerTargets(layer);
+        const selectedFeatures = selectedFeatureIds.length
+            ? targets.filter((target, index) => selectedFeatureIds.includes(getFeatureSelectionId(target, layerId, index)))
+            : targets;
+
+        selectedFeatures.forEach((target, index) => {
+            if (!target?.feature) return;
+            const featureId = getFeatureSelectionId(target, layerId, index);
+            const isActiveFeature = isActiveLayer && (!selectedFeatureIds.length || selectedFeatureIds[0] === featureId);
+            addSelectionHighlightFeature(target.feature, geometryType, isActiveFeature);
+        });
+    });
+}
+
+function bindLayerSelectionInteraction(layer) {
+    if (!layer || layer.__selectionInteractionBound) return;
+
+    const parentLayerId = state.ensureStableId(layer, layer?.feature?.properties?.__id);
+
+    if (typeof layer.eachLayer === 'function') {
+        let childIndex = 0;
+        layer.eachLayer((child) => {
+            const fallbackIndex = childIndex++;
+            if (!child?.feature || child.__selectionInteractionBound) return;
+            getFeatureSelectionId(child, parentLayerId, fallbackIndex);
+            if (typeof child.on === 'function') {
+                child.on('click', () => applyMapFeatureSelection(child, parentLayerId, fallbackIndex));
+                child.__selectionInteractionBound = true;
+            }
+        });
+    }
+
+    if (layer?.feature && typeof layer.on === 'function') {
+        getFeatureSelectionId(layer, parentLayerId, 0);
+        layer.on('click', () => applyMapFeatureSelection(layer, parentLayerId, 0));
+    }
+
+    layer.__selectionInteractionBound = true;
+}
+
+function updateAttributeFeatureProperty(layerId, rowIndex, propertyKey, nextValue, originalValue) {
+    const layer = state.getLayer(layerId);
+    const targets = getAttributeLayerTargets(layer);
+    const target = targets[rowIndex];
+    if (!target?.feature) return false;
+
+    if (!target.feature.properties) target.feature.properties = {};
+    const parsedValue = parseEditedValue(nextValue, originalValue);
+    target.feature.properties[propertyKey] = parsedValue;
+    return true;
+}
+
+function wireAttributeZoomButtons(root, activeInfo, model) {
+    Array.from(root.querySelectorAll('[data-feature-index]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            const row = model.rows[Number(button.dataset.featureIndex)];
+            if (!row) return;
+            state.setSelectedFeatureIds(activeInfo.id, [row.id]);
+            zoomToFeature(row);
+            renderAttributeView();
+        });
+    });
+}
+
+function wireDesktopAttributeGrid(container, activeInfo, model) {
+    const syncGridSelection = (rowIndex, columnKey) => {
+        const row = model.rows[rowIndex];
+        if (!row) return;
+
+        state.setSelectedFeatureIds(activeInfo.id, [row.id]);
+        activeDesktopAttributeCell = columnKey;
+
+        Array.from(container.querySelectorAll('tbody tr')).forEach((rowEl) => {
+            rowEl.classList.toggle('is-selected-row', Number(rowEl.dataset.rowIndex) === rowIndex);
+        });
+
+        Array.from(container.querySelectorAll('.attribute-grid-cell')).forEach((cellEl) => {
+            const matchesRow = Number(cellEl.dataset.rowIndex) === rowIndex;
+            const matchesColumn = cellEl.dataset.columnKey === columnKey;
+            cellEl.classList.toggle('is-selected-cell', matchesRow && matchesColumn);
+        });
+    };
+
+    Array.from(container.querySelectorAll('.attribute-grid-input')).forEach((input) => {
+        input.addEventListener('focus', () => {
+            syncGridSelection(Number(input.dataset.rowIndex), input.dataset.columnKey || null);
+        });
+
+        input.addEventListener('click', () => {
+            syncGridSelection(Number(input.dataset.rowIndex), input.dataset.columnKey || null);
+        });
+
+        input.addEventListener('change', () => {
+            const rowIndex = Number(input.dataset.rowIndex);
+            const columnKey = input.dataset.columnKey;
+            const row = model.rows[rowIndex];
+            const cell = row?.cells.find((candidate) => candidate.key === columnKey);
+            if (!row || !cell) return;
+
+            const didUpdate = updateAttributeFeatureProperty(activeInfo.id, rowIndex, columnKey, input.value, cell.rawValue);
+            if (!didUpdate) return;
+
+            syncGridSelection(rowIndex, columnKey);
+            updateDataContent();
+        });
+    });
+}
+
+function renderAttributeView() {
+    syncActiveAttributeLayer();
+
+    const mobileContainer = document.getElementById('attributeContent');
+    const mobileSelector = document.getElementById('attributeLayerSelect');
+    const mobileSummary = document.getElementById('attributeSummary');
+    const desktopContainer = document.getElementById('desktopAttributeContent');
+    const desktopSelector = document.getElementById('desktopAttributeLayerSelect');
+    const desktopSummary = document.getElementById('desktopAttributeSummary');
+    const desktopToggleLabel = document.getElementById('desktopAttributeToggleLabel');
+
+    const selectors = [mobileSelector, desktopSelector].filter(Boolean);
+    const summaries = [mobileSummary, desktopSummary].filter(Boolean);
+    const containers = [mobileContainer, desktopContainer].filter(Boolean);
+    if (!selectors.length || !containers.length) return;
+
+    const selectedInfos = getSelectedLayers().map((layer) => state.getLayerInfo(layer)).filter(Boolean);
+    const candidateInfos = selectedInfos.length
+        ? selectedInfos
+        : tocLayers.map((layer) => state.getLayerInfo(layer)).filter(Boolean);
+
+    if (!candidateInfos.length) {
+        selectors.forEach((selector) => {
+            selector.innerHTML = '';
+            selector.disabled = true;
+        });
+        summaries.forEach((summary) => {
+            summary.textContent = 'No layer selected';
+        });
+        if (desktopToggleLabel) desktopToggleLabel.textContent = 'No layer selected';
+        containers.forEach((container) => {
+            container.innerHTML = '<div class="attribute-empty">Select a layer to inspect its attributes.</div>';
+        });
+        return;
+    }
+
+    const activeAttributeLayerId = getActiveAttributeLayerId();
+    const safeActiveId = candidateInfos.some((info) => info.id === activeAttributeLayerId)
+        ? activeAttributeLayerId
+        : candidateInfos[0].id;
+    setActiveAttributeLayerId(safeActiveId);
+
+    const optionMarkup = candidateInfos.map((info) => `
+        <option value="${escapeHtml(info.id)}" ${info.id === safeActiveId ? 'selected' : ''}>${escapeHtml(info.displayName || info.id)}</option>
+    `).join('');
+
+    selectors.forEach((selector) => {
+        selector.disabled = candidateInfos.length === 1;
+        selector.innerHTML = optionMarkup;
+        selector.value = safeActiveId;
+    });
+
+    const activeInfo = candidateInfos.find((info) => info.id === safeActiveId) || candidateInfos[0];
+    const selectedFeatureIds = state.getSelectedFeatureIds(activeInfo.id);
+    const selectedFeatureId = selectedFeatureIds[0] || null;
+    const mode = getActiveAttributeMode();
+    const model = getAttributeModel(activeInfo, {
+        maxRows: 25,
+        mode,
+        selectedFeatureIds,
+    });
+    const activeDesktopAttributeRow = model.rows.findIndex((row) => row.id === selectedFeatureId);
+    const totalFeatureCount = activeInfo.geometry?.featureCount || model.filteredFromTotalRows || model.totalRows || 0;
+    const visibleFeatureCount = model.totalRows || 0;
+    const summaryPrefix = mode === 'selected'
+        ? `${visibleFeatureCount} selected of ${totalFeatureCount}`
+        : `${visibleFeatureCount} feature${visibleFeatureCount === 1 ? '' : 's'}`;
+    const summaryText = `${summaryPrefix} · ${model.columns.length} field${model.columns.length === 1 ? '' : 's'}`;
+
+    summaries.forEach((summary) => {
+        summary.textContent = summaryText;
+    });
+    if (desktopToggleLabel) {
+        const labelCount = mode === 'selected' ? visibleFeatureCount : totalFeatureCount;
+        const labelText = mode === 'selected'
+            ? `${labelCount} selected`
+            : (labelCount ? `${labelCount} feature${labelCount === 1 ? '' : 's'}` : 'No attributes');
+        desktopToggleLabel.textContent = labelText;
+    }
+
+    syncAttributeModeButtons();
+
+    if (!model.totalRows) {
+        const emptyMessage = mode === 'selected'
+            ? 'No selected features in this layer yet.'
+            : 'This layer does not have feature attributes to display yet.';
+        containers.forEach((container) => {
+            container.innerHTML = `<div class="attribute-empty">${emptyMessage}</div>`;
+        });
+        return;
+    }
+
+    const desktopHead = model.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('');
+    const desktopRows = model.rows.map((row) => {
+        const isActiveRow = row.index === activeDesktopAttributeRow;
+        return `
+            <tr class="${isActiveRow ? 'is-selected-row' : ''}" data-row-index="${row.index}">
+                <td class="attribute-row-index">${row.index + 1}</td>
+                ${row.cells.map((cell) => {
+                    const isActiveCell = isActiveRow && cell.key === activeDesktopAttributeCell;
+                    return `
+                        <td class="attribute-grid-cell ${isActiveCell ? 'is-selected-cell' : ''}" data-row-index="${row.index}" data-column-key="${escapeHtml(cell.key)}">
+                            <input
+                                class="attribute-grid-input"
+                                type="text"
+                                value="${escapeHtml(cell.editValue)}"
+                                data-row-index="${row.index}"
+                                data-column-key="${escapeHtml(cell.key)}"
+                                aria-label="Edit ${escapeHtml(cell.key)} for row ${row.index + 1}"
+                            />
+                        </td>
+                    `;
+                }).join('')}
+                <td class="attribute-row-action"><button type="button" class="attribute-row-button" data-feature-index="${row.index}">Zoom</button></td>
+            </tr>
+        `;
+    }).join('');
+
+    const mobileCards = model.rows.map((row) => `
+        <article class="attribute-card">
+            <div class="attribute-card-header">
+                <div>
+                    <div class="attribute-card-title">${escapeHtml(row.title)}</div>
+                    <div class="attribute-card-meta">${escapeHtml(row.geometryType)} · Row ${row.index + 1}</div>
+                </div>
+                <button type="button" class="attribute-row-button" data-feature-index="${row.index}">Zoom</button>
+            </div>
+            <dl class="attribute-card-list">
+                ${row.cells.map((cell) => `<div><dt>${escapeHtml(cell.key)}</dt><dd>${escapeHtml(cell.value)}</dd></div>`).join('')}
+            </dl>
+        </article>
+    `).join('');
+
+    if (desktopContainer) {
+        desktopContainer.innerHTML = `
+            <div class="attribute-shell attribute-shell-desktop">
+                <div class="attribute-table-wrap attribute-table-wrap-desktop">
+                    <table class="attribute-table attribute-table-desktop">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                ${desktopHead}
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>${desktopRows}</tbody>
+                    </table>
+                </div>
+                ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
+            </div>
+        `;
+        wireAttributeZoomButtons(desktopContainer, activeInfo, model);
+        wireDesktopAttributeGrid(desktopContainer, activeInfo, model);
+    }
+
+    if (mobileContainer) {
+        mobileContainer.innerHTML = `
+            <div class="attribute-shell">
+                <div class="attribute-cards">${mobileCards}</div>
+                ${model.hasMoreRows ? `<div class="attribute-footnote">Showing first ${model.visibleRows} of ${model.totalRows} features for speed.</div>` : ''}
+            </div>
+        `;
+        wireAttributeZoomButtons(mobileContainer, activeInfo, model);
     }
 }
 
@@ -198,14 +716,16 @@ function openLayerProperties(layerOrId) {
     title.textContent = `${info.geometryType || 'Layer'} · ${info.id}`;
 
     const metadataRows = [];
-    if (info.metadata?.name) metadataRows.push(['Created By', info.metadata.name]);
-    if (info.metadata?.timestamp) metadataRows.push(['Timestamp', info.metadata.timestamp]);
-    if (info.metadata?.parentLayerId) metadataRows.push(['Parent Layer', info.metadata.parentLayerId]);
+    if (info.provenance?.metadata?.name) metadataRows.push(['Created By', info.provenance.metadata.name]);
+    if (info.provenance?.metadata?.timestamp) metadataRows.push(['Timestamp', info.provenance.metadata.timestamp]);
+    if (info.source?.parentLayerId) metadataRows.push(['Parent Layer', info.source.parentLayerId]);
+    metadataRows.push(['Visible', info.ui?.visible ? 'Yes' : 'No']);
 
     const sourceRows = [];
-    if (info.metadata?.params?.Input) sourceRows.push(['Input', info.metadata.params.Input]);
-    if (info.metadata?.provider) sourceRows.push(['Provider', info.metadata.provider]);
-    const importSummary = info.properties?.importSummary;
+    if (info.source?.kind) sourceRows.push(['Source Type', info.source.label || info.source.kind]);
+    if (info.source?.input) sourceRows.push(['Input', info.source.input]);
+    if (info.source?.provider) sourceRows.push(['Provider', info.source.provider]);
+    const importSummary = info.source?.importSummary || info.properties?.importSummary;
     if (importSummary) {
         sourceRows.push(['Imported Features', `${importSummary.importedCount}`]);
         if (importSummary.skippedCount) sourceRows.push(['Skipped Rows', `${importSummary.skippedCount}`]);
@@ -215,14 +735,13 @@ function openLayerProperties(layerOrId) {
     }
 
     const geometryRows = [];
-    geometryRows.push(['Geometry Type', info.geometryType || 'Unknown']);
-    const featureCount = info.geojson?.type === 'FeatureCollection' ? info.geojson.features.length : 1;
-    geometryRows.push(['Feature Count', `${featureCount}`]);
+    geometryRows.push(['Geometry Type', info.geometry?.type || info.geometryType || 'Unknown']);
+    geometryRows.push(['Feature Count', `${info.geometry?.featureCount || 0}`]);
     if (info.bounds) {
         geometryRows.push(['Bounds', info.bounds.toBBoxString ? info.bounds.toBBoxString() : 'Available']);
     }
 
-    const history = info.history || [];
+    const history = info.provenance?.history || info.history || [];
     const historyList = history.length
         ? `<ol class="properties-history">${history.map((entry) => `<li><strong>${entry.name || 'Unknown step'}</strong>${entry.timestamp ? ` <span class="text-muted">${entry.timestamp}</span>` : ''}${entry.parentLayerId ? `<div class="properties-note">from ${entry.parentLayerId}</div>` : ''}</li>`).join('')}</ol>`
         : '<p class="properties-empty">No tool history recorded yet.</p>';
@@ -298,7 +817,7 @@ function zoomToLayer(layerOrId) {
 }
 
 function zoomToSelection() {
-    const selectedLayers = Array.from(selectedLayerIds)
+    const selectedLayers = getSelectedLayerIds()
         .map((id) => state.getLayer(id))
         .filter(Boolean);
 
@@ -364,10 +883,27 @@ function renderToc() {
     tocLayers.forEach((layer) => {
         const stableId = state.ensureStableId(layer);
         const info = state.getLayerInfo(layer);
+        const history = getLayerHistorySummary(layer);
+        const sourceBadge = getLayerSourceBadge(layer);
+        const menuOpen = openLayerMenuId === stableId;
+
+        const isSelected = state.isLayerSelected(stableId);
+        const isActive = state.getActiveLayerId() === stableId;
+        const visualState = getLayerSelectionVisualState({ isSelected, isActive });
+        const featureSelection = getLayerSelectionFeatureIds({
+            featureIds: state.getSelectedFeatureIds(stableId),
+            totalFeatureCount: info?.geometry?.featureCount || 0,
+        });
+
         const item = document.createElement('div');
-        item.className = `layer-message ${selectedLayerIds.has(stableId) ? 'selected' : ''}`;
+        item.className = `layer-message ${visualState.tocClasses.join(' ')} ${menuOpen ? 'menu-open' : ''}`.trim();
         item.id = `message-${stableId}`;
         item.dataset.layerId = stableId;
+        item.tabIndex = 0;
+        item.setAttribute('aria-label', `Layer ${getLayerLabel(layer, info?.label)}`);
+
+        const row = document.createElement('div');
+        row.className = 'layer-row';
 
         const left = document.createElement('div');
         left.className = 'layer-row-main';
@@ -375,24 +911,16 @@ function renderToc() {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.className = 'layer-select';
-        checkbox.checked = selectedLayerIds.has(stableId);
+        checkbox.checked = state.isLayerSelected(stableId);
         checkbox.addEventListener('click', (event) => event.stopPropagation());
         checkbox.addEventListener('change', () => {
-            if (checkbox.checked) selectedLayerIds.add(stableId);
-            else selectedLayerIds.delete(stableId);
-            renderToc();
-            updateSelectionSummary();
+            if (checkbox.checked) {
+                state.selectLayer(stableId, { makeActive: true });
+            } else {
+                state.deselectLayer(stableId);
+            }
+            refreshSidebarState();
         });
-
-        const icon = document.createElement('i');
-        const iconMap = {
-            marker: 'fa-solid fa-location-pin',
-            rectangle: 'fa-solid fa-draw-polygon',
-            circle: 'fa-solid fa-draw-polygon',
-            polyline: 'fa-solid fa-wave-square',
-            polygon: 'fa-solid fa-draw-polygon',
-        };
-        icon.className = iconMap[getLayerTypeForIcon(layer)] || 'fa-solid fa-layer-group';
 
         const textWrap = document.createElement('div');
         textWrap.className = 'layer-text';
@@ -408,13 +936,16 @@ function renderToc() {
 
         const meta = document.createElement('div');
         meta.className = 'layer-meta';
-        const history = getLayerHistorySummary(layer);
-        meta.textContent = history.length ? history.join(' → ') : (info?.geometryType || 'Layer');
+        meta.textContent = [
+            visualState.label,
+            featureSelection.summary,
+            info?.geometry?.label || getGeometryLabel(info?.geometryType),
+            sourceBadge.label,
+        ].filter(Boolean).join(' · ');
 
         const badges = document.createElement('div');
         badges.className = 'layer-badges';
 
-        const sourceBadge = getLayerSourceBadge(layer);
         const sourceEl = document.createElement('span');
         sourceEl.className = `layer-badge source-${sourceBadge.tone}`;
         sourceEl.textContent = sourceBadge.label;
@@ -429,25 +960,78 @@ function renderToc() {
         textWrap.appendChild(title);
         textWrap.appendChild(meta);
         textWrap.appendChild(badges);
-
         left.appendChild(checkbox);
-        left.appendChild(icon);
         left.appendChild(textWrap);
 
-        const actions = document.createElement('div');
-        actions.className = 'layer-actions';
-        actions.appendChild(createActionButton('fas fa-magnifying-glass-location', 'Zoom to layer', () => zoomToLayer(layer)));
-        actions.appendChild(createActionButton('fas fa-pen', 'Rename layer', () => beginRenameLayer(layer, title)));
-        actions.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => openLayerProperties(layer)));
-        actions.appendChild(createActionButton('fas fa-trash', 'Remove layer', () => removeLayerWithGuard(layer)));
+        const menuWrap = document.createElement('div');
+        menuWrap.className = 'layer-menu-wrap';
+        menuWrap.addEventListener('click', (event) => event.stopPropagation());
 
-        item.appendChild(left);
-        item.appendChild(actions);
+        const menuButton = document.createElement('button');
+        menuButton.type = 'button';
+        menuButton.className = 'layer-menu-trigger';
+        menuButton.setAttribute('aria-label', `Open actions for ${getLayerLabel(layer, info?.label)}`);
+        menuButton.setAttribute('aria-haspopup', 'menu');
+        menuButton.setAttribute('aria-expanded', menuOpen ? 'true' : 'false');
+        menuButton.innerHTML = '<i class="fa-solid fa-ellipsis"></i>';
+        menuButton.addEventListener('click', () => toggleLayerMenu(stableId));
+
+        const menu = document.createElement('div');
+        menu.className = `layer-menu ${menuOpen ? 'open' : ''}`;
+        menu.setAttribute('role', 'menu');
+
+        const metaSection = document.createElement('div');
+        metaSection.className = 'layer-menu-section layer-menu-details';
+        metaSection.innerHTML = `
+            <div class="layer-menu-label">${info?.geometry?.label || getGeometryLabel(info?.geometryType)} · ${sourceBadge.label}</div>
+            <div class="layer-menu-meta">${history.length ? history.join(' → ') : (info?.geometry?.type || info?.geometryType || 'Layer')}</div>
+            <div class="layer-menu-id">${stableId}</div>
+        `;
+
+        const actionList = document.createElement('div');
+        actionList.className = 'layer-menu-section layer-menu-actions';
+        actionList.appendChild(createActionButton('fas fa-magnifying-glass-location', 'Zoom to layer', () => {
+            closeLayerMenu();
+            zoomToLayer(layer);
+        }));
+        actionList.appendChild(createActionButton('fas fa-pen', 'Rename layer', () => {
+            closeLayerMenu();
+            beginRenameLayer(layer, title);
+        }));
+        actionList.appendChild(createActionButton('fas fa-table', 'View attributes', () => {
+            closeLayerMenu();
+            state.selectLayer(stableId, { makeActive: true });
+            refreshSidebarState();
+        }));
+        actionList.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => {
+            closeLayerMenu();
+            openLayerProperties(layer);
+        }));
+        actionList.appendChild(createActionButton('fas fa-trash', 'Remove layer', () => {
+            closeLayerMenu();
+            removeLayerWithGuard(layer);
+        }));
+
+        menu.appendChild(metaSection);
+        menu.appendChild(actionList);
+        menuWrap.appendChild(menuButton);
+        menuWrap.appendChild(menu);
+
+        row.appendChild(left);
+        row.appendChild(menuWrap);
+        item.appendChild(row);
+
         item.addEventListener('click', () => {
-            if (selectedLayerIds.has(stableId)) selectedLayerIds.delete(stableId);
-            else selectedLayerIds.add(stableId);
-            renderToc();
-            updateSelectionSummary();
+            state.toggleLayerSelection(stableId, { makeActive: true });
+            refreshSidebarState();
+        });
+
+        item.addEventListener('keydown', (event) => {
+            if (event.target !== item) return;
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            state.toggleLayerSelection(stableId, { makeActive: true });
+            refreshSidebarState();
         });
 
         tocContent.appendChild(item);
@@ -457,15 +1041,36 @@ function renderToc() {
 function refreshSidebarState() {
     renderToc();
     updateSelectionSummary();
+    renderAttributeView();
+    syncMapSelectionHighlights();
 }
 
 function addToolHistoryEntry(layer, entry) {
     state.ensureToolHistory(layer, entry);
 }
 
+function setSelectedToolDocsLink(tool) {
+    const docsLink = document.getElementById('selectedToolDocsLink');
+    if (!docsLink) return;
+
+    if (!tool) {
+        docsLink.classList.add('hidden');
+        docsLink.setAttribute('href', '#');
+        docsLink.setAttribute('aria-label', 'Selected tool documentation');
+        docsLink.setAttribute('title', 'Open selected tool documentation');
+        return;
+    }
+
+    docsLink.href = `/tool-docs/${encodeURIComponent(tool.constructor.name)}.html`;
+    docsLink.classList.remove('hidden');
+    docsLink.setAttribute('aria-label', `${tool.name} documentation`);
+    docsLink.setAttribute('title', `${tool.name} documentation`);
+}
+
 document.getElementById('backButton').addEventListener('click', function() {
     document.getElementById('toolSelection').style.display = 'block';
     document.getElementById('toolDetails').classList.add('hidden');
+    setSelectedToolDocsLink(null);
     const statusMessage = document.getElementById('statusMessageText');
     statusMessage.textContent = '';
     document.getElementById('statusMessage').style.display = 'none';
@@ -510,6 +1115,7 @@ map.on(L.Draw.Event.CREATED, function (e) {
 
     // Assign a stable id immediately.
     const stableId = state.registerLayer(layer);
+    bindLayerSelectionInteraction(layer);
     addToolHistoryEntry(layer, {
         name: 'Draw',
         timestamp: new Date().toISOString(),
@@ -526,6 +1132,7 @@ map.on('draw:edited', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
         const stableId = state.registerLayer(layer);
+        bindLayerSelectionInteraction(layer);
         addToolHistoryEntry(layer, {
             name: 'Edit',
             timestamp: new Date().toISOString(),
@@ -540,7 +1147,6 @@ map.on('draw:deleted', function (e) {
     var layers = e.layers;
     layers.eachLayer(function (layer) {
         if (layer && layer.__id) {
-            selectedLayerIds.delete(layer.__id);
             // Let state.removeLayer handle removal from drawnItems for tracked layers
             state.removeLayer(layer.__id);
         } else {
@@ -556,6 +1162,7 @@ map.on('layeradd', function (e) {
     // if layer has a feature.toolMetadata, add the layer to the TOC
     if (layer.hasOwnProperty('feature') && layer.feature.toolMetadata) {
         const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
+        bindLayerSelectionInteraction(layer);
         if (!tocLayers.includes(layer)) tocLayers.push(layer);
         const importSummary = layer.feature?.properties?.importSummary;
         if (importSummary) renderImportSummary(importSummary);
@@ -565,15 +1172,9 @@ map.on('layeradd', function (e) {
 
 // Load tools dynamically and store them in the loadedTools object
 document.addEventListener('DOMContentLoaded', () => {
-    // Load tools synchronously since we're using require
-    toolNames.forEach(name => {
-        try {
-            const ToolClass = require(`./tools/${name}`)[name];
-            loadedTools[name] = new ToolClass();
-        } catch (error) {
-            console.error(`Failed to load tool: ${name}`, error);
-        }
-    });
+    for (const tool of instantiateTools()) {
+        loadedTools[tool.constructor.name] = tool;
+    }
     renderToolList(Object.values(loadedTools));
 
     // Render AI Settings panel
@@ -594,8 +1195,46 @@ document.addEventListener('DOMContentLoaded', () => {
         zoomSelectionButton.addEventListener('click', () => zoomToSelection());
     }
 
+    Array.from(document.querySelectorAll('[data-map-interaction-mode]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            setActiveMapInteractionMode(button.dataset.mapInteractionMode);
+        });
+    });
+    setActiveMapInteractionMode(activeMapInteractionMode);
+
+    const handleAttributeLayerChange = (event) => {
+        setActiveAttributeLayerId(event.target.value || null);
+        renderAttributeView();
+    };
+
+    const attributeLayerSelect = document.getElementById('attributeLayerSelect');
+    if (attributeLayerSelect) {
+        attributeLayerSelect.addEventListener('change', handleAttributeLayerChange);
+    }
+
+    const desktopAttributeLayerSelect = document.getElementById('desktopAttributeLayerSelect');
+    if (desktopAttributeLayerSelect) {
+        desktopAttributeLayerSelect.addEventListener('change', handleAttributeLayerChange);
+    }
+
+    Array.from(document.querySelectorAll('[data-attribute-mode]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            setActiveAttributeMode(button.dataset.attributeMode);
+            syncAttributeModeButtons();
+            renderAttributeView();
+        });
+    });
+
+    const desktopAttributeDrawer = document.getElementById('desktopAttributeDrawer');
+    const desktopAttributeDrawerToggle = document.getElementById('desktopAttributeDrawerToggle');
+    initializeDesktopAttributeDrawer(desktopAttributeDrawer, desktopAttributeDrawerToggle, map, {
+        defaultOpen: false,
+    });
+
     updateSelectionSummary();
     renderImportSummary(null);
+    renderAttributeView();
+    syncMapSelectionHighlights();
 });
 
 function renderToolList(tools) {
@@ -603,11 +1242,22 @@ function renderToolList(tools) {
     tools.forEach(tool => {
         const toolDiv = document.createElement('div');
         toolDiv.className = 'tool';
-        toolDiv.textContent = tool.name;
+
+        const toolHeader = document.createElement('div');
+        toolHeader.className = 'tool-header';
+
+        const toolName = document.createElement('div');
+        toolName.className = 'tool-title';
+        toolName.textContent = tool.name;
+
+        toolHeader.appendChild(toolName);
+        toolDiv.appendChild(toolHeader);
+
         toolDiv.addEventListener('click', () => {
             const toolNameElement = document.getElementById('toolName');
             if (toolNameElement) {
                 toolNameElement.setAttribute('tool', tool.constructor.name);
+                setSelectedToolDocsLink(tool);
                 tool.renderUI();
             } else {
                 console.error("Element with ID 'toolName' not found.");
@@ -626,6 +1276,18 @@ function renderToolList(tools) {
     });
     toolContainer.appendChild(settingsDiv);
 }
+
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('.layer-menu-wrap')) {
+        closeLayerMenu();
+    }
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        closeLayerMenu();
+    }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     updateDataContent();

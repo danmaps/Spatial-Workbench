@@ -19,6 +19,19 @@ function getExecutionBoundsSource(context) {
     }
 }
 
+function buildRandomPointsResult(toolName, params, features, parentLayerId = null) {
+    return {
+        type: 'FeatureCollection',
+        features,
+        toolMetadata: {
+            name: toolName,
+            params,
+            ...(parentLayerId ? { parentLayerId } : {}),
+            timestamp: new Date().toISOString()
+        }
+    };
+}
+
 /**
  * Represents a tool for adding random points within selected polygon.
  * @extends Tool
@@ -40,7 +53,9 @@ class RandomPointsTool extends Tool {
     /**
      * Executes the RandomPointsTool logic without reading from the DOM.
      */
-    async run(params, context) {
+    async run(params, context = {}) {
+        const resolveLayer = context.getLayer || getLayer;
+        const applyToolResult = context.applyResult || applyResult;
         const pointsCount = parseInt(params['Points Count'], 10);
         if (!Number.isInteger(pointsCount) || pointsCount <= 0) {
             this.setStatus(2, 'Points Count must be a positive integer.');
@@ -51,7 +66,7 @@ class RandomPointsTool extends Tool {
         const polygonId = params['Polygon'] || null;
         
         if (insidePolygon) {
-            const polygonLayer = polygonId ? getLayer(polygonId) : null;
+            const polygonLayer = polygonId ? resolveLayer(polygonId) : null;
             if (!polygonLayer) {
                 this.setStatus(2, 'No polygon selected.');
                 return;
@@ -61,30 +76,27 @@ class RandomPointsTool extends Tool {
             }
 
             const polygon = polygonLayer.toGeoJSON();
-            const adds = [];
+            const features = [];
 
             for (let i = 0; i < pointsCount; i++) {
                 let pointAdded = false;
                 while (!pointAdded) {
                     const randomPoint = turf.randomPoint(1, { bbox: turf.bbox(polygon) });
                     if (turf.booleanPointInPolygon(randomPoint.features[0], polygon)) {
-                        randomPoint.features[0].properties = randomPoint.features[0].properties || {};
-                        randomPoint.features[0].properties.random = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 5);
-                        randomPoint.features[0].toolMetadata = {
-                            name: this.name,
-                            params,
-                            parentLayerId: polygonId,
-                            timestamp: new Date().toISOString()
-                        };
-                        adds.push(randomPoint);
+                        const feature = randomPoint.features[0];
+                        feature.properties = feature.properties || {};
+                        feature.properties.random = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 5);
+                        features.push(feature);
                         pointAdded = true;
                     }
                 }
             }
 
-            const res = applyResult({ addGeojson: adds });
+            const featureCollection = buildRandomPointsResult(this.name, params, features, polygonId);
+
+            const res = applyToolResult({ addGeojson: featureCollection });
             if (res && res.ok) {
-                this.setStatus(0, `Added ${res.added.length} point(s).`);
+                this.setStatus(0, `Added ${features.length} point(s).`);
                 return res;
             } else {
                 this.setStatus(2, 'Failed to add points to map.');
@@ -98,17 +110,14 @@ class RandomPointsTool extends Tool {
 
             const visible_extent = logCurrentBounds(boundsSource);
             const randomPoints = turf.randomPoint(pointsCount, { bbox: visible_extent });
-            randomPoints.toolMetadata = {
-                name: this.name,
-                params,
-                timestamp: new Date().toISOString()
-            };
-            randomPoints.features.forEach((pt) => {
+            const features = Array.isArray(randomPoints?.features) ? randomPoints.features : [];
+            features.forEach((pt) => {
                 pt.properties = pt.properties || {};
             });
-            const res = applyResult({ addGeojson: randomPoints });
+            const featureCollection = buildRandomPointsResult(this.name, params, features);
+            const res = applyToolResult({ addGeojson: featureCollection });
             if (res && res.ok) {
-                this.setStatus(0, `Added ${res.added.length} point(s).`);
+                this.setStatus(0, `Added ${features.length} point(s).`);
                 return res;
             } else {
                 this.setStatus(2, 'Failed to add points to map.');

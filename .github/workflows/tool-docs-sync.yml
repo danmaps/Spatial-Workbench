@@ -1,0 +1,53 @@
+name: Tool Docs Sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'js/tools/**'
+      - 'js/docs/**'
+      - 'scripts/generate_specs.js'
+      - 'scripts/generate_tool_docs.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/tool-docs-sync.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-tool-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Regenerate specs and tool docs
+        run: npm run spec:update
+
+      - name: Commit regenerated files if needed
+        run: |
+          if git diff --quiet -- js/tools/specs.json tool-docs; then
+            echo "No generated file changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/tools/specs.json tool-docs
+          git commit -m "Sync generated tool docs"
+          git push

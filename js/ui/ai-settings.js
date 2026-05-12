@@ -1,8 +1,13 @@
 /**
  * AI Settings panel — lets users pick a provider, enter an API key,
- * and configure the Ollama URL.  Everything is stored in localStorage.
+ * and configure the Built-in AI URL. Everything is stored in localStorage.
  */
-const { AI_PROVIDERS, DEFAULT_PROVIDER, STORAGE_KEYS } = require('../ai-providers');
+const {
+  AI_PROVIDERS,
+  DEFAULT_PROVIDER,
+  DEFAULT_OLLAMA_MODEL,
+  STORAGE_KEYS,
+} = require('../ai-providers');
 
 function getVal(key) {
   return localStorage.getItem(key) || '';
@@ -13,7 +18,71 @@ function setVal(key, v) {
   else localStorage.removeItem(key);
 }
 
-function renderAISettings(container) {
+function getSavedProvider() {
+  return getVal(STORAGE_KEYS.provider) || DEFAULT_PROVIDER;
+}
+
+function getSavedModel(providerId) {
+  const savedModel = getVal(STORAGE_KEYS.model);
+  if (savedModel) return savedModel;
+  return AI_PROVIDERS[providerId]?.defaultModel || '';
+}
+
+async function fetchProviderConfig(apiBase = '') {
+  const response = await fetch(`${apiBase}/api/providers`);
+  if (!response.ok) {
+    throw new Error(`Failed to load AI provider config (${response.status})`);
+  }
+  return response.json();
+}
+
+function getProviderById(providerConfig, providerId) {
+  const provider = providerConfig?.providers?.find((candidate) => candidate.id === providerId);
+  if (provider) return provider;
+  return AI_PROVIDERS[providerId] || null;
+}
+
+function getProviderModels(providerConfig, providerId) {
+  const provider = getProviderById(providerConfig, providerId);
+  return Array.isArray(provider?.models) ? provider.models : [];
+}
+
+function renderModelControl({ providerConfig, providerId, modelInput, modelSelect }) {
+  const provider = getProviderById(providerConfig, providerId);
+  const models = getProviderModels(providerConfig, providerId);
+  const preferredModel = modelInput.value.trim() || getSavedModel(providerId);
+
+  modelInput.placeholder = provider?.defaultModel || '';
+
+  if (providerId === 'ollama' && models.length) {
+    modelSelect.innerHTML = '';
+    models.forEach((model) => {
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = model.label || model.id;
+      option.selected = model.id === preferredModel;
+      modelSelect.appendChild(option);
+    });
+
+    if (!Array.from(modelSelect.options).some((option) => option.selected) && modelSelect.options.length) {
+      modelSelect.value = preferredModel || provider?.defaultModel || DEFAULT_OLLAMA_MODEL;
+    }
+
+    modelInput.value = modelSelect.value || preferredModel || provider?.defaultModel || DEFAULT_OLLAMA_MODEL;
+    modelSelect.style.display = '';
+    modelInput.style.display = 'none';
+    return;
+  }
+
+  modelSelect.innerHTML = '';
+  modelSelect.style.display = 'none';
+  modelInput.style.display = '';
+  if (!modelInput.value.trim()) {
+    modelInput.value = preferredModel || provider?.defaultModel || '';
+  }
+}
+
+async function renderAISettings(container) {
   container.innerHTML = '';
 
   const wrapper = document.createElement('div');
@@ -27,11 +96,11 @@ function renderAISettings(container) {
 
   const providerSelect = document.createElement('select');
   providerSelect.id = 'ai-provider';
-  Object.values(AI_PROVIDERS).forEach(p => {
+  Object.values(AI_PROVIDERS).forEach((p) => {
     const opt = document.createElement('option');
     opt.value = p.id;
     opt.textContent = p.name;
-    if (p.id === (getVal(STORAGE_KEYS.provider) || DEFAULT_PROVIDER)) opt.selected = true;
+    if (p.id === getSavedProvider()) opt.selected = true;
     providerSelect.appendChild(opt);
   });
 
@@ -44,8 +113,15 @@ function renderAISettings(container) {
   const modelInput = document.createElement('input');
   modelInput.type = 'text';
   modelInput.id = 'ai-model';
-  modelInput.placeholder = AI_PROVIDERS[providerSelect.value]?.defaultModel || '';
-  modelInput.value = getVal(STORAGE_KEYS.model);
+  modelInput.value = getSavedModel(providerSelect.value);
+
+  const modelSelect = document.createElement('select');
+  modelSelect.id = 'ai-model-select';
+  modelSelect.setAttribute('aria-label', 'Available models');
+  modelSelect.style.display = 'none';
+  modelSelect.addEventListener('change', () => {
+    modelInput.value = modelSelect.value;
+  });
 
   // --- API Key field ---
   const keyLabel = document.createElement('label');
@@ -59,17 +135,17 @@ function renderAISettings(container) {
   keyInput.placeholder = 'sk-...';
   keyInput.value = getVal(STORAGE_KEYS.apiKey);
 
-  // --- Ollama URL field ---
+  // --- Built-in AI URL field ---
   const urlLabel = document.createElement('label');
   urlLabel.className = 'param-label';
-  urlLabel.textContent = 'Ollama URL';
+  urlLabel.textContent = 'Built-in AI URL';
   urlLabel.htmlFor = 'ai-ollama-url';
 
   const urlInput = document.createElement('input');
   urlInput.type = 'text';
   urlInput.id = 'ai-ollama-url';
-  urlInput.placeholder = 'http://localhost:11434';
-  urlInput.value = getVal(STORAGE_KEYS.ollamaUrl);
+  urlInput.placeholder = AI_PROVIDERS.ollama.defaultUrl || 'http://localhost:11434';
+  urlInput.value = getVal(STORAGE_KEYS.ollamaUrl) || (AI_PROVIDERS.ollama.defaultUrl || '');
 
   // --- Status indicator ---
   const statusEl = document.createElement('p');
@@ -77,18 +153,19 @@ function renderAISettings(container) {
   statusEl.style.fontSize = '0.85em';
   statusEl.style.minHeight = '1.2em';
 
-  // Toggle visibility of key / url fields based on provider
+  let providerConfig = null;
+
   function syncVisibility() {
     const prov = providerSelect.value;
-    const cfg = AI_PROVIDERS[prov];
+    const cfg = getProviderById(providerConfig, prov) || AI_PROVIDERS[prov];
     keyLabel.style.display = cfg?.requiresKey ? '' : 'none';
     keyInput.style.display = cfg?.requiresKey ? '' : 'none';
     urlLabel.style.display = prov === 'ollama' ? '' : 'none';
     urlInput.style.display = prov === 'ollama' ? '' : 'none';
-    modelInput.placeholder = cfg?.defaultModel || '';
+    renderModelControl({ providerConfig, providerId: prov, modelInput, modelSelect });
   }
+
   providerSelect.addEventListener('change', syncVisibility);
-  syncVisibility();
 
   // --- Save ---
   const saveBtn = document.createElement('button');
@@ -97,7 +174,7 @@ function renderAISettings(container) {
     setVal(STORAGE_KEYS.provider, providerSelect.value);
     setVal(STORAGE_KEYS.apiKey, keyInput.value.trim());
     setVal(STORAGE_KEYS.ollamaUrl, urlInput.value.trim());
-    setVal(STORAGE_KEYS.model, modelInput.value.trim());
+    setVal(STORAGE_KEYS.model, modelInput.value.trim() || getSavedModel(providerSelect.value));
     statusEl.textContent = '✓ Settings saved';
     statusEl.style.color = '#2ecc71';
   });
@@ -107,11 +184,11 @@ function renderAISettings(container) {
   clearBtn.textContent = 'Clear';
   clearBtn.style.marginLeft = '8px';
   clearBtn.addEventListener('click', () => {
-    Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
+    Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
     providerSelect.value = DEFAULT_PROVIDER;
     keyInput.value = '';
-    urlInput.value = '';
-    modelInput.value = '';
+    urlInput.value = AI_PROVIDERS.ollama.defaultUrl || '';
+    modelInput.value = getSavedModel(DEFAULT_PROVIDER);
     syncVisibility();
     statusEl.textContent = '✓ Settings cleared';
     statusEl.style.color = 'var(--text-secondary)';
@@ -128,7 +205,7 @@ function renderAISettings(container) {
       const apiBase = (typeof window !== 'undefined' && window.__SWB_API_BASE__) || '';
       const headers = { 'Content-Type': 'application/json' };
       const key = keyInput.value.trim();
-      if (key) headers['Authorization'] = `Bearer ${key}`;
+      if (key) headers.Authorization = `Bearer ${key}`;
 
       const body = {
         prompt: 'Return a single GeoJSON Point at 0,0.',
@@ -171,6 +248,7 @@ function renderAISettings(container) {
   wrapper.appendChild(providerSelect);
   wrapper.appendChild(modelLabel);
   wrapper.appendChild(modelInput);
+  wrapper.appendChild(modelSelect);
   wrapper.appendChild(keyLabel);
   wrapper.appendChild(keyInput);
   wrapper.appendChild(urlLabel);
@@ -178,10 +256,25 @@ function renderAISettings(container) {
   wrapper.appendChild(btnRow);
   wrapper.appendChild(statusEl);
   container.appendChild(wrapper);
+
+  try {
+    const apiBase = (typeof window !== 'undefined' && window.__SWB_API_BASE__) || '';
+    providerConfig = await fetchProviderConfig(apiBase);
+  } catch (error) {
+    statusEl.textContent = 'Using built-in AI defaults; live Ollama models could not be loaded.';
+    statusEl.style.color = 'var(--text-secondary)';
+  }
+
+  syncVisibility();
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderAISettings };
+  module.exports = {
+    fetchProviderConfig,
+    getProviderModels,
+    renderAISettings,
+    renderModelControl,
+  };
 } else {
   window.renderAISettings = renderAISettings;
 }

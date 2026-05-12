@@ -10,8 +10,9 @@
     "build": "webpack",
     "build:prod": "webpack --config webpack.prod.config.js",
     "watch": "webpack --watch",
-    "spec:update": "node scripts/generate_specs.js",
-    "spec:check": "node scripts/generate_specs.js --check"
+    "spec:update": "node scripts/generate_specs.js && node scripts/generate_tool_docs.js",
+    "spec:check": "node scripts/generate_specs.js --check",
+    "docs:update": "node scripts/generate_tool_docs.js"
   },
   "jest": {
     "testEnvironment": "jsdom"

@@ -1,6 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { getLayer, listLayers } = require('../state');
+const { listLayers } = require('../state');
+const { resolveTargetLayerData } = require('./targeting');
 
 class ExportTool extends Tool {
     constructor() {
@@ -11,25 +12,27 @@ class ExportTool extends Tool {
 
         this.description = "Export data";
     }
-    async run(params) {
+    async run(params, context = {}) {
         console.log("Exporting data...");
         const inputLayerId = params['Layer'];
         const format = params['Format'];
         if (format === 'GeoJSON') {
-            const layer = getLayer(inputLayerId);
-            const selectedLayerGeoJSON = layer ? layer.toGeoJSON() : null;
+            const target = resolveTargetLayerData(inputLayerId, context);
 
-            if (!selectedLayerGeoJSON) {
-                this.setStatus(2, 'No layer selected.');
+            if (!target.ok || !target.targetGeoJSON) {
+                this.setStatus(2, target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');
                 return;
             }
 
-            this.setStatus(0, 'Prepared GeoJSON export.');
+            const filenameSuffix = target.mode === 'selection' ? '-selection' : '';
+            this.setStatus(0, target.mode === 'selection'
+                ? `Prepared GeoJSON export for ${target.selectedFeatureCount} selected feature(s).`
+                : 'Prepared GeoJSON export.');
             return {
                 download: {
-                    filename: `${inputLayerId}.${format.toLowerCase()}`,
+                    filename: `${target.layerId}${filenameSuffix}.${format.toLowerCase()}`,
                     mimeType: 'application/json',
-                    data: JSON.stringify(selectedLayerGeoJSON)
+                    data: JSON.stringify(target.targetGeoJSON)
                 }
             };
         }

@@ -53,19 +53,28 @@ class Tool {
             key: this.constructor?.name || this.name,
             name: this.name,
             description: this.description || '',
+            headlessSupported: !!this.headlessSupported,
             parameters: params,
         };
     }
 
-    renderUI() {
+    renderUI(paramValues = {}) {
         // console.log(`Rendering UI for ${this.constructor.name}`);
         const toolSelection = document.getElementById('toolSelection');
         const toolDetails = document.getElementById('toolDetails');
         const toolContent = document.getElementById('toolContent');
+        const selectedToolDocsLink = document.getElementById('selectedToolDocsLink');
 
         toolSelection.style.display = 'none';
         toolDetails.classList.remove('hidden');
         toolContent.innerHTML = ''; // Clear existing content
+
+        if (selectedToolDocsLink) {
+            selectedToolDocsLink.href = `/tool-docs/${encodeURIComponent(this.constructor.name)}.html`;
+            selectedToolDocsLink.classList.remove('hidden');
+            selectedToolDocsLink.setAttribute('aria-label', `${this.name} documentation`);
+            selectedToolDocsLink.setAttribute('title', `${this.name} documentation`);
+        }
 
         const toolName = document.createElement('h2');
         // add tool name to toolContent as attribute "tool"
@@ -81,6 +90,9 @@ class Tool {
             let paramInput;
             let paramSlider;
 
+            const hasValue = Object.prototype.hasOwnProperty.call(paramValues, param.name);
+            const value = hasValue ? paramValues[param.name] : param.defaultValue;
+
             if (param.type === "dropdown") {
                 paramInput = document.createElement('select');
                 paramInput.id = `param-${param.name}`;
@@ -93,7 +105,7 @@ class Tool {
                 paramInput = document.createElement('input');
                 paramInput.type = "number";
                 paramInput.id = `param-${param.name}`;
-                paramInput.value = param.defaultValue;
+                paramInput.value = value;
                 paramInput.step = param.type === "int" ? "1" : "0.1";
                 
                 // Add min/max if defined
@@ -104,7 +116,7 @@ class Tool {
                 paramSlider = document.createElement('input');
                 paramSlider.type = "range";
                 paramSlider.classList.add('param-slider');
-                paramSlider.value = param.defaultValue;
+                paramSlider.value = value;
                 paramSlider.step = param.type === "int" ? "1" : "0.1";
                 
                 // Set min/max for slider
@@ -132,12 +144,12 @@ class Tool {
                 paramInput = document.createElement('input');
                 paramInput.type = "checkbox";
                 paramInput.id = `param-${param.name}`;
-                paramInput.value = param.defaultValue;
+                paramInput.checked = !!value;
             } else if (param.type === "text") {
                 paramInput = document.createElement('input');
                 paramInput.type = "text";
                 paramInput.id = `param-${param.name}`;
-                paramInput.value = param.defaultValue;
+                paramInput.value = value;
             } else if (param.type === "file") {
                 paramInput = document.createElement('input');
                 paramInput.type = "file";
@@ -225,6 +237,7 @@ class Tool {
     reRenderOnExecute(exec) {
         return async () => {
             const toolContent = document.getElementById('toolContent');
+            const paramValues = this.collectParamsFromDOM();
             
             // Start loading animation (pulsing background of toolContent div)
             toolContent.classList.add('pulsate');
@@ -259,7 +272,7 @@ class Tool {
                 statusMessage.textContent = status.message;
                 
                 // Re-render the UI
-                this.renderUI();
+                this.renderUI(paramValues);
             }
         };
     }

@@ -22,26 +22,121 @@ jest.mock('./app', () => ({
 describe('state provenance helpers', () => {
   let state;
 
+  function makeLayer(id, geometryType = 'Point') {
+    return {
+      __id: id,
+      feature: { properties: { __id: id } },
+      toGeoJSON: jest.fn(() => ({
+        type: 'Feature',
+        geometry: { type: geometryType, coordinates: geometryType === 'Point' ? [0, 0] : [] },
+        properties: { __id: id },
+      })),
+    };
+  }
+
   beforeEach(() => {
     jest.resetModules();
     global.L = {
-      geoJSON: jest.fn((gj) => ({
-        eachLayer(cb) {
-          const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
-          features.forEach((feature, index) => {
-            cb({
-              feature,
-              __id: feature.properties?.__id || `child-${index}`,
-              addTo: jest.fn(),
-              toGeoJSON: jest.fn(() => feature),
-            });
-          });
-        },
-      })),
+      geoJSON: jest.fn((gj) => {
+        const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
+        const children = features.map((feature, index) => ({
+          feature,
+          __id: feature.properties?.__id || `child-${index}`,
+          addTo: jest.fn(),
+          toGeoJSON: jest.fn(() => feature),
+        }));
+        return {
+          eachLayer(cb) { children.forEach(cb); },
+          addTo: jest.fn(),
+          feature: null,
+          toGeoJSON: jest.fn(() => gj),
+          __id: undefined,
+        };
+      }),
       latLngBounds: jest.fn(() => ({ isValid: () => true })),
     };
     tocLayers.length = 0;
     state = require('./state');
+  });
+
+  test('selection state exposes active layer, selected layers, and selected features by layer', () => {
+    const layerA = makeLayer('layer-a');
+    const layerB = makeLayer('layer-b');
+
+    state.registerLayer(layerA, 'layer-a');
+    state.registerLayer(layerB, 'layer-b');
+    tocLayers.push(layerA, layerB);
+
+    expect(state.setSelectedLayerIds(['layer-a', 'layer-b', 'missing', 'layer-a'])).toEqual(['layer-a', 'layer-b']);
+    expect(state.getSelectedLayerIds()).toEqual(['layer-a', 'layer-b']);
+    expect(state.getActiveLayerId()).toBe('layer-a');
+
+    expect(state.setActiveLayerId('layer-b')).toBe('layer-b');
+    expect(state.getActiveLayerId()).toBe('layer-b');
+
+    expect(state.setSelectedFeatureIds('layer-a', ['feature-1', 'feature-2', 'feature-1'])).toEqual(['feature-1', 'feature-2']);
+    expect(state.setSelectedFeatureIds('layer-b', ['feature-9'])).toEqual(['feature-9']);
+    expect(state.getSelectedFeaturesByLayerId()).toEqual({
+      'layer-a': ['feature-1', 'feature-2'],
+      'layer-b': ['feature-9'],
+    });
+
+    expect(state.getState().selection).toEqual({
+      activeLayerId: 'layer-b',
+      selectedLayerIds: ['layer-a', 'layer-b'],
+      selectedFeaturesByLayerId: {
+        'layer-a': ['feature-1', 'feature-2'],
+        'layer-b': ['feature-9'],
+      },
+    });
+  });
+
+  test('selection helpers update and clean up per-layer selection state', () => {
+    const layerA = makeLayer('layer-a');
+    const layerB = makeLayer('layer-b');
+
+    state.registerLayer(layerA, 'layer-a');
+    state.registerLayer(layerB, 'layer-b');
+
+    expect(state.selectLayer('layer-a', { makeActive: true })).toEqual(['layer-a']);
+    expect(state.selectLayer('layer-b')).toEqual(['layer-a', 'layer-b']);
+    expect(state.isLayerSelected('layer-a')).toBe(true);
+    expect(state.getActiveLayerId()).toBe('layer-a');
+
+    expect(state.toggleLayerSelection('layer-a')).toEqual(['layer-b']);
+    expect(state.getActiveLayerId()).toBe('layer-b');
+
+    state.setSelectedFeatureIds('layer-b', ['feature-9']);
+    state.clearSelectedFeatureIds('layer-b');
+    expect(state.getSelectedFeatureIds('layer-b')).toEqual([]);
+
+    state.removeLayer('layer-b');
+    expect(state.getSelectedLayerIds()).toEqual([]);
+    expect(state.getActiveLayerId()).toBe(null);
+
+    state.selectLayer('layer-a', { makeActive: true });
+    state.setSelectedFeatureIds('layer-a', ['feature-1']);
+    expect(state.clearLayerSelection()).toEqual([]);
+    expect(state.getSelectedLayerIds()).toEqual([]);
+    expect(state.getActiveLayerId()).toBe(null);
+    expect(state.getSelectedFeatureIds('layer-a')).toEqual(['feature-1']);
+
+    expect(state.clearSelectedFeatureIds()).toEqual({});
+    expect(state.getSelectedFeaturesByLayerId()).toEqual({});
+  });
+
+  test('getLayerInfo exposes layer selection flags in ui metadata', () => {
+    const layer = makeLayer('layer-selected');
+    state.registerLayer(layer, 'layer-selected');
+    tocLayers.push(layer);
+
+    state.selectLayer('layer-selected', { makeActive: true });
+
+    expect(state.getLayerInfo('layer-selected').ui).toEqual(expect.objectContaining({
+      selected: true,
+      active: true,
+      selectable: true,
+    }));
   });
 
   test('ensureToolHistory stores current metadata on a layer', () => {
@@ -89,6 +184,92 @@ describe('state provenance helpers', () => {
     ]);
   });
 
+  test('applyResult adds FeatureCollection as single group layer', () => {
+    const result = state.applyResult({
+      addGeojson: {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: 'a' } },
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { name: 'b' } },
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [2, 2] }, properties: { name: 'c' } },
+        ],
+        toolMetadata: { name: 'Add Data', timestamp: '2026-05-01T00:00:00Z' },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.added).toHaveLength(1);
+    expect(tocLayers).toHaveLength(1);
+
+    const groupLayer = state.getLayer(result.added[0]);
+    const groupGeojson = groupLayer.toGeoJSON();
+    expect(groupGeojson.features.map((feature) => feature.properties.__id)).toEqual([
+      `${result.added[0]}-1`,
+      `${result.added[0]}-2`,
+      `${result.added[0]}-3`,
+    ]);
+  });
+
+  test('applyResult coalesces arrays of features into one result layer', () => {
+    const result = state.applyResult({
+      addGeojson: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { name: 'a' }, toolMetadata: { name: 'AI', timestamp: '2026-05-03T00:00:00Z' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { name: 'b' } },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.added).toHaveLength(1);
+    expect(tocLayers).toHaveLength(1);
+
+    const groupLayer = state.getLayer(result.added[0]);
+    expect(groupLayer.toGeoJSON()).toEqual(expect.objectContaining({
+      type: 'FeatureCollection',
+      features: expect.arrayContaining([
+        expect.objectContaining({ type: 'Feature' }),
+        expect.objectContaining({ type: 'Feature' }),
+      ]),
+    }));
+    expect(groupLayer.feature.properties.toolHistory).toEqual([
+      { name: 'AI', timestamp: '2026-05-03T00:00:00Z' },
+    ]);
+  });
+
+  test('applyResult keeps aggregate single features as one result layer', () => {
+    const result = state.applyResult({
+      addGeojson: {
+        type: 'Feature',
+        geometry: {
+          type: 'MultiPoint',
+          coordinates: [[0, 0], [1, 1]],
+        },
+        properties: { __id: 'multi-1' },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.added).toHaveLength(1);
+    expect(tocLayers).toHaveLength(1);
+    expect(state.getLayer(result.added[0]).toGeoJSON()).toEqual(expect.objectContaining({
+      type: 'Feature',
+      geometry: expect.objectContaining({ type: 'MultiPoint' }),
+    }));
+  });
+
+  test('applyResult adds single Feature individually', () => {
+    const result = state.applyResult({
+      addGeojson: {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [0, 0] },
+        properties: { __id: 'single-1' },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.added).toHaveLength(1);
+    expect(tocLayers).toHaveLength(1);
+    expect(state.getLayer('single-1')).not.toBeNull();
+  });
   test('setLayerName persists a user-facing layer name', () => {
     const layer = {
       __id: 'layer-1',
@@ -100,6 +281,92 @@ describe('state provenance helpers', () => {
     expect(state.setLayerName('layer-1', 'Study Area')).toBe(true);
     expect(state.getLayerName('layer-1')).toBe('Study Area');
     expect(layer.feature.properties.layerName).toBe('Study Area');
+    expect(layer.feature.properties.displayName).toBe('Study Area');
+  });
+
+  test('getLayerInfo exposes canonical geometry, source, provenance, and ui fields', () => {
+    const layer = {
+      __id: 'import-1',
+      feature: {
+        properties: {
+          __id: 'import-1',
+          importSummary: {
+            fileName: 'sites.geojson',
+            importedCount: 2,
+            skippedCount: 0,
+          },
+          toolHistory: [{ name: 'Add Data', timestamp: '2026-05-01T00:00:00Z' }],
+        },
+        toolMetadata: {
+          name: 'Add Data',
+          params: { Input: 'sites.geojson' },
+          timestamp: '2026-05-01T00:00:00Z',
+        },
+      },
+      toGeoJSON: jest.fn(() => ({
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {} },
+          { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: {} },
+        ],
+        properties: {
+          __id: 'import-1',
+          importSummary: {
+            fileName: 'sites.geojson',
+            importedCount: 2,
+            skippedCount: 0,
+          },
+        },
+      })),
+    };
+
+    state.registerLayer(layer, 'import-1');
+    tocLayers.push(layer);
+    mockMap.hasLayer.mockImplementation((candidate) => candidate === layer);
+
+    const info = state.getLayerInfo('import-1');
+
+    expect(info.id).toBe('import-1');
+    expect(info.displayName).toBe('sites');
+    expect(info.geometry).toEqual(expect.objectContaining({
+      type: 'Point',
+      label: 'Point',
+      featureCount: 2,
+    }));
+    expect(info.source).toEqual(expect.objectContaining({
+      kind: 'imported',
+      label: 'Imported',
+      input: 'sites.geojson',
+      importedFileName: 'sites.geojson',
+    }));
+    expect(info.provenance.history).toEqual([{ name: 'Add Data', timestamp: '2026-05-01T00:00:00Z' }]);
+    expect(info.ui).toEqual(expect.objectContaining({ visible: true, selectable: true, removable: true, editable: true }));
+  });
+
+  test('listLayers returns canonical display labels and summary fields', () => {
+    const layer = {
+      __id: 'named-1',
+      feature: {
+        properties: {
+          __id: 'named-1',
+          name: 'Parcels',
+        },
+      },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'named-1', name: 'Parcels' } })),
+    };
+
+    state.registerLayer(layer, 'named-1');
+    tocLayers.push(layer);
+
+    expect(state.listLayers()).toEqual([
+      expect.objectContaining({
+        id: 'named-1',
+        geometryType: 'Polygon',
+        label: 'Parcels',
+        displayName: 'Parcels',
+        featureCount: 1,
+      }),
+    ]);
   });
 
   test('removeLayerTree removes a parent layer and derived descendants', () => {

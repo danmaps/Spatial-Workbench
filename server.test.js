@@ -113,4 +113,15 @@ describe('headless API', () => {
     expect(response.body.status.code).toBe(2);
     expect(response.body.error).toBe('Instruction is required.');
   });
+
+  test('POST /api/ai_structured validates request body', async () => {
+    const response = await postJson('/api/ai_structured', {
+      systemPrompt: '',
+      userPrompt: 'hello',
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.ok).toBe(false);
+    expect(response.body.error).toBe('systemPrompt is required.');
+  });
 });

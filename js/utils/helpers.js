@@ -14,9 +14,18 @@ function logCurrentBounds(mapOrBounds) {
     return [southWest.lng, southWest.lat, northEast.lng, northEast.lat];
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { logCurrentBounds };
-} else {
-    window.logCurrentBounds = logCurrentBounds;
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { logCurrentBounds, escapeHtml };
+} else {
+    window.logCurrentBounds = logCurrentBounds;
+    window.escapeHtml = escapeHtml;
+}

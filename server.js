@@ -5,6 +5,7 @@ require('dotenv').config();
 const toolSpecs = require('./js/tools/specs.json');
 const { requestStructuredData } = require('./js/ai/requestStructuredData');
 const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
+const MAX_AI_TOKENS = 4096;
 
 function createApp() {
     const app = express();
@@ -60,12 +61,31 @@ function createApp() {
                 temperature = 0.2,
                 maxTokens = 1200,
             } = req.body || {};
+            if (typeof systemPrompt !== 'string' || !systemPrompt.trim()) {
+                return res.status(400).json({ ok: false, error: 'systemPrompt is required.' });
+            }
+            if (typeof userPrompt !== 'string' || !userPrompt.trim()) {
+                return res.status(400).json({ ok: false, error: 'userPrompt is required.' });
+            }
+            if (typeof model !== 'string' || !model.trim()) {
+                return res.status(400).json({ ok: false, error: 'model must be a non-empty string.' });
+            }
+            const parsedTemperature = Number(temperature);
+            if (!Number.isFinite(parsedTemperature) || parsedTemperature < 0 || parsedTemperature > 2) {
+                return res.status(400).json({ ok: false, error: 'temperature must be a number between 0 and 2.' });
+            }
+            const parsedMaxTokens = Number(maxTokens);
+            const isInteger = Number.isFinite(parsedMaxTokens) && Math.floor(parsedMaxTokens) === parsedMaxTokens;
+            if (!isInteger || parsedMaxTokens < 1 || parsedMaxTokens > MAX_AI_TOKENS) {
+                return res.status(400).json({ ok: false, error: `maxTokens must be an integer between 1 and ${MAX_AI_TOKENS}.` });
+            }
+
             const data = await requestStructuredData({
                 systemPrompt,
                 userPrompt,
                 model,
-                temperature,
-                maxTokens,
+                temperature: parsedTemperature,
+                maxTokens: parsedMaxTokens,
             });
             res.status(200).json(data);
         } catch (error) {

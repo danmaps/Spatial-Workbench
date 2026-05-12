@@ -4,11 +4,14 @@ async function getFetchImpl() {
   }
 
   if (typeof window === 'undefined') {
-    const dynamicImport = new Function('modulePath', 'return import(modulePath);');
-    const fetchModule = await dynamicImport('node-fetch');
-    const fetchImpl = fetchModule.default || fetchModule;
-    if (typeof fetchImpl === 'function') {
-      return fetchImpl;
+    try {
+      const fetchModule = await import(/* webpackIgnore: true */ 'node-fetch');
+      const fetchImpl = fetchModule.default || fetchModule;
+      if (typeof fetchImpl === 'function') {
+        return fetchImpl;
+      }
+    } catch (error) {
+      throw new Error(`Fetch is unavailable and node-fetch could not be loaded: ${error.message}`);
     }
   }
 

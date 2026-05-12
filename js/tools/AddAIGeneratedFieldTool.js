@@ -3,21 +3,13 @@ const { Parameter } = require('../models/Parameter');
 const { getLayer, listLayers } = require('../state');
 const { generateFieldValues, coerceGeneratedValue } = require('../ai/fieldGeneration');
 const { normalizeHeadlessState, selectFeatureIds, updateFeatures } = require('../runtime/headlessState');
+const { escapeHtml } = require('../utils/helpers');
 
 function splitFieldList(value) {
   return String(value || '')
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 class AddAIGeneratedFieldTool extends Tool {

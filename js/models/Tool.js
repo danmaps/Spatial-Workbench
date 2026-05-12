@@ -53,6 +53,7 @@ class Tool {
             key: this.constructor?.name || this.name,
             name: this.name,
             description: this.description || '',
+            headlessSupported: !!this.headlessSupported,
             parameters: params,
         };
     }

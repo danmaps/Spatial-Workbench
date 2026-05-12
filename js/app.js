@@ -1,7 +1,6 @@
 /* global L, turf */  // Tell ESLint that L and turf are global variables
 
-const toolNames = ['RandomPointsTool', 'BufferTool', 'GroupTool', 'ExportTool', 'GenerateAIFeatures', 'AddDataTool']; // Keep this up to date
-
+const { instantiateTools } = require('./runtime/toolRegistry');
 const state = require('./state');
 const { renderAISettings } = require('./ui/ai-settings');
 const { getAttributeModel, parseEditedValue } = require('./ui/attribute-view');
@@ -1158,15 +1157,9 @@ map.on('layeradd', function (e) {
 
 // Load tools dynamically and store them in the loadedTools object
 document.addEventListener('DOMContentLoaded', () => {
-    // Load tools synchronously since we're using require
-    toolNames.forEach(name => {
-        try {
-            const ToolClass = require(`./tools/${name}`)[name];
-            loadedTools[name] = new ToolClass();
-        } catch (error) {
-            console.error(`Failed to load tool: ${name}`, error);
-        }
-    });
+    for (const tool of instantiateTools()) {
+        loadedTools[tool.constructor.name] = tool;
+    }
     renderToolList(Object.values(loadedTools));
 
     // Render AI Settings panel

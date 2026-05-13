@@ -38,7 +38,7 @@ const loadedTools = {}; // Object to store instantiated tools
 let openLayerMenuId = null;
 let activeDesktopAttributeCell = null;
 let activeAttributeMode = 'all';
-let activeMapInteractionMode = MAP_INTERACTION_MODES.SELECT;
+let activeMapInteractionMode = MAP_INTERACTION_MODES.INSPECT;
 
 let drawControl = new L.Control.Draw({
     draw: {

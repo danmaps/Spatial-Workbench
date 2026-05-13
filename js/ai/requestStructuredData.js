@@ -36,7 +36,7 @@ function extractJsonPayload(data) {
   return JSON.parse(content);
 }
 
-async function requestStructuredData({ systemPrompt, userPrompt, model = 'gpt-4o', temperature = 0.2, maxTokens = 1200, provider, apiKey: requestedApiKey, ollamaUrl }) {
+async function requestStructuredData({ systemPrompt, userPrompt, model, temperature = 0.2, maxTokens = 1200, provider, apiKey: requestedApiKey, ollamaUrl }) {
   if (typeof window !== 'undefined') {
     const fetchImpl = await getFetchImpl();
     const savedProvider = provider || localStorage.getItem(STORAGE_KEYS.provider) || DEFAULT_PROVIDER;
@@ -83,7 +83,7 @@ async function requestStructuredData({ systemPrompt, userPrompt, model = 'gpt-4o
       'Authorization': `Bearer ${envApiKey}`,
     },
     body: JSON.stringify({
-      model,
+      model: model || 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },

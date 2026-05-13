@@ -207,6 +207,8 @@ app.post('/api/ai_structured', async (req, res) => {
       systemPrompt,
       userPrompt,
       model = 'gpt-4o',
+      provider: requestedProvider,
+      ollamaUrl: requestedOllamaUrl,
       temperature = 0.2,
       maxTokens = 1200,
     } = req.body || {};
@@ -232,18 +234,54 @@ app.post('/api/ai_structured', async (req, res) => {
       return res.status(400).json({ ok: false, error: `maxTokens must be an integer between 1 and ${MAX_AI_TOKENS}.` });
     }
 
-    const data = await requestStructuredData({
-      systemPrompt,
-      userPrompt,
-      model,
-      temperature: parsedTemperature,
-      maxTokens: parsedMaxTokens,
+    const providerId = requestedProvider || DEFAULT_PROVIDER;
+    const provider = AI_PROVIDERS[providerId];
+    if (!provider) {
+      return res.status(400).json({ ok: false, error: `Unknown provider: ${providerId}` });
+    }
+
+    const authHeader = req.get('Authorization');
+    const userKey = authHeader ? authHeader.replace('Bearer ', '').trim() : null;
+    const envKey = process.env.OPENAI_API_KEY;
+    const apiKey = userKey || envKey;
+
+    if (provider.requiresKey && !apiKey) {
+      return res.status(400).json({ ok: false, error: `No API key provided for ${provider.name}.` });
+    }
+
+    let endpoint = provider.endpoint;
+    if (providerId === 'ollama') {
+      endpoint = `${normalizeOllamaUrl(requestedOllamaUrl || getConfiguredOllamaUrl())}/v1/chat/completions`;
+    }
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: model || provider.defaultModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: parsedMaxTokens,
+        temperature: parsedTemperature,
+        response_format: { type: 'json_object' },
+      }),
     });
 
-    return res.status(200).json(data);
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      return res.status(502).json({ ok: false, error: `${provider.name} request failed (${response.status})${body ? `: ${body}` : ''}` });
+    }
+
+    const data = await response.json();
+    return res.status(200).json(parseModelJson(data?.choices?.[0]?.message?.content));
   } catch (error) {
     console.error('Error fetching structured AI data:', error);
-    return res.status(500).json({ ok: false, error: 'Failed to connect to OpenAI' });
+    return res.status(500).json({ ok: false, error: error.message || 'Failed to connect to AI provider' });
   }
 });
 

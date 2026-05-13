@@ -1,3 +1,5 @@
+const { STORAGE_KEYS, DEFAULT_PROVIDER, AI_PROVIDERS } = require('../ai-providers');
+
 async function getFetchImpl() {
   if (typeof fetch === 'function') {
     return fetch.bind(globalThis);
@@ -34,18 +36,27 @@ function extractJsonPayload(data) {
   return JSON.parse(content);
 }
 
-async function requestStructuredData({ systemPrompt, userPrompt, model = 'gpt-4o', temperature = 0.2, maxTokens = 1200 }) {
+async function requestStructuredData({ systemPrompt, userPrompt, model = 'gpt-4o', temperature = 0.2, maxTokens = 1200, provider, apiKey: requestedApiKey, ollamaUrl }) {
   if (typeof window !== 'undefined') {
     const fetchImpl = await getFetchImpl();
+    const savedProvider = provider || localStorage.getItem(STORAGE_KEYS.provider) || DEFAULT_PROVIDER;
+    const savedApiKey = requestedApiKey !== undefined ? requestedApiKey : (localStorage.getItem(STORAGE_KEYS.apiKey) || '');
+    const savedOllamaUrl = ollamaUrl !== undefined ? ollamaUrl : (localStorage.getItem(STORAGE_KEYS.ollamaUrl) || '');
+    const savedModel = model || localStorage.getItem(STORAGE_KEYS.model) || AI_PROVIDERS[savedProvider]?.defaultModel || 'gpt-4o';
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    if (savedApiKey) headers.Authorization = `Bearer ${savedApiKey}`;
+
     const response = await fetchImpl('/api/ai_structured', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         systemPrompt,
         userPrompt,
-        model,
+        model: savedModel,
+        provider: savedProvider,
+        ollamaUrl: savedOllamaUrl,
         temperature,
         maxTokens,
       }),
@@ -59,8 +70,8 @@ async function requestStructuredData({ systemPrompt, userPrompt, model = 'gpt-4o
     return response.json();
   }
 
-  const apiKey = getApiKey();
-  if (!apiKey) {
+  const envApiKey = getApiKey();
+  if (!envApiKey) {
     throw new Error('OPENAI_API_KEY is not configured.');
   }
 
@@ -69,7 +80,7 @@ async function requestStructuredData({ systemPrompt, userPrompt, model = 'gpt-4o
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': `Bearer ${envApiKey}`,
     },
     body: JSON.stringify({
       model,

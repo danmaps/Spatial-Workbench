@@ -18,6 +18,7 @@ const {
     getFeatureHighlightStyle,
     getLayerSelectionFeatureIds,
 } = require('./ui/selection-style');
+const { instantiateTools } = require('./runtime/toolRegistry');
 
 // Initialize the map
 const map = L.map('map').setView([34, -117], 7);

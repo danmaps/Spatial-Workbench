@@ -13,6 +13,7 @@ const {
     normalizeMapInteractionMode,
     shouldOpenPopupForMapInteractionMode,
 } = require('./ui/map-interaction-mode');
+const { stopLeafletClickPropagation } = require('./ui/leaflet-click');
 const {
     getLayerSelectionVisualState,
     getFeatureHighlightStyle,
@@ -376,7 +377,9 @@ function getFeatureSelectionId(targetLayer, parentLayerId, fallbackIndex) {
     return ensureFeatureSelectionId(targetLayer.feature, `${parentLayerId || state.ensureStableId(targetLayer)}-${fallbackIndex + 1}`);
 }
 
-function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0) {
+function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0, event = null) {
+    stopLeafletClickPropagation(event);
+
     const layerId = parentLayerId || state.ensureStableId(targetLayer);
     if (!layerId) return;
 
@@ -461,7 +464,7 @@ function bindLayerSelectionInteraction(layer) {
             if (!child?.feature || child.__selectionInteractionBound) return;
             getFeatureSelectionId(child, parentLayerId, fallbackIndex);
             if (typeof child.on === 'function') {
-                child.on('click', () => applyMapFeatureSelection(child, parentLayerId, fallbackIndex));
+                child.on('click', (event) => applyMapFeatureSelection(child, parentLayerId, fallbackIndex, event));
                 child.__selectionInteractionBound = true;
             }
         });
@@ -469,7 +472,7 @@ function bindLayerSelectionInteraction(layer) {
 
     if (layer?.feature && typeof layer.on === 'function') {
         getFeatureSelectionId(layer, parentLayerId, 0);
-        layer.on('click', () => applyMapFeatureSelection(layer, parentLayerId, 0));
+        layer.on('click', (event) => applyMapFeatureSelection(layer, parentLayerId, 0, event));
     }
 
     layer.__selectionInteractionBound = true;

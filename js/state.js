@@ -54,6 +54,19 @@ function getMap() {
   return getAppRefs().map;
 }
 
+function ensureDatasetId(layer, preferredDatasetId) {
+  if (!layer) return null;
+
+  if (!layer.__datasetId) layer.__datasetId = preferredDatasetId || layer.__id || _uuid();
+
+  const feature = ensureLayerFeature(layer);
+  if (!feature.properties.__datasetId) {
+    feature.properties.__datasetId = layer.__datasetId;
+  }
+
+  return layer.__datasetId;
+}
+
 function ensureLayerRemoveListener() {
   if (_layerRemoveListenerAttached) return;
 
@@ -93,6 +106,7 @@ function ensureStableId(layer, preferredId) {
   // Persist on GeoJSON feature properties.
   const feature = ensureLayerFeature(layer);
   if (!feature.properties.__id) feature.properties.__id = layer.__id;
+  ensureDatasetId(layer);
 
   return layer.__id;
 }
@@ -318,9 +332,10 @@ function clearSelectedFeatureIds(layerId) {
   return {};
 }
 
-function registerLayer(layer, preferredId) {
+function registerLayer(layer, preferredId, preferredDatasetId) {
   ensureLayerRemoveListener();
   const id = ensureStableId(layer, preferredId);
+  ensureDatasetId(layer, preferredDatasetId);
   if (!id) return null;
   _registry.set(id, layer);
   return id;
@@ -339,6 +354,32 @@ function unregisterLayer(layerOrId) {
 
 function getLayer(id) {
   return _registry.get(id) || null;
+}
+
+function getLayersByDatasetId(datasetId) {
+  if (!datasetId) return [];
+  ensureLayerRemoveListener();
+  const { tocLayers } = getAppRefs();
+  const layers = Array.isArray(tocLayers) ? tocLayers : [];
+  const matches = [];
+
+  layers.forEach((layer) => {
+    if (ensureDatasetId(layer) !== datasetId) return;
+
+    if (typeof layer.eachLayer === 'function') {
+      layer.eachLayer((child) => {
+        if (!child?.feature) return;
+        ensureStableId(child, child?.feature?.properties?.__id);
+        ensureDatasetId(child, datasetId);
+        matches.push(child);
+      });
+      return;
+    }
+
+    matches.push(layer);
+  });
+
+  return matches;
 }
 
 function getGeometryType(layer) {
@@ -582,11 +623,13 @@ function listLayers() {
   return layers.map((layer) => {
     // Ensure the layer is both ID'd and registered.
     const preferredId = layer?.feature?.properties?.__id;
-    const id = registerLayer(layer, preferredId);
+    const preferredDatasetId = layer?.feature?.properties?.__datasetId;
+    const id = registerLayer(layer, preferredId, preferredDatasetId);
     const geomType = getGeometryType(layer);
     const info = getLayerInfo(layer);
     return {
       id,
+      datasetId: ensureDatasetId(layer),
       geometryType: geomType,
       // Best-effort label. Tools can choose to display id or a friendlier string.
       label: info?.displayName || (geomType ? `${geomType} (${id})` : id),
@@ -596,6 +639,39 @@ function listLayers() {
       ui: info?.ui || null,
     };
   });
+}
+
+function listLayerGroups() {
+  ensureLayerRemoveListener();
+  const { tocLayers } = getAppRefs();
+  const layers = Array.isArray(tocLayers) ? tocLayers : [];
+  const groups = new Map();
+
+  for (const layer of layers) {
+    const datasetId = ensureDatasetId(layer);
+    const info = getLayerInfo(layer);
+    const geometryType = info?.geometryType || 'Feature';
+
+    if (!groups.has(datasetId)) {
+      groups.set(datasetId, {
+        id: datasetId,
+        geometryType,
+        featureCount: 0,
+        label: info?.displayName || geometryType,
+      });
+    }
+
+    const group = groups.get(datasetId);
+    group.featureCount += 1;
+    if (!group.label && info?.displayName) group.label = info.displayName;
+  }
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    label: group.featureCount === 1
+      ? `${group.label || group.geometryType} (${group.id})`
+      : `${group.label || group.geometryType} (${group.featureCount} features)`,
+  }));
 }
 
 function getState() {
@@ -680,10 +756,19 @@ function applyResult(toolResult) {
       if (isCollection) {
         // Add the entire result dataset as a single group layer (one layer in TOC).
         const groupLayer = L.geoJSON(gj);
+        const datasetId = ensureDatasetId(groupLayer, gj?.properties?.__datasetId || _uuid());
 
-        const id = registerLayer(groupLayer);
+        const id = registerLayer(groupLayer, undefined, datasetId);
         ensureStableId(groupLayer, id);
         ensureFeatureIdentifiers(gj, id);
+        if (typeof groupLayer.eachLayer === 'function') {
+          groupLayer.eachLayer((child, index) => {
+            const preferredId = child?.feature?.properties?.__id || `${id}-${index + 1}`;
+            registerLayer(child, preferredId, datasetId);
+            ensureStableId(child, preferredId);
+            ensureDatasetId(child, datasetId);
+          });
+        }
 
         // Attach feature object on group layer for metadata/history
         if (!groupLayer.feature) {
@@ -691,6 +776,7 @@ function applyResult(toolResult) {
         }
         if (!groupLayer.feature.properties) groupLayer.feature.properties = {};
         groupLayer.feature.properties.__id = id;
+        groupLayer.feature.properties.__datasetId = datasetId;
 
         // Apply tool metadata / history
         try {
@@ -712,10 +798,13 @@ function applyResult(toolResult) {
         // Single Feature (or empty collection) – add individually as before.
         ensureFeatureIdentifiers(gj);
         const layer = L.geoJSON(gj);
+        const datasetId = gj?.properties?.__datasetId || _uuid();
         layer.eachLayer((child) => {
           const preferredId = child?.feature?.properties?.__id;
-          const id = registerLayer(child, preferredId);
+          const childDatasetId = child?.feature?.properties?.__datasetId || datasetId;
+          const id = registerLayer(child, preferredId, childDatasetId);
           ensureStableId(child, preferredId || id);
+          ensureDatasetId(child, childDatasetId);
 
           try {
             const md = (gj && gj.toolMetadata) || (child.feature && child.feature.toolMetadata) || (child.feature && child.feature.properties && child.feature.properties.toolMetadata);
@@ -743,9 +832,11 @@ function applyResult(toolResult) {
 
 module.exports = {
   ensureStableId,
+  ensureDatasetId,
   ensureToolHistory,
   registerLayer,
   getLayer,
+  getLayersByDatasetId,
   getLayerInfo,
   getLayerBounds,
   getToolHistory,
@@ -768,6 +859,7 @@ module.exports = {
   removeLayerTree,
   getMap,
   listLayers,
+  listLayerGroups,
   getState,
   applyResult,
   removeLayer,

@@ -238,12 +238,13 @@ class Tool {
         return async () => {
             const toolContent = document.getElementById('toolContent');
             const paramValues = this.collectParamsFromDOM();
+            let result;
             
             // Start loading animation (pulsing background of toolContent div)
             toolContent.classList.add('pulsate');
             
             try {
-                await exec();
+                result = await exec();
             } catch (error) {
                 // Set error status
                 this.setStatus(1, error?.message || 'Execution failed');
@@ -273,6 +274,16 @@ class Tool {
                 
                 // Re-render the UI
                 this.renderUI(paramValues);
+
+                if (typeof document !== 'undefined' && typeof document.dispatchEvent === 'function') {
+                    document.dispatchEvent(new CustomEvent('spatial-workbench:tool-complete', {
+                        detail: {
+                            tool: this,
+                            result,
+                            status,
+                        },
+                    }));
+                }
             }
         };
     }

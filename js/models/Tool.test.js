@@ -139,6 +139,28 @@ describe('Tool base architecture', () => {
     expect(document.getElementById('param-Enabled').checked).toBe(true);
   });
 
+  test('execute wrapper dispatches a completion event', async () => {
+    const listener = jest.fn();
+    document.addEventListener('spatial-workbench:tool-complete', listener);
+
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo', [], 'demo', null);
+      }
+      async run() {
+        this.setStatus(0, 'done');
+        return { ok: true };
+      }
+    }
+
+    const tool = new DemoTool();
+    await tool.execute();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail.status.message).toBe('done');
+    expect(listener.mock.calls[0][0].detail.result).toEqual({ ok: true });
+  });
+
   test('renderUI exposes docs icon for the selected tool', () => {
     class DemoTool extends Tool {
       constructor() {

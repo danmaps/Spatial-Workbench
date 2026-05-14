@@ -21,8 +21,8 @@ function coerceGeneratedValue(rawValue, outputType) {
   return String(rawValue);
 }
 
-async function generateFieldValues({ features, sourceFields, instruction, outputFieldName, outputType }) {
-  const payload = features.map((feature) => ({
+async function generateFieldValueForFeature({ feature, sourceFields, instruction, outputFieldName, outputType }) {
+  const payload = {
     id: feature.properties.__id,
     geometryType: feature.geometry ? feature.geometry.type : null,
     properties: sourceFields.length
@@ -31,13 +31,13 @@ async function generateFieldValues({ features, sourceFields, instruction, output
           return acc;
         }, {})
       : feature.properties,
-  }));
+  };
 
   const systemPrompt = [
-    'You generate one field value per GIS feature.',
-    'Return only JSON with shape {"results":[{"id":"...","value":...}]}',
+    'You generate exactly one field value for one GIS feature.',
+    'Return only JSON with shape {"id":"...","value":...}.',
     `The target output field is "${outputFieldName}" and its type is "${outputType}".`,
-    'Do not omit ids. Keep output values grounded in the provided feature properties.',
+    'Keep the output grounded in the provided feature properties.',
   ].join(' ');
 
   const userPrompt = JSON.stringify({
@@ -45,30 +45,38 @@ async function generateFieldValues({ features, sourceFields, instruction, output
     outputFieldName,
     outputType,
     sourceFields,
-    features: payload,
+    feature: payload,
   });
 
   const response = await requestStructuredData({
     systemPrompt,
     userPrompt,
     temperature: 0.2,
-    maxTokens: 1400,
+    maxTokens: 600,
   });
 
-  const results = Array.isArray(response && response.results) ? response.results : [];
-  const byId = new Map();
-  for (const row of results) {
-    if (!row || !row.id) continue;
-    byId.set(row.id, coerceGeneratedValue(row.value, outputType));
-  }
-
-  return features.map((feature) => ({
+  return {
     id: feature.properties.__id,
-    value: byId.has(feature.properties.__id) ? byId.get(feature.properties.__id) : null,
-  }));
+    value: coerceGeneratedValue(response && response.value, outputType),
+  };
+}
+
+async function generateFieldValues({ features, sourceFields, instruction, outputFieldName, outputType }) {
+  const results = [];
+  for (const feature of features) {
+    results.push(await generateFieldValueForFeature({
+      feature,
+      sourceFields,
+      instruction,
+      outputFieldName,
+      outputType,
+    }));
+  }
+  return results;
 }
 
 module.exports = {
+  generateFieldValueForFeature,
   generateFieldValues,
   coerceGeneratedValue,
 };

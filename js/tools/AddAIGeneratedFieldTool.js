@@ -1,15 +1,41 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { getLayer, listLayers } = require('../state');
-const { generateFieldValues, coerceGeneratedValue } = require('../ai/fieldGeneration');
+const { getLayersByDatasetId, listLayerGroups } = require('../state');
+const { generateFieldValues } = require('../ai/fieldGeneration');
 const { normalizeHeadlessState, selectFeatureIds, updateFeatures } = require('../runtime/headlessState');
-const { escapeHtml } = require('../utils/helpers');
 
 function splitFieldList(value) {
   return String(value || '')
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function coerceOutputValue(value, outputType) {
+  if (value === null || value === undefined) return null;
+  if (outputType === 'number') {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+  if (outputType === 'boolean') {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') return true;
+      if (normalized === 'false') return false;
+    }
+    return null;
+  }
+  return String(value);
+}
+
+function buildPopupContent(properties) {
+  let popupContent = "<table class='popupTable'>";
+  for (const [key, value] of Object.entries(properties)) {
+    popupContent += `<tr><td><b>${key}</b></td><td>${value}</td></tr>`;
+  }
+  popupContent += '</table>';
+  return popupContent;
 }
 
 class AddAIGeneratedFieldTool extends Tool {
@@ -79,15 +105,19 @@ class AddAIGeneratedFieldTool extends Tool {
     });
 
     const generatedById = new Map(generated.map((item) => [item.id, item.value]));
-    const { state: nextState, updatedCount } = updateFeatures(state, eligibleFeatures.map((feature) => feature.properties.__id), (feature) => {
-      const nextValue = coerceGeneratedValue(generatedById.get(feature.properties.__id), options.outputType);
-      feature.properties[options.outputFieldName] = nextValue;
-      feature.toolMetadata = {
-        name: this.name,
-        params,
-        timestamp: new Date().toISOString(),
-      };
-    });
+    const { state: nextState, updatedCount } = updateFeatures(
+      state,
+      eligibleFeatures.map((feature) => feature.properties.__id),
+      (feature) => {
+        const nextValue = coerceOutputValue(generatedById.get(feature.properties.__id), options.outputType);
+        feature.properties[options.outputFieldName] = nextValue;
+        feature.toolMetadata = {
+          name: this.name,
+          params,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    );
 
     this.setStatus(0, `Updated ${updatedCount} feature(s).`);
     return {
@@ -99,56 +129,62 @@ class AddAIGeneratedFieldTool extends Tool {
   }
 
   async runInBrowser(params, options) {
-    const inputLayerId = params['Input Layer'];
-    const layer = inputLayerId ? getLayer(inputLayerId) : null;
-    if (!layer || typeof layer.toGeoJSON !== 'function') {
+    const datasetId = params['Input Layer'];
+    const targetLayers = getLayersByDatasetId(datasetId);
+
+    if (!targetLayers.length) {
       this.setStatus(2, 'No layer selected.');
       return;
     }
 
-    const feature = layer.toGeoJSON();
-    if (!feature.properties) feature.properties = {};
-    if (!feature.properties.__id) {
-      feature.properties.__id = layer.__id || `feature-${Date.now()}`;
+    const eligibleTargets = [];
+    for (const layer of targetLayers) {
+      const feature = layer.toGeoJSON();
+      feature.properties = feature.properties || {};
+      feature.properties.__id = feature.properties.__id || layer.__id || `feature-${Date.now()}`;
+
+      if (!options.overwrite && feature.properties[options.outputFieldName] !== undefined) {
+        continue;
+      }
+
+      eligibleTargets.push({ layer, feature });
     }
 
-    if (!options.overwrite && feature.properties[options.outputFieldName] !== undefined) {
-      this.setStatus(2, 'Output field already exists on the selected layer.');
+    if (!eligibleTargets.length) {
+      this.setStatus(2, 'No eligible target features found.');
       return;
     }
 
     const generated = await generateFieldValues({
-      features: [feature],
+      features: eligibleTargets.map((entry) => entry.feature),
       sourceFields: options.sourceFields,
       instruction: options.instruction,
       outputFieldName: options.outputFieldName,
       outputType: options.outputType,
     });
+    const generatedById = new Map(generated.map((item) => [item.id, item.value]));
 
-    const nextValue = coerceGeneratedValue(generated[0] && generated[0].value, options.outputType);
-    layer.feature = layer.feature || feature;
-    layer.feature.properties = layer.feature.properties || {};
-    layer.feature.properties[options.outputFieldName] = nextValue;
-    layer.feature.toolMetadata = {
-      name: this.name,
-      params,
-      timestamp: new Date().toISOString(),
-    };
+    for (const { layer, feature } of eligibleTargets) {
+      const nextValue = coerceOutputValue(generatedById.get(feature.properties.__id), options.outputType);
+      layer.feature = layer.feature || feature;
+      layer.feature.properties = layer.feature.properties || {};
+      layer.feature.properties[options.outputFieldName] = nextValue;
+      layer.feature.toolMetadata = {
+        name: this.name,
+        params,
+        timestamp: new Date().toISOString(),
+      };
 
-    if (typeof layer.bindPopup === 'function') {
-      let popupContent = "<table class='popupTable'>";
-      for (const [key, value] of Object.entries(layer.feature.properties)) {
-        popupContent += `<tr><td><b>${escapeHtml(key)}</b></td><td>${escapeHtml(value)}</td></tr>`;
+      if (typeof layer.bindPopup === 'function') {
+        layer.bindPopup(buildPopupContent(layer.feature.properties));
       }
-      popupContent += '</table>';
-      layer.bindPopup(popupContent);
     }
 
-    this.setStatus(0, 'Updated 1 feature.');
+    this.setStatus(0, `Updated ${eligibleTargets.length} feature(s).`);
     return {
       ok: true,
-      updatedCount: 1,
-      updatedFeatureIds: [feature.properties.__id],
+      updatedCount: eligibleTargets.length,
+      updatedFeatureIds: eligibleTargets.map((entry) => entry.feature.properties.__id),
     };
   }
 
@@ -158,7 +194,7 @@ class AddAIGeneratedFieldTool extends Tool {
     const inputLayer = document.getElementById('param-Input Layer');
     if (inputLayer) {
       inputLayer.innerHTML = '';
-      for (const layer of listLayers()) {
+      for (const layer of listLayerGroups()) {
         const option = document.createElement('option');
         option.value = layer.id;
         option.text = layer.label;

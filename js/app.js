@@ -1113,6 +1113,10 @@ function updateDataContent() {
     refreshSidebarState();
 }
 
+document.addEventListener('spatial-workbench:tool-complete', function () {
+    updateDataContent();
+});
+
 // Event listeners remain the same...
 map.on(L.Draw.Event.CREATED, function (e) {
     let type = e.layerType,
@@ -1310,5 +1314,6 @@ if (typeof module !== 'undefined' && module.exports) {
         zoomToSelection,
         openLayerProperties,
         renderImportSummary,
+        updateDataContent,
     };
 }

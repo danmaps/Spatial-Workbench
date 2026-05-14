@@ -3,7 +3,6 @@ const cors = require('cors');
 const fetch = globalThis.fetch
   ? globalThis.fetch.bind(globalThis)
   : (...args) => import('node-fetch').then(({ default: nodeFetch }) => nodeFetch(...args));
-const rateLimit = require('express-rate-limit');
 const path = require('path');
 const {
   AI_PROVIDERS,
@@ -15,7 +14,15 @@ const {
 } = require('./js/ai-providers');
 const { requestStructuredData } = require('./js/ai/requestStructuredData');
 const { getHeadlessToolCatalog, runHeadlessTool } = require('./js/headless-runtime');
+const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
 const MAX_AI_TOKENS = 4096;
+
+let rateLimit;
+try {
+  rateLimit = require('express-rate-limit');
+} catch (_error) {
+  rateLimit = () => (_req, _res, next) => next();
+}
 
 const app = express();
 require('dotenv').config();
@@ -189,7 +196,14 @@ app.get('/api/run', (_req, res) => {
 
 app.post('/api/run', async (req, res) => {
   try {
-    const result = await runHeadlessTool(req.body || {});
+    const body = req.body || {};
+    const result = body?.state?.featureCollection
+      ? await runToolHeadlessly({
+          toolKey: body.tool,
+          params: body.params,
+          state: body.state,
+        })
+      : await runHeadlessTool(body);
     res.json(result);
   } catch (error) {
     const statusCode = error.statusCode || 500;

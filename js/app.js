@@ -11,7 +11,7 @@ const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-dra
 const {
     MAP_INTERACTION_MODES,
     normalizeMapInteractionMode,
-    shouldOpenPopupForMapInteractionMode,
+    shouldSelectForMapInteractionMode,
 } = require('./ui/map-interaction-mode');
 const { stopLeafletClickPropagation } = require('./ui/leaflet-click');
 const {
@@ -384,17 +384,22 @@ function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0,
     if (!layerId) return;
 
     const featureId = getFeatureSelectionId(targetLayer, layerId, fallbackIndex);
-    state.selectLayer(layerId, { makeActive: true });
-    state.setActiveLayerId(layerId);
-    state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
 
-    if (shouldOpenPopupForMapInteractionMode(activeMapInteractionMode)) {
-        openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex);
-    } else if (map && typeof map.closePopup === 'function') {
-        map.closePopup();
+    if (shouldSelectForMapInteractionMode(activeMapInteractionMode)) {
+        state.selectLayer(layerId, { makeActive: true });
+        state.setActiveLayerId(layerId);
+        state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
+
+        if (map && typeof map.closePopup === 'function') {
+            map.closePopup();
+        }
+        refreshSidebarState();
+    } else {
+        if (!openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex) && map && typeof map.closePopup === 'function') {
+            map.closePopup();
+        }
     }
 
-    refreshSidebarState();
     closeLayerMenu();
 }
 

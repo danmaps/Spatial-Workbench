@@ -2,6 +2,7 @@ const {
   MAP_INTERACTION_MODES,
   normalizeMapInteractionMode,
   shouldOpenPopupForMapInteractionMode,
+  shouldSelectForMapInteractionMode,
 } = require('./map-interaction-mode');
 
 describe('map interaction mode helpers', () => {
@@ -17,5 +18,10 @@ describe('map interaction mode helpers', () => {
 
   test('select mode does not open popups', () => {
     expect(shouldOpenPopupForMapInteractionMode(MAP_INTERACTION_MODES.SELECT)).toBe(false);
+    expect(shouldSelectForMapInteractionMode(MAP_INTERACTION_MODES.SELECT)).toBe(true);
+  });
+
+  test('inspect mode does not select features', () => {
+    expect(shouldSelectForMapInteractionMode(MAP_INTERACTION_MODES.INSPECT)).toBe(false);
   });
 });

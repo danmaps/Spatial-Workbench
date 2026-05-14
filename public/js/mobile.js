@@ -15,9 +15,23 @@
     element.scrollIntoView({ block: 'start', behavior: 'auto' });
   };
 
+  const focusMap = () => {
+    const mapPane = document.getElementById('mapPane') || document.getElementById('map');
+    if (!mapPane) return;
+    if (!mapPane.hasAttribute('tabindex')) mapPane.setAttribute('tabindex', '-1');
+    if (typeof mapPane.focus === 'function') {
+      mapPane.focus({ preventScroll: true });
+    }
+  };
+
   const setActive = (view) => {
     document.body.dataset.view = view;
     tabs.forEach((t) => t.classList.toggle('active', t.dataset.view === view));
+
+    if (view === 'map') {
+      focusMap();
+      return;
+    }
 
     if (view === 'data') {
       scrollPanelIntoView(document.getElementById('attributePanel'));
@@ -28,6 +42,10 @@
 
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => setActive(tab.dataset.view));
+  });
+
+  document.querySelectorAll('[data-mobile-close-map]').forEach((button) => {
+    button.addEventListener('click', () => setActive('map'));
   });
 
   window.addEventListener('resize', updateMobileOffset);

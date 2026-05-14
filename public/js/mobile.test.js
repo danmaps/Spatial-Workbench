@@ -8,6 +8,8 @@ describe('mobile tab behavior', () => {
         <button class="mobile-tab" data-view="tools">Tools</button>
         <button class="mobile-tab" data-view="data">Data</button>
       </div>
+      <div id="mapPane"></div>
+      <button type="button" data-mobile-close-map>Close</button>
       <div id="toolSelection"></div>
       <section id="attributePanel"></section>
     `;
@@ -15,6 +17,7 @@ describe('mobile tab behavior', () => {
     document.querySelector('.mobile-bar').getBoundingClientRect = jest.fn(() => ({ height: 64 }));
     document.getElementById('toolSelection').scrollIntoView = jest.fn();
     document.getElementById('attributePanel').scrollIntoView = jest.fn();
+    document.getElementById('mapPane').focus = jest.fn();
   });
 
   const loadMobileScript = () => {
@@ -57,5 +60,17 @@ describe('mobile tab behavior', () => {
     window.dispatchEvent(new Event('resize'));
 
     expect(document.documentElement.style.getPropertyValue('--mobile-bar-offset')).toBe('72px');
+  });
+
+  test('close affordance returns to map view and focuses the map pane', () => {
+    loadMobileScript();
+
+    document.querySelector('.mobile-tab[data-view="tools"]').click();
+    document.querySelector('[data-mobile-close-map]').click();
+
+    expect(document.body.dataset.view).toBe('map');
+    expect(document.querySelector('.mobile-tab[data-view="map"]').classList.contains('active')).toBe(true);
+    expect(document.getElementById('mapPane').focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(document.getElementById('mapPane').getAttribute('tabindex')).toBe('-1');
   });
 });

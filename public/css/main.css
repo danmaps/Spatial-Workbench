@@ -44,6 +44,17 @@ body, html {
     gap: 8px;
 }
 
+.mobile-panel-close-wrap {
+    display: none;
+}
+
+.mobile-panel-close {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+
 .mobile-tab {
     background: transparent;
     color: var(--text-primary);
@@ -1078,6 +1089,24 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
         height: 100%;
         border: none;
         scroll-padding-top: calc(var(--mobile-bar-offset) + 8px);
+    }
+
+    .mobile-panel-close-wrap {
+        display: flex;
+        justify-content: flex-end;
+        padding-bottom: 12px;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--secondary-bg);
+    }
+
+    .mobile-panel-close {
+        border: 1px solid var(--border-color);
+        border-radius: 999px;
+        padding: 6px 12px;
+        background: var(--hover-bg);
+        font-size: 12px;
     }
 
     #toolSelection,

@@ -161,4 +161,49 @@ describe('BufferTool', () => {
       message: 'Buffered 1 selected feature(s).',
     }));
   });
+
+  test('run falls back to the whole layer when the current selection does not belong to the chosen layer', async () => {
+    const sourceGeoJSON = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'feature-1', id: 1 } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __id: 'feature-2', id: 2 } },
+      ],
+    };
+
+    mockGetLayer.mockReturnValue({
+      toGeoJSON: jest.fn(() => sourceGeoJSON),
+    });
+
+    turf.buffer.mockReturnValue({
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { id: 1 } },
+        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { id: 2 } },
+      ],
+    });
+
+    const tool = new BufferTool();
+    await tool.run({
+      'Input Layer': 'input-1',
+      Distance: 10,
+      Units: 'miles',
+    }, {
+      getLayer: mockGetLayer,
+      applyResult: mockApplyResult,
+      state: {
+        selection: {
+          activeLayerId: 'other-layer',
+          selectedLayerIds: ['other-layer'],
+          selectedFeaturesByLayerId: { 'input-1': ['missing-feature-id'] },
+        },
+      },
+    });
+
+    expect(turf.buffer).toHaveBeenCalledWith(sourceGeoJSON, 10, { units: 'miles' });
+    expect(tool.getStatus()).toEqual(expect.objectContaining({
+      code: 0,
+      message: 'Buffered layer added to map.',
+    }));
+  });
 });

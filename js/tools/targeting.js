@@ -87,13 +87,13 @@ function resolveTargetLayerData(inputLayerId, context = {}) {
 
   if (!selectedFeatures.length) {
     return {
-      ok: false,
+      ok: true,
       layerId,
       layer,
       sourceGeoJSON,
-      targetGeoJSON: null,
-      mode: 'selection-empty',
-      selectedFeatureIds,
+      targetGeoJSON: sourceGeoJSON,
+      mode: 'layer',
+      selectedFeatureIds: [],
       selectedFeatureCount: 0,
       totalFeatureCount,
     };

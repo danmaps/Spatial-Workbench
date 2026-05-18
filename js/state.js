@@ -332,6 +332,15 @@ function clearSelectedFeatureIds(layerId) {
   return {};
 }
 
+function focusLayerSelection(layerId) {
+  if (typeof layerId !== 'string' || !_registry.has(layerId)) return null;
+
+  _selectionState.selectedLayerIds = new Set([layerId]);
+  _selectionState.activeLayerId = layerId;
+  clearSelectedFeatureIds();
+  return layerId;
+}
+
 function registerLayer(layer, preferredId, preferredDatasetId) {
   ensureLayerRemoveListener();
   const id = ensureStableId(layer, preferredId);
@@ -752,6 +761,7 @@ function applyResult(toolResult) {
     try {
       const parentLayer = gj?.toolMetadata?.parentLayerId ? getLayer(gj.toolMetadata.parentLayerId) : null;
       const isCollection = shouldAddAsSingleResultLayer(gj);
+      let primaryAddedLayerId = null;
 
       if (isCollection) {
         // Add the entire result dataset as a single group layer (one layer in TOC).
@@ -794,6 +804,7 @@ function applyResult(toolResult) {
         if (Array.isArray(tocLayers) && !tocLayers.includes(groupLayer)) tocLayers.push(groupLayer);
 
         added.push(groupLayer.__id);
+        primaryAddedLayerId = groupLayer.__id;
       } else {
         // Single Feature (or empty collection) – add individually as before.
         ensureFeatureIdentifiers(gj);
@@ -819,8 +830,11 @@ function applyResult(toolResult) {
           if (Array.isArray(tocLayers) && !tocLayers.includes(child)) tocLayers.push(child);
 
           added.push(child.__id);
+          if (!primaryAddedLayerId) primaryAddedLayerId = child.__id;
         });
       }
+
+      if (primaryAddedLayerId) focusLayerSelection(primaryAddedLayerId);
     } catch (e) {
       errors.push(String(e && e.message ? e.message : e));
       if (DEBUG) console.warn('applyResult: addGeojson failed', e);
@@ -853,6 +867,7 @@ module.exports = {
   getSelectedFeatureIds,
   setSelectedFeatureIds,
   clearSelectedFeatureIds,
+  focusLayerSelection,
   getLayerName,
   setLayerName,
   getChildLayerIds,

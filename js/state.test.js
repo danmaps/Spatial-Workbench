@@ -147,7 +147,7 @@ describe('state provenance helpers', () => {
     expect(layer.feature.properties.toolHistory).toHaveLength(1);
   });
 
-  test('applyResult inherits parent history and appends child tool metadata', () => {
+  test('applyResult inherits parent history, activates the result layer, and clears prior feature selection', () => {
     const parentLayer = {
       __id: 'parent-1',
       feature: {
@@ -162,6 +162,8 @@ describe('state provenance helpers', () => {
 
     state.registerLayer(parentLayer, 'parent-1');
     tocLayers.push(parentLayer);
+    state.selectLayer('parent-1', { makeActive: true });
+    state.setSelectedFeatureIds('parent-1', ['feature-1']);
 
     const result = state.applyResult({
       addGeojson: {
@@ -182,6 +184,9 @@ describe('state provenance helpers', () => {
       { name: 'Draw', timestamp: '2026-04-30T00:00:00Z' },
       { name: 'Buffer', parentLayerId: 'parent-1', timestamp: '2026-04-30T01:00:00Z' },
     ]);
+    expect(state.getActiveLayerId()).toBe('child-1');
+    expect(state.getSelectedLayerIds()).toEqual(['child-1']);
+    expect(state.getSelectedFeaturesByLayerId()).toEqual({});
   });
 
   test('applyResult adds FeatureCollection as single group layer', () => {
@@ -208,6 +213,8 @@ describe('state provenance helpers', () => {
       `${result.added[0]}-2`,
       `${result.added[0]}-3`,
     ]);
+    expect(state.getActiveLayerId()).toBe(result.added[0]);
+    expect(state.getSelectedLayerIds()).toEqual([result.added[0]]);
   });
 
   test('applyResult coalesces arrays of features into one result layer', () => {

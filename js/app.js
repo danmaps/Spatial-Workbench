@@ -239,20 +239,41 @@ function syncAttributeModeButtons() {
     });
 }
 
+function getSelectionSummaryState() {
+    const activeLayerId = state.getActiveLayerId();
+    const activeLayer = activeLayerId ? state.getLayer(activeLayerId) : null;
+    const selectedFeatureCount = tocLayers.reduce((count, layer) => {
+        const layerId = state.ensureStableId(layer);
+        return count + state.getSelectedFeatureIds(layerId).length;
+    }, 0);
+
+    return {
+        activeLayer,
+        activeLayerId,
+        selectedFeatureCount,
+    };
+}
+
 function updateSelectionSummary() {
-    const selectedLayerIds = getSelectedLayerIds();
+    const { activeLayer, selectedFeatureCount } = getSelectionSummaryState();
     const button = document.getElementById('zoomSelectionButton');
     const summary = document.getElementById('selectionSummary');
-    if (button) button.disabled = selectedLayerIds.length === 0;
+    if (button) button.disabled = !activeLayer && selectedFeatureCount === 0;
     if (summary) {
-        summary.textContent = selectedLayerIds.length ? `${selectedLayerIds.length} selected` : 'No selection';
+        if (selectedFeatureCount > 0) {
+            summary.textContent = `${selectedFeatureCount} feature${selectedFeatureCount === 1 ? '' : 's'} selected`;
+        } else if (activeLayer) {
+            summary.textContent = `${getLayerLabel(activeLayer)} active`;
+        } else {
+            summary.textContent = 'No active layer';
+        }
     }
 }
 
 function getSelectedLayers() {
-    return getSelectedLayerIds()
-        .map((id) => state.getLayer(id))
-        .filter(Boolean);
+    const activeLayerId = state.getActiveLayerId();
+    const activeLayer = activeLayerId ? state.getLayer(activeLayerId) : null;
+    return activeLayer ? [activeLayer] : [];
 }
 
 function syncActiveAttributeLayer() {
@@ -386,7 +407,6 @@ function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0,
     const featureId = getFeatureSelectionId(targetLayer, layerId, fallbackIndex);
 
     if (shouldSelectForMapInteractionMode(activeMapInteractionMode)) {
-        state.selectLayer(layerId, { makeActive: true });
         state.setActiveLayerId(layerId);
         state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
 
@@ -437,21 +457,21 @@ function syncMapSelectionHighlights() {
 
     tocLayers.forEach((layer) => {
         const layerId = state.ensureStableId(layer);
-        if (!layerId || !state.isLayerSelected(layerId)) return;
+        if (!layerId) return;
+
+        const selectedFeatureIds = state.getSelectedFeatureIds(layerId);
+        if (!selectedFeatureIds.length) return;
 
         const info = state.getLayerInfo(layerId);
         const geometryType = info?.geometryType || info?.geometry?.type || 'Geometry';
         const isActiveLayer = state.getActiveLayerId() === layerId;
-        const selectedFeatureIds = state.getSelectedFeatureIds(layerId);
         const targets = getAttributeLayerTargets(layer);
-        const selectedFeatures = selectedFeatureIds.length
-            ? targets.filter((target, index) => selectedFeatureIds.includes(getFeatureSelectionId(target, layerId, index)))
-            : targets;
+        const selectedFeatures = targets.filter((target, index) => selectedFeatureIds.includes(getFeatureSelectionId(target, layerId, index)));
 
         selectedFeatures.forEach((target, index) => {
             if (!target?.feature) return;
             const featureId = getFeatureSelectionId(target, layerId, index);
-            const isActiveFeature = isActiveLayer && (!selectedFeatureIds.length || selectedFeatureIds[0] === featureId);
+            const isActiveFeature = isActiveLayer && selectedFeatureIds[0] === featureId;
             addSelectionHighlightFeature(target.feature, geometryType, isActiveFeature);
         });
     });
@@ -567,10 +587,7 @@ function renderAttributeView() {
     const containers = [mobileContainer, desktopContainer].filter(Boolean);
     if (!selectors.length || !containers.length) return;
 
-    const selectedInfos = getSelectedLayers().map((layer) => state.getLayerInfo(layer)).filter(Boolean);
-    const candidateInfos = selectedInfos.length
-        ? selectedInfos
-        : tocLayers.map((layer) => state.getLayerInfo(layer)).filter(Boolean);
+    const candidateInfos = tocLayers.map((layer) => state.getLayerInfo(layer)).filter(Boolean);
 
     if (!candidateInfos.length) {
         selectors.forEach((selector) => {
@@ -829,19 +846,31 @@ function zoomToLayer(layerOrId) {
 }
 
 function zoomToSelection() {
-    const selectedLayers = getSelectedLayerIds()
-        .map((id) => state.getLayer(id))
-        .filter(Boolean);
+    const highlightedTargets = [];
 
-    if (!selectedLayers.length) return false;
+    tocLayers.forEach((layer) => {
+        const layerId = state.ensureStableId(layer);
+        const selectedFeatureIds = state.getSelectedFeatureIds(layerId);
+        if (!selectedFeatureIds.length) return;
 
-    const group = L.featureGroup(selectedLayers.filter((layer) => state.getLayerBounds(layer)));
-    if (group.getLayers().length) {
-        map.fitBounds(group.getBounds(), { padding: [32, 32] });
-        return true;
+        getAttributeLayerTargets(layer).forEach((target, index) => {
+            const featureId = getFeatureSelectionId(target, layerId, index);
+            if (featureId && selectedFeatureIds.includes(featureId)) {
+                highlightedTargets.push(target);
+            }
+        });
+    });
+
+    if (highlightedTargets.length) {
+        const group = L.featureGroup(highlightedTargets.filter((layer) => state.getLayerBounds(layer)));
+        if (group.getLayers().length) {
+            map.fitBounds(group.getBounds(), { padding: [32, 32] });
+            return true;
+        }
+        return zoomToLayer(highlightedTargets[0]);
     }
 
-    return zoomToLayer(selectedLayers[0]);
+    return zoomToLayer(state.getActiveLayerId());
 }
 
 function renderImportSummary(summary) {
@@ -899,9 +928,8 @@ function renderToc() {
         const sourceBadge = getLayerSourceBadge(layer);
         const menuOpen = openLayerMenuId === stableId;
 
-        const isSelected = state.isLayerSelected(stableId);
         const isActive = state.getActiveLayerId() === stableId;
-        const visualState = getLayerSelectionVisualState({ isSelected, isActive });
+        const visualState = getLayerSelectionVisualState({ isSelected: false, isActive });
         const featureSelection = getLayerSelectionFeatureIds({
             featureIds: state.getSelectedFeatureIds(stableId),
             totalFeatureCount: info?.geometry?.featureCount || 0,
@@ -919,20 +947,6 @@ function renderToc() {
 
         const left = document.createElement('div');
         left.className = 'layer-row-main';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'layer-select';
-        checkbox.checked = state.isLayerSelected(stableId);
-        checkbox.addEventListener('click', (event) => event.stopPropagation());
-        checkbox.addEventListener('change', () => {
-            if (checkbox.checked) {
-                state.selectLayer(stableId, { makeActive: true });
-            } else {
-                state.deselectLayer(stableId);
-            }
-            refreshSidebarState();
-        });
 
         const textWrap = document.createElement('div');
         textWrap.className = 'layer-text';
@@ -972,7 +986,6 @@ function renderToc() {
         textWrap.appendChild(title);
         textWrap.appendChild(meta);
         textWrap.appendChild(badges);
-        left.appendChild(checkbox);
         left.appendChild(textWrap);
 
         const menuWrap = document.createElement('div');
@@ -1012,7 +1025,7 @@ function renderToc() {
         }));
         actionList.appendChild(createActionButton('fas fa-table', 'View attributes', () => {
             closeLayerMenu();
-            state.selectLayer(stableId, { makeActive: true });
+            state.setActiveLayerId(stableId);
             refreshSidebarState();
         }));
         actionList.appendChild(createActionButton('fas fa-circle-info', 'Layer properties', () => {
@@ -1034,7 +1047,7 @@ function renderToc() {
         item.appendChild(row);
 
         item.addEventListener('click', () => {
-            state.toggleLayerSelection(stableId, { makeActive: true });
+            state.setActiveLayerId(stableId);
             refreshSidebarState();
         });
 
@@ -1042,7 +1055,7 @@ function renderToc() {
             if (event.target !== item) return;
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
-            state.toggleLayerSelection(stableId, { makeActive: true });
+            state.setActiveLayerId(stableId);
             refreshSidebarState();
         });
 

@@ -35,6 +35,8 @@ function pickLayerId(inputLayerId, contextState) {
   if (typeof inputLayerId === 'string' && inputLayerId.trim()) return inputLayerId;
   const selection = contextState && contextState.selection;
   if (selection && typeof selection.activeLayerId === 'string' && selection.activeLayerId.trim()) return selection.activeLayerId;
+  const stateLayers = Array.isArray(contextState?.layers) ? contextState.layers : [];
+  if (stateLayers.length && typeof stateLayers[0]?.id === 'string' && stateLayers[0].id.trim()) return stateLayers[0].id;
   const selectedLayerIds = Array.isArray(selection?.selectedLayerIds) ? selection.selectedLayerIds : [];
   return selectedLayerIds[0] || null;
 }

@@ -38,6 +38,30 @@ describe('resolveTargetLayerData', () => {
     }));
   });
 
+  test('falls back to the active or first available layer when no explicit input layer is provided', () => {
+    const sourceGeoJSON = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'feature-1' } },
+      ],
+    };
+
+    const result = resolveTargetLayerData('', {
+      getLayer: (layerId) => layerId === 'input-1' ? { toGeoJSON: () => sourceGeoJSON } : null,
+      state: {
+        layers: [{ id: 'input-1' }],
+        selection: {},
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      layerId: 'input-1',
+      mode: 'layer',
+      targetGeoJSON: sourceGeoJSON,
+    }));
+  });
+
   test('falls back to the whole layer when selection state does not match any features in the target layer', () => {
     const sourceGeoJSON = {
       type: 'FeatureCollection',

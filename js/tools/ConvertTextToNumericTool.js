@@ -1,6 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { getLayer, listLayers } = require('../state');
+const { getLayer, listLayers, getActiveLayerId } = require('../state');
 const { parseNumericText, convertTextsToNumbersWithAI } = require('../ai/numericConversion');
 const { normalizeHeadlessState, selectFeatureIds, updateFeatures } = require('../runtime/headlessState');
 
@@ -175,10 +175,12 @@ class ConvertTextToNumericTool extends Tool {
     const inputLayer = document.getElementById('param-Input Layer');
     if (inputLayer) {
       inputLayer.innerHTML = '';
+      const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
       for (const layer of listLayers()) {
         const option = document.createElement('option');
         option.value = layer.id;
         option.text = layer.label;
+        if (layer.id === activeLayerId || (!activeLayerId && inputLayer.childElementCount === 0)) option.selected = true;
         inputLayer.appendChild(option);
       }
     }

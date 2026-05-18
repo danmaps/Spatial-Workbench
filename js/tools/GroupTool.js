@@ -1,6 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { listLayers, applyResult } = require('../state');
+const { listLayers, getActiveLayerId, applyResult } = require('../state');
 const { resolveTargetLayerData } = require('./targeting');
 
 function cloneFeature(feature) {
@@ -187,10 +187,12 @@ class GroupTool extends Tool {
         const inputLayer = document.getElementById('param-Layer');
         if (inputLayer) {
             inputLayer.innerHTML = '';
+            const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
             for (const layer of listLayers()) {
                 const option = document.createElement('option');
                 option.value = layer.id;
                 option.text = layer.label;
+                if (layer.id === activeLayerId || (!activeLayerId && inputLayer.childElementCount === 0)) option.selected = true;
                 inputLayer.appendChild(option);
             }
         }

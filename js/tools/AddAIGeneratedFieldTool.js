@@ -1,6 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { getLayersByDatasetId, listLayerGroups } = require('../state');
+const { getLayersByDatasetId, listLayerGroups, getActiveLayerId } = require('../state');
 const { generateFieldValues } = require('../ai/fieldGeneration');
 const { normalizeHeadlessState, selectFeatureIds, updateFeatures } = require('../runtime/headlessState');
 
@@ -194,10 +194,12 @@ class AddAIGeneratedFieldTool extends Tool {
     const inputLayer = document.getElementById('param-Input Layer');
     if (inputLayer) {
       inputLayer.innerHTML = '';
+      const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
       for (const layer of listLayerGroups()) {
         const option = document.createElement('option');
         option.value = layer.id;
         option.text = layer.label;
+        if (layer.id === activeLayerId || (!activeLayerId && inputLayer.childElementCount === 0)) option.selected = true;
         inputLayer.appendChild(option);
       }
     }

@@ -4,7 +4,7 @@
 
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { listLayers, applyResult } = require('../state');
+const { listLayers, getActiveLayerId, applyResult } = require('../state');
 const { resolveTargetLayerData } = require('./targeting');
 
 /**
@@ -84,10 +84,12 @@ class BufferTool extends Tool {
 
             // Add an option for each known layer (stable ids)
             const layers = listLayers();
+            const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
             for (const l of layers) {
                 const option = document.createElement('option');
                 option.value = l.id;
                 option.text = l.label;
+                if (l.id === activeLayerId || (!activeLayerId && inputLayer.childElementCount === 0)) option.selected = true;
                 inputLayer.appendChild(option);
             }
 

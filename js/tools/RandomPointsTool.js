@@ -1,7 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { logCurrentBounds } = require('../utils/helpers');
-const { getLayer, listLayers, applyResult } = require('../state');
+const { getLayer, listLayers, getActiveLayerId, applyResult } = require('../state');
 
 function getExecutionBoundsSource(context) {
     if (context && context.map) {
@@ -137,10 +137,12 @@ class RandomPointsTool extends Tool {
 
             // Populate dropdown with current polygons (stable ids)
             const layers = listLayers().filter((l) => l.geometryType === 'Polygon' || l.geometryType === 'MultiPolygon');
+            const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
             for (const l of layers) {
                 const option = document.createElement('option');
                 option.value = l.id;
                 option.text = l.label;
+                if (l.id === activeLayerId || (!activeLayerId && polygonIdInput.childElementCount === 0)) option.selected = true;
                 polygonIdInput.appendChild(option);
             }
         }

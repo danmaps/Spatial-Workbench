@@ -409,15 +409,12 @@ function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0,
     if (shouldSelectForMapInteractionMode(activeMapInteractionMode)) {
         state.setActiveLayerId(layerId);
         state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
-
-        if (map && typeof map.closePopup === 'function') {
-            map.closePopup();
-        }
         refreshSidebarState();
-    } else {
-        if (!openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex) && map && typeof map.closePopup === 'function') {
-            map.closePopup();
-        }
+    }
+
+    // Always show popup with feature attributes regardless of mode
+    if (!openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex) && map && typeof map.closePopup === 'function') {
+        map.closePopup();
     }
 
     closeLayerMenu();
@@ -1188,14 +1185,16 @@ map.on('draw:deleted', function (e) {
 
 map.on('layeradd', function (e) {
     let layer = e.layer;
-    // if layer has a feature.toolMetadata, add the layer to the TOC
-    if (layer.hasOwnProperty('feature') && layer.feature.toolMetadata) {
-        const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
+    // Bind selection/popup interaction to any layer with a feature property
+    if (layer.hasOwnProperty('feature') && layer.feature) {
+        if (layer.feature.toolMetadata) {
+            const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
+            if (!tocLayers.includes(layer)) tocLayers.push(layer);
+            const importSummary = layer.feature?.properties?.importSummary;
+            if (importSummary) renderImportSummary(importSummary);
+            refreshSidebarState();
+        }
         bindLayerSelectionInteraction(layer);
-        if (!tocLayers.includes(layer)) tocLayers.push(layer);
-        const importSummary = layer.feature?.properties?.importSummary;
-        if (importSummary) renderImportSummary(importSummary);
-        refreshSidebarState();
     }
 });
 

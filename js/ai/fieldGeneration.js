@@ -61,17 +61,30 @@ async function generateFieldValueForFeature({ feature, sourceFields, instruction
   };
 }
 
+// Process features in parallel batches (concurrency limit = 5) to avoid
+// sequential await overhead while not overwhelming the AI API.
 async function generateFieldValues({ features, sourceFields, instruction, outputFieldName, outputType }) {
-  const results = [];
-  for (const feature of features) {
-    results.push(await generateFieldValueForFeature({
-      feature,
-      sourceFields,
-      instruction,
-      outputFieldName,
-      outputType,
-    }));
+  const CONCURRENCY = 5;
+  const results = new Array(features.length);
+
+  for (let i = 0; i < features.length; i += CONCURRENCY) {
+    const batch = features.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map((feature) =>
+        generateFieldValueForFeature({
+          feature,
+          sourceFields,
+          instruction,
+          outputFieldName,
+          outputType,
+        })
+      )
+    );
+    for (let j = 0; j < batchResults.length; j++) {
+      results[i + j] = batchResults[j];
+    }
   }
+
   return results;
 }
 

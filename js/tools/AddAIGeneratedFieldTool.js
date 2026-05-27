@@ -29,15 +29,6 @@ function coerceOutputValue(value, outputType) {
   return String(value);
 }
 
-function buildPopupContent(properties) {
-  let popupContent = "<table class='popupTable'>";
-  for (const [key, value] of Object.entries(properties)) {
-    popupContent += `<tr><td><b>${key}</b></td><td>${value}</td></tr>`;
-  }
-  popupContent += '</table>';
-  return popupContent;
-}
-
 class AddAIGeneratedFieldTool extends Tool {
   constructor() {
     super('Add AI-Generated Field', [
@@ -174,10 +165,6 @@ class AddAIGeneratedFieldTool extends Tool {
         params,
         timestamp: new Date().toISOString(),
       };
-
-      if (typeof layer.bindPopup === 'function') {
-        layer.bindPopup(buildPopupContent(layer.feature.properties));
-      }
     }
 
     this.setStatus(0, `Updated ${eligibleTargets.length} feature(s).`);

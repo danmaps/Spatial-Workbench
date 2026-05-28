@@ -1185,6 +1185,7 @@ map.on('draw:deleted', function (e) {
 
 map.on('layeradd', function (e) {
     let layer = e.layer;
+    // Bind selection/popup interaction to any layer with a feature property
     if (layer.hasOwnProperty('feature') && layer.feature) {
         if (layer.feature.toolMetadata) {
             state.registerLayer(layer, layer?.feature?.properties?.__id);

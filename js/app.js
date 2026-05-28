@@ -310,6 +310,7 @@ function getFeaturePopupRow(layerId, featureId, fallbackIndex = 0) {
     const model = getAttributeModel(layer, {
         layerId,
         selectedFeatureIds: featureId ? [featureId] : [],
+        mode: featureId ? 'selected' : 'all',
     });
 
     if (!model?.rows?.length) return null;
@@ -412,7 +413,6 @@ function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0,
         refreshSidebarState();
     }
 
-    // Always show popup with feature attributes regardless of mode
     if (!openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex) && map && typeof map.closePopup === 'function') {
         map.closePopup();
     }
@@ -1188,7 +1188,7 @@ map.on('layeradd', function (e) {
     // Bind selection/popup interaction to any layer with a feature property
     if (layer.hasOwnProperty('feature') && layer.feature) {
         if (layer.feature.toolMetadata) {
-            const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
+            state.registerLayer(layer, layer?.feature?.properties?.__id);
             if (!tocLayers.includes(layer)) tocLayers.push(layer);
             const importSummary = layer.feature?.properties?.importSummary;
             if (importSummary) renderImportSummary(importSummary);

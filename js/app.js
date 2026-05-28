@@ -310,6 +310,7 @@ function getFeaturePopupRow(layerId, featureId, fallbackIndex = 0) {
     const model = getAttributeModel(layer, {
         layerId,
         selectedFeatureIds: featureId ? [featureId] : [],
+        mode: featureId ? 'selected' : 'all',
     });
 
     if (!model?.rows?.length) return null;
@@ -409,15 +410,11 @@ function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0,
     if (shouldSelectForMapInteractionMode(activeMapInteractionMode)) {
         state.setActiveLayerId(layerId);
         state.setSelectedFeatureIds(layerId, featureId ? [featureId] : []);
-
-        if (map && typeof map.closePopup === 'function') {
-            map.closePopup();
-        }
         refreshSidebarState();
-    } else {
-        if (!openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex) && map && typeof map.closePopup === 'function') {
-            map.closePopup();
-        }
+    }
+
+    if (!openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex) && map && typeof map.closePopup === 'function') {
+        map.closePopup();
     }
 
     closeLayerMenu();
@@ -1188,14 +1185,15 @@ map.on('draw:deleted', function (e) {
 
 map.on('layeradd', function (e) {
     let layer = e.layer;
-    // if layer has a feature.toolMetadata, add the layer to the TOC
-    if (layer.hasOwnProperty('feature') && layer.feature.toolMetadata) {
-        const stableId = state.registerLayer(layer, layer?.feature?.properties?.__id);
+    if (layer.hasOwnProperty('feature') && layer.feature) {
+        if (layer.feature.toolMetadata) {
+            state.registerLayer(layer, layer?.feature?.properties?.__id);
+            if (!tocLayers.includes(layer)) tocLayers.push(layer);
+            const importSummary = layer.feature?.properties?.importSummary;
+            if (importSummary) renderImportSummary(importSummary);
+            refreshSidebarState();
+        }
         bindLayerSelectionInteraction(layer);
-        if (!tocLayers.includes(layer)) tocLayers.push(layer);
-        const importSummary = layer.feature?.properties?.importSummary;
-        if (importSummary) renderImportSummary(importSummary);
-        refreshSidebarState();
     }
 });
 

@@ -142,4 +142,25 @@ describe('attribute view helpers', () => {
     expect(model.rows.map((row) => row.id)).toEqual(['feature-b']);
     expect(model.selectedFeatureCount).toBe(1);
   });
+
+  test('getAttributeModel finds a selected feature beyond the default visible page', () => {
+    const features = Array.from({ length: 30 }, (_, index) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [index, index] },
+      properties: { __id: `feature-${index + 1}`, name: `Feature ${index + 1}` },
+    }));
+
+    const model = getAttributeModel({
+      id: 'layer-5',
+      geometry: { label: 'Point', type: 'Point' },
+      geojson: { type: 'FeatureCollection', features },
+    }, {
+      mode: 'selected',
+      selectedFeatureIds: ['feature-30'],
+    });
+
+    expect(model.rows).toHaveLength(1);
+    expect(model.rows[0].id).toBe('feature-30');
+    expect(model.rows[0].title).toBe('Feature 30');
+  });
 });

@@ -1,6 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { applyResult, getLayer } = require('../state');
+const { applyResult } = require('../state');
 const { STORAGE_KEYS, DEFAULT_PROVIDER, AI_PROVIDERS } = require('../ai-providers');
 
 /**
@@ -68,20 +68,6 @@ class GenerateAIFeatures extends Tool {
         const res = applyResult({ addGeojson: data });
 
         if (res && res.ok) {
-            for (const id of (res.added || [])) {
-                const addedLayer = getLayer(id);
-                if (!addedLayer || !addedLayer.feature || !addedLayer.feature.properties) continue;
-
-                const attributes = addedLayer.feature.properties;
-                let popupContent = "<table class='popupTable'>";
-                for (let key in attributes) {
-                    popupContent += `<tr><td><b>${key.charAt(0).toUpperCase() + key.slice(1)}</b></td><td>${attributes[key]}</td></tr>`;
-                }
-                popupContent += "</table>";
-                if (typeof addedLayer.bindPopup === 'function') {
-                    addedLayer.bindPopup(popupContent);
-                }
-            }
             this.setStatus(0, 'AI features added to map.');
             return res;
         }

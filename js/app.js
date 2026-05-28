@@ -474,8 +474,33 @@ function syncMapSelectionHighlights() {
     });
 }
 
+function bindFeatureClickHandler(targetLayer, parentLayerId, fallbackIndex) {
+    if (!targetLayer || typeof targetLayer.on !== 'function') return;
+
+    const existing = targetLayer.__selectionInteraction;
+    if (
+        existing
+        && existing.parentLayerId === parentLayerId
+        && existing.fallbackIndex === fallbackIndex
+    ) {
+        return;
+    }
+
+    if (existing?.handler && typeof targetLayer.off === 'function') {
+        targetLayer.off('click', existing.handler);
+    }
+
+    const handler = (event) => applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex, event);
+    targetLayer.on('click', handler);
+    targetLayer.__selectionInteraction = {
+        parentLayerId,
+        fallbackIndex,
+        handler,
+    };
+}
+
 function bindLayerSelectionInteraction(layer) {
-    if (!layer || layer.__selectionInteractionBound) return;
+    if (!layer) return;
 
     const parentLayerId = state.ensureStableId(layer, layer?.feature?.properties?.__id);
 
@@ -483,21 +508,22 @@ function bindLayerSelectionInteraction(layer) {
         let childIndex = 0;
         layer.eachLayer((child) => {
             const fallbackIndex = childIndex++;
-            if (!child?.feature || child.__selectionInteractionBound) return;
+            if (!child?.feature) return;
             getFeatureSelectionId(child, parentLayerId, fallbackIndex);
-            if (typeof child.on === 'function') {
-                child.on('click', (event) => applyMapFeatureSelection(child, parentLayerId, fallbackIndex, event));
-                child.__selectionInteractionBound = true;
-            }
+            bindFeatureClickHandler(child, parentLayerId, fallbackIndex);
         });
     }
 
-    if (layer?.feature && typeof layer.on === 'function') {
+    if (layer?.feature) {
         getFeatureSelectionId(layer, parentLayerId, 0);
-        layer.on('click', (event) => applyMapFeatureSelection(layer, parentLayerId, 0, event));
+        bindFeatureClickHandler(layer, parentLayerId, 0);
     }
 
     layer.__selectionInteractionBound = true;
+}
+
+function bindAllLayerSelectionInteractions() {
+    tocLayers.forEach((layer) => bindLayerSelectionInteraction(layer));
 }
 
 function updateAttributeFeatureProperty(layerId, rowIndex, propertyKey, nextValue, originalValue) {
@@ -1129,6 +1155,7 @@ function updateDataContent() {
 }
 
 document.addEventListener('spatial-workbench:tool-complete', function () {
+    bindAllLayerSelectionInteractions();
     updateDataContent();
 });
 
@@ -1262,6 +1289,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSelectionSummary();
     renderImportSummary(null);
     renderAttributeView();
+    bindAllLayerSelectionInteractions();
     syncMapSelectionHighlights();
 });
 

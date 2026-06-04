@@ -83,6 +83,48 @@ describe('headless runtime', () => {
     expect(result.state.layers).toHaveLength(2);
   });
 
+  test('runHeadlessTool validates before executing tool logic', async () => {
+    const { runHeadlessTool } = require('./headless-runtime');
+
+    const result = await runHeadlessTool({
+      tool: 'BufferTool',
+      params: {
+        'Input Layer': 'missing-layer',
+        Distance: 5,
+        Units: 'miles',
+      },
+      state: {
+        layers: [],
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      tool: 'BufferTool',
+      status: expect.objectContaining({ code: 2, message: 'No layer selected.' }),
+      validation: { ok: false, errors: ['No layer selected.'] },
+      output: null,
+      state: expect.objectContaining({
+        added: [],
+        removed: [],
+        layers: [],
+      }),
+    }));
+    expect(turf.buffer).not.toHaveBeenCalled();
+  });
+
+  test('headless catalog includes both layer-state and featureCollection tools', () => {
+    const { getHeadlessToolCatalog } = require('./headless-runtime');
+
+    const catalog = getHeadlessToolCatalog();
+
+    expect(catalog).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'BufferTool', stateMode: 'layers' }),
+      expect.objectContaining({ key: 'ConvertTextToNumericTool', stateMode: 'featureCollection' }),
+      expect.objectContaining({ key: 'AddAIGeneratedFieldTool', stateMode: 'featureCollection' }),
+    ]));
+  });
+
   test('runHeadlessTool executes RandomPointsTool with bbox bounds', async () => {
     const { runHeadlessTool } = require('./headless-runtime');
 

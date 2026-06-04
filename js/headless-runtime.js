@@ -2,6 +2,8 @@ const { BufferTool } = require('./tools/BufferTool');
 const { ExportTool } = require('./tools/ExportTool');
 const { GroupTool } = require('./tools/GroupTool');
 const { RandomPointsTool } = require('./tools/RandomPointsTool');
+const { AddAIGeneratedFieldTool } = require('./tools/AddAIGeneratedFieldTool');
+const { ConvertTextToNumericTool } = require('./tools/ConvertTextToNumericTool');
 
 function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -163,8 +165,13 @@ const HEADLESS_TOOLS = {
   RandomPointsTool,
 };
 
+const FEATURE_COLLECTION_TOOLS = {
+  AddAIGeneratedFieldTool,
+  ConvertTextToNumericTool,
+};
+
 function getHeadlessToolCatalog() {
-  return Object.entries(HEADLESS_TOOLS).map(([key, ToolClass]) => {
+  const layerStateTools = Object.entries(HEADLESS_TOOLS).map(([key, ToolClass]) => {
     const instance = new ToolClass();
     const spec = instance.getSpec();
     return {
@@ -173,8 +180,25 @@ function getHeadlessToolCatalog() {
       description: spec.description,
       parameters: spec.parameters,
       headless: true,
+      stateMode: 'layers',
     };
   });
+
+  const featureCollectionTools = Object.entries(FEATURE_COLLECTION_TOOLS)
+    .map(([_key, ToolClass]) => {
+      const tool = new ToolClass();
+      const spec = tool.getSpec();
+      return {
+        key: spec.key,
+        name: spec.name,
+        description: spec.description,
+        parameters: spec.parameters,
+        headless: true,
+        stateMode: 'featureCollection',
+      };
+    });
+
+  return [...layerStateTools, ...featureCollectionTools];
 }
 
 async function runHeadlessTool({ tool: toolKey, params = {}, state = {} }) {
@@ -197,6 +221,20 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {} }) {
     listLayers: runtime.listLayers,
     applyResult: runtime.applyResult,
   };
+
+  const validation = await tool.validate(params, context);
+  if (!validation.ok) {
+    const message = validation.errors[0] || 'Invalid tool parameters.';
+    tool.setStatus(2, message);
+    return {
+      ok: false,
+      tool: toolKey,
+      status: tool.getStatus(),
+      validation,
+      output: null,
+      state: runtime.getResponseState(),
+    };
+  }
 
   const output = await tool.run(params, context);
 

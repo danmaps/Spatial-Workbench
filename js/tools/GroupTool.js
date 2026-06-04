@@ -58,6 +58,27 @@ class GroupTool extends Tool {
         this.description = 'Groups nearby features by distance and adds the grouped result as a new layer';
     }
 
+    async validate(params, context = {}) {
+        const inputLayerId = params.Layer;
+        const distance = parseFloat(params.Distance);
+        const target = resolveTargetLayerData(inputLayerId, context);
+        const errors = [];
+
+        if (!target.ok || !target.targetGeoJSON) {
+            errors.push(target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');
+        }
+
+        if (!Number.isFinite(distance) || distance <= 0) {
+            errors.push('Distance must be greater than 0.');
+        }
+
+        if (target.ok && target.targetGeoJSON && getFeatureCollection(target.targetGeoJSON).length === 0) {
+            errors.push('No features available to group.');
+        }
+
+        return this.validationFailure(errors);
+    }
+
     async run(params, context = {}) {
         const inputLayerId = params.Layer;
         const distance = parseFloat(params.Distance);

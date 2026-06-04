@@ -1,0 +1,17 @@
+{
+  "name": "Buffer",
+  "type": "Feature",
+  "geometryType": "Polygon",
+  "ringCount": 2,
+  "firstRingVertexCount": 41,
+  "properties": {},
+  "toolMetadata": {
+    "name": "Buffer",
+    "parentLayerId": "turf-poly-hole",
+    "params": {
+      "Input Layer": "turf-poly-hole",
+      "Distance": 50,
+      "Units": "miles"
+    }
+  }
+}

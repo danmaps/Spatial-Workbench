@@ -44,6 +44,48 @@ class AddAIGeneratedFieldTool extends Tool {
     this.headlessSupported = true;
   }
 
+  async validate(params, context = {}) {
+    const instruction = String(params['Instruction'] || '').trim();
+    const outputFieldName = String(params['Output Field Name'] || '').trim();
+    const outputType = params['Output Type'] || 'text';
+    const overwrite = !!params['Overwrite Existing Field'];
+    const errors = [];
+
+    if (!instruction) errors.push('Instruction is required.');
+    if (!outputFieldName) errors.push('Output Field Name is required.');
+    if (!['text', 'number', 'boolean'].includes(outputType)) errors.push('Output Type must be text, number, or boolean.');
+
+    if (context.headless && outputFieldName) {
+      const state = normalizeHeadlessState(context.state);
+      const targetFeatureIds = selectFeatureIds(state);
+      if (!targetFeatureIds.length) {
+        errors.push('No target features available.');
+      } else {
+        const idSet = new Set(targetFeatureIds);
+        const targetFeatures = state.featureCollection.features.filter((feature) => idSet.has(feature.properties.__id));
+        const eligibleFeatures = overwrite
+          ? targetFeatures
+          : targetFeatures.filter((feature) => feature.properties[outputFieldName] === undefined);
+        if (!eligibleFeatures.length) errors.push('No eligible target features found.');
+      }
+    } else if (!context.headless && outputFieldName) {
+      const datasetId = params['Input Layer'];
+      const targetLayers = getLayersByDatasetId(datasetId);
+      if (!targetLayers.length) {
+        errors.push('No layer selected.');
+      } else if (!overwrite) {
+        const eligibleTargets = targetLayers.filter((layer) => {
+          const feature = layer.toGeoJSON();
+          feature.properties = feature.properties || {};
+          return feature.properties[outputFieldName] === undefined;
+        });
+        if (!eligibleTargets.length) errors.push('No eligible target features found.');
+      }
+    }
+
+    return this.validationFailure(errors);
+  }
+
   async run(params, context = {}) {
     const instruction = String(params['Instruction'] || '').trim();
     const outputFieldName = String(params['Output Field Name'] || '').trim();

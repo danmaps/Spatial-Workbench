@@ -1,0 +1,36 @@
+{
+  "name": "Buffer",
+  "geometryType": "Polygon",
+  "featureCount": 4,
+  "featureSummaries": [
+    {
+      "id": "warehouse-a",
+      "name": "Warehouse A",
+      "geometryType": "Polygon"
+    },
+    {
+      "id": "warehouse-b",
+      "name": "Warehouse B",
+      "geometryType": "Polygon"
+    },
+    {
+      "id": "warehouse-c",
+      "name": "Warehouse C",
+      "geometryType": "Polygon"
+    },
+    {
+      "id": "outpost-d",
+      "name": "Outpost D",
+      "geometryType": "Polygon"
+    }
+  ],
+  "toolMetadata": {
+    "name": "Buffer",
+    "params": {
+      "Input Layer": "source-layer",
+      "Distance": 1,
+      "Units": "kilometers"
+    },
+    "parentLayerId": "source-layer"
+  }
+}

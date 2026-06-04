@@ -171,7 +171,8 @@ app.get('/api/run', (_req, res) => {
     notes: [
       'First pass: headless execution is currently limited to tools that are safe without the browser UI.',
       'Send request state.layers with stable ids and GeoJSON so params can reference them.',
-      'Current headless subset: BufferTool, ExportTool, RandomPointsTool.',
+      'Layer-state tools use state.layers; featureCollection tools use state.featureCollection.',
+      'Tool validation failures return HTTP 200 with ok: false; unsupported tools and malformed API requests return 4xx.',
     ],
     requestShape: {
       tool: 'BufferTool',

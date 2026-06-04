@@ -28,6 +28,23 @@ class BufferTool extends Tool {
     /**
      * Executes the BufferTool logic without reading from the DOM.
      */
+    async validate(params, context = {}) {
+        const inputLayerId = params['Input Layer'];
+        const distance = parseFloat(params['Distance']);
+        const target = resolveTargetLayerData(inputLayerId, context);
+        const errors = [];
+
+        if (!target.ok || !target.targetGeoJSON) {
+            errors.push(target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');
+        }
+
+        if (!Number.isFinite(distance)) {
+            errors.push('No distance selected.');
+        }
+
+        return this.validationFailure(errors);
+    }
+
     async run(params, context = {}) {
         const inputLayerId = params['Input Layer'];
         const distance = parseFloat(params['Distance']);

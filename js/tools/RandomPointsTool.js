@@ -53,6 +53,31 @@ class RandomPointsTool extends Tool {
     /**
      * Executes the RandomPointsTool logic without reading from the DOM.
      */
+    async validate(params, context = {}) {
+        const resolveLayer = context.getLayer || getLayer;
+        const pointsCount = parseInt(params['Points Count'], 10);
+        const insidePolygon = !!params['Inside Polygon'];
+        const polygonId = params['Polygon'] || null;
+        const errors = [];
+
+        if (!Number.isInteger(pointsCount) || pointsCount <= 0) {
+            errors.push('Points Count must be a positive integer.');
+        }
+
+        if (insidePolygon) {
+            const polygonLayer = polygonId ? resolveLayer(polygonId) : null;
+            if (!polygonLayer) {
+                errors.push('No polygon selected.');
+            } else if (globalThis.L?.Polygon && !(polygonLayer instanceof L.Polygon)) {
+                errors.push('Selected layer is not a polygon.');
+            }
+        } else if (!getExecutionBoundsSource(context)) {
+            errors.push('Map bounds are unavailable.');
+        }
+
+        return this.validationFailure(errors);
+    }
+
     async run(params, context = {}) {
         const resolveLayer = context.getLayer || getLayer;
         const applyToolResult = context.applyResult || applyResult;

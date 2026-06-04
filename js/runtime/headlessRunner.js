@@ -16,16 +16,36 @@ async function runToolHeadlessly({ toolKey, params, state }) {
   }
 
   const normalizedState = normalizeHeadlessState(state);
-  const result = await tool.run(params || {}, {
+  const context = {
     headless: true,
     state: normalizedState,
     tool,
-  });
+  };
+  const toolParams = params || {};
+  const validation = await tool.validate(toolParams, context);
+  if (!validation.ok) {
+    const message = validation.errors[0] || 'Invalid tool parameters.';
+    tool.setStatus(2, message);
+    return {
+      ok: false,
+      tool: tool.getSpec().key,
+      status: tool.getStatus(),
+      validation,
+      output: null,
+      state: normalizedState,
+    };
+  }
+
+  const result = await tool.run(toolParams, context);
+  const { state: resultState, ...output } = result || {};
+  const status = tool.getStatus();
 
   return {
+    ok: status.code === 0,
     tool: tool.getSpec().key,
-    result,
-    status: tool.getStatus(),
+    status,
+    output: result ? output : null,
+    state: resultState || normalizedState,
   };
 }
 

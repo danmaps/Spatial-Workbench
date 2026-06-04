@@ -1,0 +1,61 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "warehouse-a",
+      "properties": {
+        "__id": "warehouse-a",
+        "name": "Warehouse A",
+        "population_text": "1,234 people",
+        "category": "logistics"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0, 0]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "warehouse-b",
+      "properties": {
+        "__id": "warehouse-b",
+        "name": "Warehouse B",
+        "population_text": "987",
+        "category": "logistics"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0.01, 0.01]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "warehouse-c",
+      "properties": {
+        "__id": "warehouse-c",
+        "name": "Warehouse C",
+        "population_text": "about 42.5 acres",
+        "category": "logistics"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0.015, 0.005]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "outpost-d",
+      "properties": {
+        "__id": "outpost-d",
+        "name": "Outpost D",
+        "population_text": "unknown",
+        "category": "remote"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [5, 5]
+      }
+    }
+  ]
+}

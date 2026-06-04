@@ -1,0 +1,62 @@
+{
+  "status": {
+    "code": 0,
+    "message": "Grouped 6 feature(s) into 2 group(s)."
+  },
+  "featureSummaries": [
+    {
+      "id": "turf-dbscan-1",
+      "markerSymbol": 1,
+      "grouped": true,
+      "groupId": "group-0",
+      "groupStatus": "grouped",
+      "groupDbscanRole": "core",
+      "groupSize": 3
+    },
+    {
+      "id": "turf-dbscan-2",
+      "markerSymbol": 2,
+      "grouped": true,
+      "groupId": "group-0",
+      "groupStatus": "grouped",
+      "groupDbscanRole": "core",
+      "groupSize": 3
+    },
+    {
+      "id": "turf-dbscan-3",
+      "markerSymbol": 3,
+      "grouped": true,
+      "groupId": "group-0",
+      "groupStatus": "grouped",
+      "groupDbscanRole": "core",
+      "groupSize": 3
+    },
+    {
+      "id": "turf-dbscan-4",
+      "markerSymbol": 4,
+      "grouped": true,
+      "groupId": "group-1",
+      "groupStatus": "grouped",
+      "groupDbscanRole": "core",
+      "groupSize": 3
+    },
+    {
+      "id": "turf-dbscan-5",
+      "markerSymbol": 5,
+      "grouped": true,
+      "groupId": "group-1",
+      "groupStatus": "grouped",
+      "groupDbscanRole": "core",
+      "groupSize": 3
+    },
+    {
+      "id": "turf-dbscan-6",
+      "markerSymbol": 6,
+      "grouped": true,
+      "groupId": "group-1",
+      "groupStatus": "grouped",
+      "groupDbscanRole": "core",
+      "groupSize": 3
+    }
+  ]
+}

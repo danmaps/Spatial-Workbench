@@ -12,11 +12,28 @@ class ExportTool extends Tool {
 
         this.description = "Export data";
     }
+    async validate(params, context = {}) {
+        const inputLayerId = params['Layer'];
+        const format = params['Format'] || 'GeoJSON';
+        const errors = [];
+
+        if (String(format).toLowerCase() !== 'geojson') {
+            errors.push('Unsupported export format.');
+        }
+
+        const target = resolveTargetLayerData(inputLayerId, context);
+        if (!target.ok || !target.targetGeoJSON) {
+            errors.push(target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');
+        }
+
+        return this.validationFailure(errors);
+    }
+
     async run(params, context = {}) {
         console.log("Exporting data...");
         const inputLayerId = params['Layer'];
-        const format = params['Format'];
-        if (format === 'GeoJSON') {
+        const format = params['Format'] || 'GeoJSON';
+        if (String(format).toLowerCase() === 'geojson') {
             const target = resolveTargetLayerData(inputLayerId, context);
 
             if (!target.ok || !target.targetGeoJSON) {
@@ -75,4 +92,3 @@ class ExportTool extends Tool {
 }
 
 module.exports = { ExportTool };
-

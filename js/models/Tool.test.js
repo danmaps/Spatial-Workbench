@@ -2,6 +2,9 @@ const { Tool } = require('./Tool');
 
 jest.mock('../state', () => ({
   getState: jest.fn(() => ({ layers: ['a', 'b'] })),
+  getLayer: jest.fn(),
+  listLayers: jest.fn(),
+  applyResult: jest.fn(),
 }));
 
 describe('Tool base architecture', () => {
@@ -65,6 +68,31 @@ describe('Tool base architecture', () => {
     expect(context.map).toEqual({ kind: 'map' });
     expect(context.tool).toBe(tool);
     expect(context.state).toEqual({ layers: ['a', 'b'] });
+    expect(typeof context.getLayer).toBe('function');
+    expect(typeof context.listLayers).toBe('function');
+    expect(typeof context.applyResult).toBe('function');
+  });
+
+  test('execute validates params before run()', async () => {
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo', [
+          { name: 'Name', type: 'text', defaultValue: '' }
+        ], 'demo', null);
+        this.run = jest.fn();
+      }
+
+      async validate() {
+        return { ok: false, errors: ['Name is required.'] };
+      }
+    }
+
+    const tool = new DemoTool();
+    const result = await tool.execute();
+
+    expect(tool.run).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: false, errors: ['Name is required.'] });
+    expect(tool.getStatus()).toEqual({ code: 2, message: 'Name is required.' });
   });
 
   test('handleRunResult supports download responses', async () => {

@@ -18,6 +18,45 @@ class ConvertTextToNumericTool extends Tool {
     this.headlessSupported = true;
   }
 
+  async validate(params, context = {}) {
+    const inputFieldName = String(params['Input Field Name'] || '').trim();
+    const outputFieldName = String(params['Output Field Name'] || '').trim();
+    const overwrite = !!params['Overwrite Existing Field'];
+    const errors = [];
+
+    if (!inputFieldName) errors.push('Input Field Name is required.');
+    if (!outputFieldName) errors.push('Output Field Name is required.');
+
+    if (context.headless && outputFieldName) {
+      const state = normalizeHeadlessState(context.state);
+      const targetFeatureIds = selectFeatureIds(state);
+      if (!targetFeatureIds.length) {
+        errors.push('No target features available.');
+      } else {
+        const idSet = new Set(targetFeatureIds);
+        const targetFeatures = state.featureCollection.features.filter((feature) => idSet.has(feature.properties.__id));
+        const eligibleFeatures = overwrite
+          ? targetFeatures
+          : targetFeatures.filter((feature) => feature.properties[outputFieldName] === undefined);
+        if (!eligibleFeatures.length) errors.push('No eligible target features found.');
+      }
+    } else if (!context.headless && outputFieldName) {
+      const inputLayerId = params['Input Layer'];
+      const layer = inputLayerId ? getLayer(inputLayerId) : null;
+      if (!layer || typeof layer.toGeoJSON !== 'function') {
+        errors.push('No layer selected.');
+      } else if (!overwrite) {
+        const feature = layer.toGeoJSON();
+        feature.properties = feature.properties || {};
+        if (feature.properties[outputFieldName] !== undefined) {
+          errors.push('Output field already exists on the selected layer.');
+        }
+      }
+    }
+
+    return this.validationFailure(errors);
+  }
+
   async run(params, context = {}) {
     const inputFieldName = String(params['Input Field Name'] || '').trim();
     const outputFieldName = String(params['Output Field Name'] || '').trim();

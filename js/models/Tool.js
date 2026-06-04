@@ -206,6 +206,9 @@ class Tool {
         return {
             map: this.map || (typeof stateModule.getMap === 'function' ? stateModule.getMap() : null),
             state: typeof stateModule.getState === 'function' ? stateModule.getState() : null,
+            getLayer: typeof stateModule.getLayer === 'function' ? stateModule.getLayer : null,
+            listLayers: typeof stateModule.listLayers === 'function' ? stateModule.listLayers : null,
+            applyResult: typeof stateModule.applyResult === 'function' ? stateModule.applyResult : null,
             tool: this,
         };
     }
@@ -225,9 +228,30 @@ class Tool {
     async execute() {
         const params = this.collectParamsFromDOM();
         const context = this.getExecutionContext();
+        const validation = await this.validate(params, context);
+        if (!validation.ok) {
+            const message = validation.errors[0] || 'Invalid tool parameters.';
+            this.setStatus(2, message);
+            return {
+                ok: false,
+                errors: validation.errors,
+            };
+        }
         const result = await this.run(params, context);
         await this.handleRunResult(result);
         return result;
+    }
+
+    async validate(_params, _context) {
+        return { ok: true, errors: [] };
+    }
+
+    validationFailure(errors) {
+        const normalizedErrors = Array.isArray(errors) ? errors.filter(Boolean) : [errors].filter(Boolean);
+        return {
+            ok: normalizedErrors.length === 0,
+            errors: normalizedErrors,
+        };
     }
 
     async run(_params, _context) {
@@ -285,6 +309,8 @@ class Tool {
                     }));
                 }
             }
+
+            return result;
         };
     }
 }

@@ -1,24 +1,25 @@
 # Spatial Workbench
 
-Spatial Workbench is a lightweight, browser-based environment for exploring, creating, and transforming geometry.
+Spatial Workbench is a work-in-progress platform for designing and implementing spatial tools as agent-first services.
 
-It sits somewhere between a GIS, a sketchpad, and a playground for spatial thinking. You can draw geometry, run tools on it, inspect the resulting GeoJSON, and experiment freely without heavy setup, credentials, or opaque workflows.
+The long-term intent is to make spatial operations easy for agents, scripts, and humans to call through clear schemas, inspectable inputs, and GeoJSON outputs. The browser workbench remains useful as an interactive surface for drawing, testing, and inspecting geometry, but it is not the center of the architecture.
 
-This project is intentionally simple, inspectable, and extensible.
+This project is intentionally simple, inspectable, and extensible while the service model evolves.
 
 ---
 
 ## What is this?
 
-Spatial Workbench is a client-side web app built on:
-- Leaflet for interactive maps
-- Leaflet Draw for geometry creation
-- Turf.js for spatial operations
+Spatial Workbench is becoming a small spatial tool runtime built around:
+- Agent-callable tool definitions
+- Structured parameters and execution receipts
+- Server-side service endpoints for headless runs
 - GeoJSON as the core data model
+- A browser workbench for visual inspection and manual testing
 
-Everything revolves around geometry as state and tools as first-class objects.
+Everything revolves around geometry as state and tools as first-class services.
 
-You draw features, run tools, see what happens, and iterate.
+Agents should be able to discover a tool, understand its input schema, run it, inspect the output, and chain the result into another spatial workflow. Humans should be able to use the same tools directly and see what happened.
 
 ---
 
@@ -26,6 +27,7 @@ You draw features, run tools, see what happens, and iterate.
 
 - Draw points, lines, and polygons
 - View live GeoJSON for everything on the map
+- Run supported tools through the headless execution API
 - Run spatial tools such as:
   - Random point generation
   - Buffers
@@ -38,7 +40,7 @@ You draw features, run tools, see what happens, and iterate.
 - Generate geometry using AI prompts
 - Inspect tool parameters and outputs directly
 
-Nothing is hidden. If it exists on the map, you can see its geometry.
+Nothing is hidden. If geometry is produced, it should be inspectable as data, visible in the workbench when useful, and portable into another tool call.
 
 ---
 
@@ -46,15 +48,16 @@ Nothing is hidden. If it exists on the map, you can see its geometry.
 
 Most GIS tools are either:
 - Extremely powerful but heavy and opaque
-- Or lightweight demos that hide the mechanics
+- Or lightweight demos that are difficult for agents and automation to operate
 
 Spatial Workbench is trying to sit in the middle. The goals are:
-- Make geometry tangible and explorable
-- Encourage experimentation and iteration
-- Support human + AI workflows without magic
+- Make spatial tools easy for agents to call correctly
+- Keep schemas, parameters, outputs, and provenance visible
+- Support human + agent workflows without magic
+- Make geometry tangible and explorable when visual context helps
 - Keep spatial logic visible and debuggable
 
-This is a place to think with geometry.
+This is a place to build spatial capabilities that can be used by people, agents, and services.
 
 ---
 
@@ -62,16 +65,18 @@ This is a place to think with geometry.
 
 Tools are defined declaratively using a small model:
 - Each tool declares its parameters
-- The UI is generated automatically
-- Execution updates the map and GeoJSON state
+- Tool inputs can be serialized for service execution
+- Execution returns GeoJSON and metadata that agents can inspect
+- The browser UI can be generated from the same definitions
+- Visual execution updates the map and GeoJSON state
 - Tool metadata can be attached to outputs
 - Layer identity, geometry, provenance, source, and UI hooks are normalized through a canonical layer model in `js/state.js` (see `docs/layer-model.md`)
 - TOC row behavior and per-layer actions follow a minimal row + ellipsis-menu model (see `docs/toc-action-model.md`)
 - New tool work should follow the in-repo implementation guide (see `docs/creating-new-tools.md`)
 
-This mirrors how desktop GIS geoprocessing tools work, but in a much smaller, hackable form.
+This borrows from desktop GIS geoprocessing tools, but the direction is smaller, service-oriented, and agent-friendly.
 
-If you want to add a new spatial operation, you add a new tool.
+If you want to add a new spatial operation, you add a tool that can eventually run as a service, not only as a UI interaction.
 
 ---
 
@@ -84,16 +89,17 @@ AI-generated features are treated the same as user-drawn geometry. They:
 
 There is no special “AI layer”. AI is just another way to create shapes.
 
-This makes it easy to experiment with human-in-the-loop spatial reasoning instead of one-shot automation.
+The broader goal is agent-in-the-loop spatial reasoning: agents can propose, call, compare, and refine geometry-producing tools while humans can inspect and intervene.
 
 ---
 
 ## Who this is for
 
-- GIS developers who want a lighter sandbox
-- People learning spatial concepts visually
+- Developers building spatial tools for agents
+- GIS developers who want a lighter, inspectable runtime
+- People designing human + agent spatial workflows
 - Anyone experimenting with AI + geometry
-- Developers who want a simple spatial tool framework to extend
+- People learning spatial concepts visually
 
 You do not need ArcGIS, QGIS, or credentials to use this.
 
@@ -101,7 +107,7 @@ You do not need ArcGIS, QGIS, or credentials to use this.
 
 ## Status
 
-This is an experimental project. The architecture is stable enough to extend, but the UI and APIs will evolve.
+This is an experimental, work-in-progress project. The architecture is moving from browser-centered exploration toward agent-first spatial services, so the UI, APIs, and tool contracts will continue to evolve.
 
 Expect rough edges. That’s intentional.
 
@@ -110,10 +116,12 @@ Expect rough edges. That’s intentional.
 ## Roadmap ideas
 
 Some directions this could grow into:
-- Geometry comparison and scoring
+- Tool discovery and schema publication for agents
+- More complete headless execution coverage
+- MCP or similar adapters for agent runtimes
+- Geometry comparison and scoring services
 - Provenance and replayable workflows
 - More spatial analysis tools
-- Agent-driven tool execution
 - Educational “modes” for learning geometry concepts
 
 Nothing here is locked in.

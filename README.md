@@ -28,6 +28,7 @@ Agents should be able to discover a tool, understand its input schema, run it, i
 - Draw points, lines, and polygons
 - View live GeoJSON for everything on the map
 - Run supported tools through the headless execution API
+- Expose the headless API to agents through a thin MCP server
 - Run spatial tools such as:
   - Random point generation
   - Buffers
@@ -146,6 +147,27 @@ npm run demo:headless
 ```
 
 This exercises the local deterministic `RandomPointsTool -> BufferTool -> ExportTool` path and writes `artifacts/headless-demo.geojson`.
+
+## MCP server
+
+Spatial Workbench also includes a thin MCP server that wraps the existing headless API:
+
+```bash
+npm run mcp:server
+```
+
+By default it starts a local ephemeral Workbench API and exposes two MCP tools:
+
+- `list_tools` -> wraps `GET /api/run`
+- `run_tool` -> wraps `POST /api/run`
+
+To point it at a live deployment instead:
+
+```bash
+HEADLESS_API_URL=https://workbench.dannymcvey.com npm run mcp:server
+```
+
+See `docs/mcp-server.md` for the first-pass scope and contract.
 
 ## Production / service mode
 

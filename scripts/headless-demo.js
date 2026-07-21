@@ -1,51 +1,8 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
-const http = require('http');
-const https = require('https');
 const path = require('path');
-
-function requestJson(baseUrl, requestPath, options = {}) {
-  const url = new URL(requestPath, baseUrl);
-  const body = options.body ? JSON.stringify(options.body) : null;
-  const transport = url.protocol === 'https:' ? https : http;
-
-  return new Promise((resolve, reject) => {
-    const req = transport.request(url, {
-      method: options.method || 'GET',
-      headers: body
-        ? {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(body),
-          }
-        : {},
-    }, (res) => {
-      let data = '';
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      res.on('end', () => {
-        let parsed;
-        try {
-          parsed = JSON.parse(data || '{}');
-        } catch (error) {
-          reject(new Error(`Failed to parse ${requestPath} response: ${error.message}`));
-          return;
-        }
-
-        resolve({
-          status: res.statusCode,
-          ok: res.statusCode >= 200 && res.statusCode < 300,
-          data: parsed,
-        });
-      });
-    });
-
-    req.on('error', reject);
-    if (body) req.write(body);
-    req.end();
-  });
-}
+const { createHeadlessApiRuntimeManager, requestJson } = require('../js/headless-api-client');
 
 function formatReceipt(stepNumber, toolKey, response) {
   const execution = response.execution || {};
@@ -82,34 +39,14 @@ function assertOk(response, label) {
   }
 }
 
-async function startLocalServer() {
-  global.turf = require('@turf/turf');
-  global.L = { Polygon: function Polygon() {} };
-
-  const { app } = require('../server');
-  const server = app.listen(0);
-  await new Promise((resolve) => server.once('listening', resolve));
-  const { port } = server.address();
-  return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    async close() {
-      await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-    },
-  };
-}
-
 async function main() {
+  const runtimeManager = createHeadlessApiRuntimeManager();
   let runtime = null;
-  let baseUrl = process.env.HEADLESS_API_URL;
 
   try {
-    if (!baseUrl) {
-      runtime = await startLocalServer();
-      baseUrl = runtime.baseUrl;
-      console.log(`Started local headless API at ${baseUrl}`);
-    } else {
-      console.log(`Using headless API at ${baseUrl}`);
-    }
+    runtime = await runtimeManager.getRuntime();
+    const baseUrl = runtime.baseUrl;
+    console.log(process.env.HEADLESS_API_URL ? `Using headless API at ${baseUrl}` : `Started local headless API at ${baseUrl}`);
 
     const discovery = await requestJson(baseUrl, '/api/run');
     assertOk(discovery, 'Discovery');
@@ -185,8 +122,8 @@ async function main() {
     fs.writeFileSync(artifactPath, `${artifactData}\n`, 'utf8');
     console.log(`Wrote ${artifactPath}`);
   } finally {
-    if (runtime) {
-      await runtime.close();
+    if (runtime && !process.env.HEADLESS_API_URL) {
+      await runtimeManager.close();
     }
   }
 }

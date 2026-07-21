@@ -29,6 +29,73 @@ require('dotenv').config();
 
 app.use(express.json());
 
+function countGeojsonFeatures(geojson) {
+  if (!geojson || typeof geojson !== 'object') return 0;
+  if (geojson.type === 'FeatureCollection') {
+    return Array.isArray(geojson.features) ? geojson.features.length : 0;
+  }
+  if (geojson.type === 'Feature') return 1;
+  if (typeof geojson.type === 'string') return 1;
+  return 0;
+}
+
+function getLayerFeatureCount(state, layerId) {
+  const layer = Array.isArray(state?.layers) ? state.layers.find((entry) => entry.id === layerId) : null;
+  return countGeojsonFeatures(layer?.geojson);
+}
+
+function collectInputLayerIds(toolKey, params = {}) {
+  const ids = [];
+
+  if (typeof params['Input Layer'] === 'string' && params['Input Layer']) {
+    ids.push(params['Input Layer']);
+  }
+  if (typeof params.Layer === 'string' && params.Layer) {
+    ids.push(params.Layer);
+  }
+  if (toolKey === 'RandomPointsTool' && params['Inside Polygon'] && typeof params.Polygon === 'string' && params.Polygon) {
+    ids.push(params.Polygon);
+  }
+
+  return [...new Set(ids)];
+}
+
+function buildExecutionReceipt({ toolKey, params, requestState, result, startedAt, finishedAt }) {
+  const inputLayerIds = collectInputLayerIds(toolKey, params);
+  const outputLayerIds = Array.isArray(result?.state?.added)
+    ? result.state.added.map((layer) => layer.id).filter(Boolean)
+    : [];
+
+  let inputFeatureCount = inputLayerIds.reduce((sum, layerId) => sum + getLayerFeatureCount(requestState, layerId), 0);
+  if (!inputFeatureCount && requestState?.featureCollection) {
+    inputFeatureCount = countGeojsonFeatures(requestState.featureCollection);
+  }
+
+  let outputFeatureCount = outputLayerIds.reduce((sum, layerId) => sum + getLayerFeatureCount(result?.state, layerId), 0);
+  if (!outputFeatureCount && result?.state?.featureCollection) {
+    outputFeatureCount = countGeojsonFeatures(result.state.featureCollection);
+  }
+  if (!outputFeatureCount && result?.output?.download?.data) {
+    try {
+      outputFeatureCount = countGeojsonFeatures(JSON.parse(result.output.download.data));
+    } catch (_error) {
+      outputFeatureCount = 0;
+    }
+  }
+
+  return {
+    startedAt: startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    durationMs: finishedAt.getTime() - startedAt.getTime(),
+    inputLayerIds,
+    outputLayerIds,
+    featureCounts: {
+      input: inputFeatureCount,
+      output: outputFeatureCount,
+    },
+  };
+}
+
 function normalizeOllamaUrl(value) {
   const base = (value || DEFAULT_OLLAMA_URL).trim() || DEFAULT_OLLAMA_URL;
   return base.replace(/\/+$/, '');
@@ -198,6 +265,7 @@ app.get('/api/run', (_req, res) => {
 app.post('/api/run', async (req, res) => {
   try {
     const body = req.body || {};
+    const startedAt = new Date();
     const result = body?.state?.featureCollection
       ? await runToolHeadlessly({
           toolKey: body.tool,
@@ -205,7 +273,19 @@ app.post('/api/run', async (req, res) => {
           state: body.state,
         })
       : await runHeadlessTool(body);
-    res.json(result);
+    const finishedAt = new Date();
+
+    res.json({
+      ...result,
+      execution: buildExecutionReceipt({
+        toolKey: body.tool,
+        params: body.params,
+        requestState: body.state,
+        result,
+        startedAt,
+        finishedAt,
+      }),
+    });
   } catch (error) {
     const statusCode = error.statusCode || 500;
     res.status(statusCode).json({

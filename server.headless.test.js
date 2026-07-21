@@ -123,6 +123,20 @@ function summarizeGroupFeatures(geojson) {
   };
 }
 
+function expectExecutionReceipt(execution) {
+  expect(execution).toEqual(expect.objectContaining({
+    startedAt: expect.any(String),
+    finishedAt: expect.any(String),
+    durationMs: expect.any(Number),
+    inputLayerIds: expect.any(Array),
+    outputLayerIds: expect.any(Array),
+    featureCounts: expect.objectContaining({
+      input: expect.any(Number),
+      output: expect.any(Number),
+    }),
+  }));
+}
+
 const sourcePointLayer = {
   id: 'source-layer',
   name: 'Sample source points',
@@ -202,6 +216,13 @@ describe('/api/run', () => {
         layers: expect.any(Array),
         bbox: [-1, -1, 1, 1],
       }),
+      execution: expect.any(Object),
+    }));
+    expectExecutionReceipt(data.execution);
+    expect(data.execution).toEqual(expect.objectContaining({
+      inputLayerIds: ['source-layer'],
+      outputLayerIds: [data.state.added[0].id],
+      featureCounts: { input: sourcePointsGeojson.features.length, output: sourcePointsGeojson.features.length },
     }));
     expect(data.state.added).toHaveLength(1);
     expect(data.state.layers).toHaveLength(2);
@@ -262,6 +283,7 @@ describe('/api/run', () => {
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
     expect(data.status).toEqual(expect.objectContaining({ code: 0, message: 'Buffered layer added to map.' }));
+    expectExecutionReceipt(data.execution);
     expect(data.state.added).toHaveLength(1);
     const bufferLayer = data.state.added[0];
     expect(summarizeSingleFeatureBufferLayer(bufferLayer)).toEqual(expectedTurfBufferPolygonWithHolesSummary);
@@ -286,6 +308,12 @@ describe('/api/run', () => {
     expect(firstResponse.status).toBe(200);
     expect(firstData.ok).toBe(true);
     expect(firstData.status).toEqual(expect.objectContaining({ code: 0 }));
+    expectExecutionReceipt(firstData.execution);
+    expect(firstData.execution).toEqual(expect.objectContaining({
+      inputLayerIds: [],
+      outputLayerIds: [firstData.state.added[0].id],
+      featureCounts: { input: 0, output: 3 },
+    }));
     expect(firstData.output).toEqual(expect.objectContaining({ ok: true, added: expect.any(Array), removed: [] }));
     expect(firstData.state.bbox).toEqual([10, 20, 11, 21]);
     expect(firstData.state.added).toHaveLength(1);
@@ -318,6 +346,7 @@ describe('/api/run', () => {
     expect(secondResponse.status).toBe(200);
     expect(secondData.ok).toBe(false);
     expect(secondData.status).toEqual(expect.objectContaining({ code: 2, message: 'No layer selected.' }));
+    expectExecutionReceipt(secondData.execution);
     expect(secondData.output).toBe(null);
     expect(secondData.state).toEqual(expect.objectContaining({
       added: [],
@@ -346,6 +375,12 @@ describe('/api/run', () => {
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
     expect(data.status).toEqual(expect.objectContaining({ code: 0, message: 'Prepared GeoJSON export.' }));
+    expectExecutionReceipt(data.execution);
+    expect(data.execution).toEqual(expect.objectContaining({
+      inputLayerIds: ['source-layer'],
+      outputLayerIds: [],
+      featureCounts: { input: sourcePointsGeojson.features.length, output: sourcePointsGeojson.features.length },
+    }));
     expect(data.output).toEqual(expect.objectContaining({
       download: expect.objectContaining({
         filename: 'source-layer.geojson',
@@ -375,6 +410,98 @@ describe('/api/run', () => {
     expect(data.details.supportedTools).toEqual(
       expect.arrayContaining(['BufferTool', 'RandomPointsTool', 'ExportTool'])
     );
+  });
+
+  test('POST /api/run chains RandomPointsTool to BufferTool to ExportTool using returned state verbatim', async () => {
+    const discoveryResponse = await requestJson(baseUrl, '/api/run');
+    const discoveryData = discoveryResponse.json();
+
+    expect(discoveryResponse.status).toBe(200);
+    expect(discoveryData.supportedTools.map((tool) => tool.key)).toEqual(expect.arrayContaining([
+      'RandomPointsTool',
+      'BufferTool',
+      'ExportTool',
+    ]));
+
+    const randomPointsResponse = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      body: {
+        tool: 'RandomPointsTool',
+        params: {
+          'Points Count': 4,
+          'Inside Polygon': false,
+        },
+        state: {
+          bbox: [10, 20, 11, 21],
+        },
+      },
+    });
+    const randomPointsData = randomPointsResponse.json();
+
+    expect(randomPointsResponse.status).toBe(200);
+    expect(randomPointsData.ok).toBe(true);
+    expectExecutionReceipt(randomPointsData.execution);
+    expect(randomPointsData.state.added).toHaveLength(1);
+    const randomPointsLayerId = randomPointsData.state.added[0].id;
+    const randomPointsLayer = randomPointsData.state.layers.find((layer) => layer.id === randomPointsLayerId);
+    expect(randomPointsLayer.geojson.features).toHaveLength(4);
+
+    const bufferResponse = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      body: {
+        tool: 'BufferTool',
+        params: {
+          'Input Layer': randomPointsLayerId,
+          Distance: 0.5,
+          Units: 'kilometers',
+        },
+        state: randomPointsData.state,
+      },
+    });
+    const bufferData = bufferResponse.json();
+
+    expect(bufferResponse.status).toBe(200);
+    expect(bufferData.ok).toBe(true);
+    expectExecutionReceipt(bufferData.execution);
+    expect(bufferData.execution).toEqual(expect.objectContaining({
+      inputLayerIds: [randomPointsLayerId],
+      outputLayerIds: [bufferData.state.added[0].id],
+      featureCounts: { input: 4, output: 4 },
+    }));
+    expect(bufferData.state.layers.map((layer) => layer.id)).toEqual(expect.arrayContaining([
+      randomPointsLayerId,
+      bufferData.state.added[0].id,
+    ]));
+    expect(bufferData.state.added[0].id).not.toBe(randomPointsLayerId);
+    const bufferedLayerId = bufferData.state.added[0].id;
+    const bufferedLayer = bufferData.state.layers.find((layer) => layer.id === bufferedLayerId);
+    expect(bufferedLayer.geojson.toolMetadata.parentLayerId).toBe(randomPointsLayerId);
+    expect(bufferedLayer.geojson.features).toHaveLength(4);
+
+    const exportResponse = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      body: {
+        tool: 'ExportTool',
+        params: {
+          Layer: bufferedLayerId,
+          Format: 'GeoJSON',
+        },
+        state: bufferData.state,
+      },
+    });
+    const exportData = exportResponse.json();
+
+    expect(exportResponse.status).toBe(200);
+    expect(exportData.ok).toBe(true);
+    expectExecutionReceipt(exportData.execution);
+    expect(exportData.execution).toEqual(expect.objectContaining({
+      inputLayerIds: [bufferedLayerId],
+      outputLayerIds: [],
+      featureCounts: { input: 4, output: 4 },
+    }));
+    const exportedGeojson = JSON.parse(exportData.output.download.data);
+    expect(turf.getType(exportedGeojson)).toBe('FeatureCollection');
+    expect(exportedGeojson.features).toHaveLength(bufferedLayer.geojson.features.length);
   });
 
   test('POST /api/run reports tool validation failures without crashing the API', async () => {
@@ -433,6 +560,7 @@ describe('/api/run', () => {
       expect(response.status).toBe(200);
       expect(data.ok).toBe(false);
       expect(data.status).toEqual(expect.objectContaining(scenario.expectedStatus));
+      expectExecutionReceipt(data.execution);
       expect(data.validation).toEqual(expect.objectContaining({
         ok: false,
         errors: expect.arrayContaining([scenario.expectedStatus.message]),
@@ -466,6 +594,7 @@ describe('/api/run', () => {
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
     expect(data.status).toEqual(expect.objectContaining({ code: 0, message: 'Added 2 point(s).' }));
+    expectExecutionReceipt(data.execution);
     expect(data.output).toEqual(expect.objectContaining({ ok: true, added: expect.any(Array), removed: [] }));
     expect(data.state.added).toHaveLength(1);
     expect(data.state.layers).toHaveLength(2);
@@ -510,6 +639,7 @@ describe('/api/run', () => {
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
     expect(data.status).toEqual(expect.objectContaining({ code: 0, message: 'Added 5 point(s).' }));
+    expectExecutionReceipt(data.execution);
     const resultLayer = data.state.added[0];
     expect(resultLayer.geojson.features).toHaveLength(5);
     resultLayer.geojson.features.forEach((feature) => {

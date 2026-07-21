@@ -109,11 +109,23 @@ All successful tool calls and tool-level validation failures use the same envelo
     "added": [],
     "removed": [],
     "bbox": [-118.5, 33.5, -117.5, 34.5]
+  },
+  "execution": {
+    "startedAt": "2026-07-21T03:27:44.000Z",
+    "finishedAt": "2026-07-21T03:27:44.012Z",
+    "durationMs": 12,
+    "inputLayerIds": ["source-layer"],
+    "outputLayerIds": ["result-1"],
+    "featureCounts": {
+      "input": 3,
+      "output": 3
+    }
   }
 }
 ```
 
 For feature-collection tools, the updated FeatureCollection is returned in top-level `state`. The `output` object contains operation details such as counts and updated ids, not a nested state copy.
+`execution` is the API-level receipt used by the demo client and tests. It keeps the runtime inspectable without forcing every tool to share the same internal output shape.
 
 ## Validation Failures
 
@@ -137,6 +149,17 @@ Tools run `validate(params, context)` before execution. Tool-level validation fa
     "added": [],
     "removed": [],
     "bbox": null
+  },
+  "execution": {
+    "startedAt": "2026-07-21T03:27:44.000Z",
+    "finishedAt": "2026-07-21T03:27:44.001Z",
+    "durationMs": 1,
+    "inputLayerIds": [],
+    "outputLayerIds": [],
+    "featureCounts": {
+      "input": 0,
+      "output": 0
+    }
   }
 }
 ```
@@ -167,14 +190,14 @@ npm test -- --runInBand server.headless.test.js
 
 It is designed to be:
 
-- easy to call from a future CLI wrapper
+- easy to call from a repo-native CLI/demo wrapper
 - simple for MCP/agent adapters to serialize
 - explicit about inputs and outputs
 - non-breaking for the existing browser UI
 
 ## Next likely steps
 
-1. add a small CLI wrapper around `POST /api/run`
+1. extend the demo contract to more tools after the chained `RandomPointsTool -> BufferTool -> ExportTool` flow is stable
 2. make `AddDataTool` accept JSON/file-path friendly server inputs
 3. decouple AI geometry generation from browser localStorage
 4. build an MCP-facing adapter on top of this contract

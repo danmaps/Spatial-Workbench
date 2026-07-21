@@ -63,6 +63,30 @@ function createLayerRecord(rawLayer, fallbackIndex = 0) {
   };
 }
 
+function createUniqueLayerId(registry, preferredId) {
+  if (preferredId && !registry.has(preferredId)) {
+    return preferredId;
+  }
+
+  if (preferredId) {
+    let suffix = 2;
+    let candidate = `${preferredId}-${suffix}`;
+    while (registry.has(candidate)) {
+      suffix += 1;
+      candidate = `${preferredId}-${suffix}`;
+    }
+    return candidate;
+  }
+
+  let index = 1;
+  let candidate = `result-${index}`;
+  while (registry.has(candidate)) {
+    index += 1;
+    candidate = `result-${index}`;
+  }
+  return candidate;
+}
+
 function createHeadlessRuntime(input = {}) {
   const initialLayers = Array.isArray(input.layers) ? input.layers : [];
   const layerRecords = initialLayers.map((layer, index) => createLayerRecord(layer, index));
@@ -114,10 +138,11 @@ function createHeadlessRuntime(input = {}) {
       : (toolResult.addGeojson ? [toolResult.addGeojson] : []);
 
     additions.forEach((geojson, index) => {
-      const nextId = geojson?.feature?.properties?.__id
+      const preferredId = geojson?.feature?.properties?.__id
         || geojson?.properties?.__id
         || geojson?.toolMetadata?.layerId
-        || `result-${added.length + index + 1}`;
+        || null;
+      const nextId = createUniqueLayerId(registry, preferredId);
       const name = geojson?.properties?.name || geojson?.toolMetadata?.name || nextId;
       const record = createLayerRecord({ id: nextId, name, geojson }, added.length + index);
       registry.set(record.id, record);

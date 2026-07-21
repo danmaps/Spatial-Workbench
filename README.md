@@ -132,9 +132,20 @@ Nothing here is locked in.
 
 ```bash
 npm install
+npm run test:headless
+npm run demo:headless
 npm run build
 npm start
 ```
+
+For the narrow headless proof specifically:
+
+```bash
+npm run test:headless
+npm run demo:headless
+```
+
+This exercises the local deterministic `RandomPointsTool -> BufferTool -> ExportTool` path and writes `artifacts/headless-demo.geojson`.
 
 ## Production / service mode
 

@@ -14,7 +14,7 @@ It proves that Spatial Workbench can behave like a callable spatial runtime outs
 Start from the repo root:
 
 ```bash
-node scripts/headless-demo.js
+npm run demo:headless
 ```
 
 By default, the script starts the Express app on an ephemeral local port, runs the three-step flow, then shuts the server down.
@@ -22,7 +22,13 @@ By default, the script starts the Express app on an ephemeral local port, runs t
 To point at an already-running API instead:
 
 ```bash
-HEADLESS_API_URL=http://127.0.0.1:3000 node scripts/headless-demo.js
+HEADLESS_API_URL=http://127.0.0.1:3000 npm run demo:headless
+```
+
+Run the focused verification suite with:
+
+```bash
+npm run test:headless
 ```
 
 ## Browser Demo

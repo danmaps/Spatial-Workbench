@@ -2,14 +2,16 @@
 
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const path = require('path');
 
 function requestJson(baseUrl, requestPath, options = {}) {
   const url = new URL(requestPath, baseUrl);
   const body = options.body ? JSON.stringify(options.body) : null;
+  const transport = url.protocol === 'https:' ? https : http;
 
   return new Promise((resolve, reject) => {
-    const req = http.request(url, {
+    const req = transport.request(url, {
       method: options.method || 'GET',
       headers: body
         ? {
@@ -72,7 +74,7 @@ function getAddedLayerId(response, toolKey) {
 
 function assertOk(response, label) {
   if (!response.ok) {
-    throw new Error(`${label} failed: ${response.error || 'HTTP error'}`);
+    throw new Error(`${label} failed: ${response.data?.error || response.error || 'HTTP error'}`);
   }
   if (!response.data?.ok) {
     const message = response.data?.status?.message || response.data?.error || 'Unknown tool error';

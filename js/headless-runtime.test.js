@@ -125,6 +125,35 @@ describe('headless runtime', () => {
     ]));
   });
 
+  test('headless runtime bootstraps turf and Polygon globals when missing', async () => {
+    delete global.turf;
+    delete global.L;
+    jest.resetModules();
+
+    const { runHeadlessTool } = require('./headless-runtime');
+
+    turf.randomPoint.mockReturnValue({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: {} }],
+    });
+
+    const result = await runHeadlessTool({
+      tool: 'RandomPointsTool',
+      params: {
+        'Points Count': 1,
+        'Inside Polygon': false,
+      },
+      state: {
+        bbox: [0, 0, 1, 1],
+      },
+    });
+
+    expect(global.turf).toBeDefined();
+    expect(global.L).toBeDefined();
+    expect(typeof global.L.Polygon).toBe('function');
+    expect(result.ok).toBe(true);
+  });
+
   test('runHeadlessTool executes RandomPointsTool with bbox bounds', async () => {
     const { runHeadlessTool } = require('./headless-runtime');
 

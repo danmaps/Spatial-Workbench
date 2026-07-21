@@ -1,9 +1,26 @@
+const turf = require('@turf/turf');
 const { BufferTool } = require('./tools/BufferTool');
 const { ExportTool } = require('./tools/ExportTool');
 const { GroupTool } = require('./tools/GroupTool');
 const { RandomPointsTool } = require('./tools/RandomPointsTool');
 const { AddAIGeneratedFieldTool } = require('./tools/AddAIGeneratedFieldTool');
 const { ConvertTextToNumericTool } = require('./tools/ConvertTextToNumericTool');
+
+function ensureHeadlessGlobals() {
+  if (!globalThis.turf) {
+    globalThis.turf = turf;
+  }
+
+  if (!globalThis.L) {
+    globalThis.L = {};
+  }
+
+  if (typeof globalThis.L.Polygon !== 'function') {
+    globalThis.L.Polygon = function Polygon() {};
+  }
+}
+
+ensureHeadlessGlobals();
 
 function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));

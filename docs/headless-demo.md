@@ -25,6 +25,16 @@ To point at an already-running API instead:
 HEADLESS_API_URL=http://127.0.0.1:3000 node scripts/headless-demo.js
 ```
 
+## Browser Demo
+
+There is also a same-origin browser version of the demo at:
+
+```text
+/headless-demo
+```
+
+That page calls the deployed server from the client with `fetch('/api/run')`, renders live execution receipts in the browser, and exposes a downloadable GeoJSON artifact without starting a local server inside the page itself.
+
 ## Expected Receipts
 
 The script prints one compact receipt per step, for example:

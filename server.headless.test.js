@@ -53,6 +53,30 @@ function requestJson(baseUrl, path, options = {}) {
   });
 }
 
+function requestText(baseUrl, path, options = {}) {
+  const url = new URL(path, baseUrl);
+
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, {
+      method: options.method || 'GET',
+      headers: options.headers || {},
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        resolve({
+          status: res.statusCode,
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          text: data,
+          headers: res.headers,
+        });
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -184,6 +208,15 @@ describe('/api/run', () => {
       params: expect.any(Object),
       state: expect.any(Object),
     }));
+  });
+
+  test('GET /headless-demo serves the browser client shell', async () => {
+    const response = await requestText(baseUrl, '/headless-demo');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('text/html');
+    expect(response.text).toContain('Live headless runtime demo');
+    expect(response.text).toContain('/public/js/headless-demo-client.js');
   });
 
   test('POST /api/run buffers sample GeoJSON and returns a known polygon result shape', async () => {

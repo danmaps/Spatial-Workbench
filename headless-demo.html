@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spatial Workbench Headless Demo</title>
+    <link rel="stylesheet" href="https://unpkg.com/bootstrap@5.2.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css">
+    <link rel="stylesheet" href="/public/css/headless-demo.css">
+</head>
+<body>
+    <main class="demo-shell">
+        <section class="demo-hero">
+            <p class="demo-eyebrow">Spatial Workbench</p>
+            <div class="demo-hero-copy">
+                <h1>Live headless runtime demo</h1>
+                <p class="demo-subtitle">
+                    This page calls the deployed <code>/api/run</code> endpoint directly from the browser,
+                    discovers the live tool catalog, runs the canonical three-step chain, and writes a real GeoJSON export.
+                </p>
+            </div>
+            <div class="demo-hero-actions">
+                <button id="runDemoButton" class="demo-button demo-button-primary" type="button">
+                    <i class="fas fa-play"></i>
+                    <span>Run live demo</span>
+                </button>
+                <a class="demo-button demo-button-secondary" href="/api/run" target="_blank" rel="noopener noreferrer">
+                    <i class="fas fa-compass"></i>
+                    <span>Inspect discovery</span>
+                </a>
+            </div>
+        </section>
+
+        <section class="demo-grid">
+            <article class="demo-panel">
+                <div class="demo-panel-header">
+                    <h2>What this proves</h2>
+                    <span class="demo-badge">Same origin</span>
+                </div>
+                <ul class="demo-list">
+                    <li>Discovers live callable tools from the server before execution.</li>
+                    <li>Passes returned serialized state between requests unchanged.</li>
+                    <li>Resolves next-step layer ids from receipts instead of guessing.</li>
+                    <li>Returns a downloadable GeoJSON export from the deployed runtime.</li>
+                </ul>
+            </article>
+
+            <article class="demo-panel">
+                <div class="demo-panel-header">
+                    <h2>Run status</h2>
+                    <span id="runStatusBadge" class="demo-badge demo-badge-muted">Idle</span>
+                </div>
+                <dl class="demo-meta">
+                    <div>
+                        <dt>Server origin</dt>
+                        <dd id="serverOriginValue">-</dd>
+                    </div>
+                    <div>
+                        <dt>Step chain</dt>
+                        <dd><code>RandomPointsTool -&gt; BufferTool -&gt; ExportTool</code></dd>
+                    </div>
+                    <div>
+                        <dt>Artifact</dt>
+                        <dd id="artifactSummary">Not generated yet</dd>
+                    </div>
+                </dl>
+                <div id="runMessage" class="demo-message demo-message-neutral">
+                    Ready to call the live server.
+                </div>
+            </article>
+        </section>
+
+        <section class="demo-panel">
+            <div class="demo-panel-header">
+                <h2>Execution receipts</h2>
+                <span id="toolCatalogSummary" class="demo-badge demo-badge-muted">Checking catalog...</span>
+            </div>
+            <div id="receiptList" class="receipt-list">
+                <div class="receipt-empty">Run the demo to populate live receipts.</div>
+            </div>
+        </section>
+
+        <section class="demo-grid demo-grid-bottom">
+            <article class="demo-panel">
+                <div class="demo-panel-header">
+                    <h2>Export preview</h2>
+                    <a id="downloadArtifactLink" class="demo-inline-link disabled" href="#" download="headless-demo.geojson" aria-disabled="true">Download GeoJSON</a>
+                </div>
+                <pre id="exportPreview" class="demo-code">Waiting for a run...</pre>
+            </article>
+
+            <article class="demo-panel">
+                <div class="demo-panel-header">
+                    <h2>Live catalog snapshot</h2>
+                    <span class="demo-badge">GET /api/run</span>
+                </div>
+                <div id="catalogList" class="catalog-list">
+                    <div class="receipt-empty">Loading supported tools...</div>
+                </div>
+            </article>
+        </section>
+    </main>
+
+    <script src="/public/js/headless-demo-client.js"></script>
+</body>
+</html>

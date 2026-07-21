@@ -224,6 +224,10 @@ app.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+app.get('/headless-demo', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'headless-demo.html'));
+});
+
 const toolSpecs = require('./js/tools/specs.json');
 
 app.get('/api/tools', (_req, res) => {

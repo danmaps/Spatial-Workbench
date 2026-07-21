@@ -413,7 +413,16 @@ function applyMapFeatureSelection(targetLayer, parentLayerId, fallbackIndex = 0,
         refreshSidebarState();
     }
 
-    if (!openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex) && map && typeof map.closePopup === 'function') {
+    const shouldOpenPopup = shouldOpenPopupForMapInteractionMode(activeMapInteractionMode);
+
+    if (
+        shouldOpenPopup
+        && !openFeaturePopup(targetLayer, layerId, featureId, fallbackIndex)
+        && map
+        && typeof map.closePopup === 'function'
+    ) {
+        map.closePopup();
+    } else if (!shouldOpenPopup && map && typeof map.closePopup === 'function') {
         map.closePopup();
     }
 

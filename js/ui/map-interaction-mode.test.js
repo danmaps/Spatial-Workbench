@@ -16,8 +16,8 @@ describe('map interaction mode helpers', () => {
     expect(shouldOpenPopupForMapInteractionMode(MAP_INTERACTION_MODES.INSPECT)).toBe(true);
   });
 
-  test('select mode opens popups and updates selection', () => {
-    expect(shouldOpenPopupForMapInteractionMode(MAP_INTERACTION_MODES.SELECT)).toBe(true);
+  test('select mode updates selection without auto-opening popups', () => {
+    expect(shouldOpenPopupForMapInteractionMode(MAP_INTERACTION_MODES.SELECT)).toBe(false);
     expect(shouldSelectForMapInteractionMode(MAP_INTERACTION_MODES.SELECT)).toBe(true);
   });
 

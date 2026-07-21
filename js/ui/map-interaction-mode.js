@@ -10,7 +10,7 @@ function normalizeMapInteractionMode(mode) {
 }
 
 function shouldOpenPopupForMapInteractionMode(mode) {
-  return Boolean(normalizeMapInteractionMode(mode));
+  return normalizeMapInteractionMode(mode) === MAP_INTERACTION_MODES.INSPECT;
 }
 
 function shouldSelectForMapInteractionMode(mode) {

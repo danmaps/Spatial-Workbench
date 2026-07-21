@@ -161,10 +161,65 @@ By default it starts a local ephemeral Workbench API and exposes two MCP tools:
 - `list_tools` -> wraps `GET /api/run`
 - `run_tool` -> wraps `POST /api/run`
 
+What those tools are for:
+
+- `list_tools` returns the current Workbench headless tool catalog, notes, and request shape
+- `run_tool` executes one supported tool against request-scoped serialized `state`
+
+Typical MCP flow:
+
+1. call `list_tools`
+2. choose a supported Workbench tool key such as `RandomPointsTool`, `BufferTool`, or `ExportTool`
+3. call `run_tool` with `tool`, `params`, and `state`
+4. pass the returned `state` into the next `run_tool` call unchanged
+5. inspect the returned `execution` receipt for timing, input layer ids, output layer ids, and feature counts
+
+Example `run_tool` arguments shape:
+
+```json
+{
+  "tool": "BufferTool",
+  "params": {
+    "Input Layer": "source-layer",
+    "Distance": 5,
+    "Units": "miles"
+  },
+  "state": {
+    "layers": [
+      {
+        "id": "source-layer",
+        "name": "Source Layer",
+        "geojson": {
+          "type": "FeatureCollection",
+          "features": []
+        }
+      }
+    ],
+    "bbox": [-118.5, 33.5, -117.5, 34.5]
+  }
+}
+```
+
+The returned result includes:
+
+- `ok`
+- `status`
+- `output`
+- `state`
+- `execution`
+
+This is intentionally thin. The MCP layer does not reinterpret Workbench state or invent session semantics in v1; it simply exposes the existing headless API seam to MCP clients.
+
 To point it at a live deployment instead:
 
 ```bash
 HEADLESS_API_URL=https://workbench.dannymcvey.com npm run mcp:server
+```
+
+To verify the MCP layer locally:
+
+```bash
+npm run test:mcp
 ```
 
 See `docs/mcp-server.md` for the first-pass scope and contract.

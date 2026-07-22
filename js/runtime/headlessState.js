@@ -1,29 +1,16 @@
+const { ensureFeatureId } = require('../spatial');
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
-}
-
-let idCounter = 0;
-
-function createId() {
-  idCounter += 1;
-  return `feature-${idCounter}`;
-}
-
-function ensureFeatureId(feature) {
-  if (!feature.properties) feature.properties = {};
-  if (!feature.properties.__id) {
-    feature.properties.__id = createId();
-  }
-  return feature.properties.__id;
 }
 
 function normalizeFeatureCollection(input) {
   const fallback = { type: 'FeatureCollection', features: [] };
   const fc = clone(input && input.type === 'FeatureCollection' ? input : fallback);
   if (!Array.isArray(fc.features)) fc.features = [];
-  fc.features.forEach((feature) => {
+  fc.features.forEach((feature, index) => {
     if (!feature.properties) feature.properties = {};
-    ensureFeatureId(feature);
+    ensureFeatureId(feature, `feature-${index + 1}`);
   });
   return fc;
 }

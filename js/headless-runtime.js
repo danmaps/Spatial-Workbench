@@ -5,6 +5,7 @@ const { GroupTool } = require('./tools/GroupTool');
 const { RandomPointsTool } = require('./tools/RandomPointsTool');
 const { AddAIGeneratedFieldTool } = require('./tools/AddAIGeneratedFieldTool');
 const { ConvertTextToNumericTool } = require('./tools/ConvertTextToNumericTool');
+const { ensureFeatureId } = require('./spatial');
 
 function ensureHeadlessGlobals() {
   if (!globalThis.turf) {
@@ -47,6 +48,12 @@ function createLayerRecord(rawLayer, fallbackIndex = 0) {
   const geojson = deepClone(rawLayer?.geojson ?? rawLayer?.data ?? rawLayer);
   if (!geojson || typeof geojson !== 'object') {
     throw new Error(`Layer ${id} is missing GeoJSON data`);
+  }
+
+  if (geojson.type === 'FeatureCollection' && Array.isArray(geojson.features)) {
+    geojson.features.forEach((feature, index) => ensureFeatureId(feature, `${id}-${index + 1}`));
+  } else if (geojson.type === 'Feature') {
+    ensureFeatureId(geojson, `${id}-1`);
   }
 
   const geometryType = geojson?.geometry?.type
@@ -243,7 +250,7 @@ function getHeadlessToolCatalog() {
   return [...layerStateTools, ...featureCollectionTools];
 }
 
-async function runHeadlessTool({ tool: toolKey, params = {}, state = {} }) {
+async function runHeadlessTool({ tool: toolKey, params = {}, state = {}, spatial = null }) {
   const ToolClass = HEADLESS_TOOLS[toolKey];
   if (!ToolClass) {
     const supported = Object.keys(HEADLESS_TOOLS);
@@ -262,6 +269,7 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {} }) {
     getLayer: runtime.getLayer,
     listLayers: runtime.listLayers,
     applyResult: runtime.applyResult,
+    spatial,
   };
 
   const validation = await tool.validate(params, context);

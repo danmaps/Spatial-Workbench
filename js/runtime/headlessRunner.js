@@ -1,7 +1,7 @@
 const { normalizeHeadlessState } = require('./headlessState');
 const { getToolByKey } = require('./toolRegistry');
 
-async function runToolHeadlessly({ toolKey, params, state }) {
+async function runToolHeadlessly({ toolKey, params, state, spatial = null }) {
   const tool = getToolByKey(toolKey);
   if (!tool) {
     const error = new Error(`Unknown tool: ${toolKey}`);
@@ -20,6 +20,7 @@ async function runToolHeadlessly({ toolKey, params, state }) {
     headless: true,
     state: normalizedState,
     tool,
+    spatial,
   };
   const toolParams = params || {};
   const validation = await tool.validate(toolParams, context);

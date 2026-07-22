@@ -8,6 +8,7 @@ It proves that Spatial Workbench can behave like a callable spatial runtime outs
 - executing `RandomPointsTool -> BufferTool -> ExportTool`
 - passing the returned serialized `state` from each response into the next request unchanged
 - writing a final GeoJSON artifact to disk
+- surfacing structured `spatial.warnings` when coordinate or geometry assumptions need to be called out
 
 ## Run It
 
@@ -39,7 +40,7 @@ There is also a same-origin browser version of the demo at:
 /headless-demo
 ```
 
-That page calls the deployed server from the client with `fetch('/api/run')`, renders live execution receipts in the browser, and exposes a downloadable GeoJSON artifact without starting a local server inside the page itself.
+That page calls the deployed server from the client with `fetch('/api/run')`, renders live execution receipts in the browser, and exposes a downloadable GeoJSON artifact without starting a local server inside the page itself. When warnings exist, the page renders them directly in the receipt card instead of burying them in generic status text.
 
 ## Expected Receipts
 
@@ -60,6 +61,7 @@ The exact ids, timings, and output port will vary. The important part is that ea
 - input layer ids
 - output layer ids
 - input/output feature counts
+- structured spatial warnings when they exist
 
 ## Output File
 

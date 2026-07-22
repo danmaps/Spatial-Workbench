@@ -63,6 +63,7 @@ Returns the raw tool result shape from `POST /api/run`, including:
 - `status`
 - `output`
 - `state`
+- `spatial`
 - `execution`
 - `error` / `details` for HTTP failures
 

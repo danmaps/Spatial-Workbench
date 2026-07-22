@@ -49,6 +49,7 @@ class BufferTool extends Tool {
         const inputLayerId = params['Input Layer'];
         const distance = parseFloat(params['Distance']);
         const applyToolResult = context.applyResult || applyResult;
+        const spatial = context.spatial || null;
         const target = resolveTargetLayerData(inputLayerId, context);
     
         if (!target.ok || !target.targetGeoJSON) {
@@ -61,8 +62,113 @@ class BufferTool extends Tool {
             return;
         }
     
-        const buffered = turf.buffer(target.targetGeoJSON, distance, {units: params['Units']});
+        const targetFeatures = target.targetGeoJSON?.type === 'FeatureCollection'
+            ? target.targetGeoJSON.features || []
+            : [target.targetGeoJSON];
+        const bufferedFeatures = [];
+        let skippedFeatureCount = 0;
+        const hasNullGeometry = targetFeatures.some((feature) => !feature?.geometry);
 
+        if (!hasNullGeometry) {
+            try {
+                const bufferedGeojson = turf.buffer(target.targetGeoJSON, distance, { units: params['Units'] });
+                if (bufferedGeojson) {
+                    bufferedGeojson.toolMetadata = {
+                        name: this.name,
+                        params: {
+                            ...params,
+                            'Input Layer': target.layerId,
+                        },
+                        parentLayerId: target.layerId,
+                        target: {
+                            mode: target.mode,
+                            selectedFeatureIds: target.selectedFeatureIds,
+                            selectedFeatureCount: target.selectedFeatureCount,
+                            totalFeatureCount: target.totalFeatureCount,
+                        },
+                        timestamp: new Date().toISOString()
+                    };
+
+                    const res = applyToolResult({ addGeojson: bufferedGeojson });
+                    if (res && res.ok) {
+                        this.setStatus(0, target.mode === 'selection'
+                            ? `Buffered ${target.selectedFeatureCount} selected feature(s).`
+                            : 'Buffered layer added to map.');
+                        return res;
+                    }
+                }
+            } catch (_error) {
+                // Fall back to per-feature buffering so invalid members can be reported and skipped.
+            }
+        }
+
+        targetFeatures.forEach((feature) => {
+            if (!feature?.geometry) {
+                skippedFeatureCount += 1;
+                return;
+            }
+
+            try {
+                const bufferedFeature = turf.buffer(feature, distance, { units: params['Units'] });
+                if (bufferedFeature?.type === 'Feature') {
+                    bufferedFeatures.push(bufferedFeature);
+                } else if (bufferedFeature?.type === 'FeatureCollection' && Array.isArray(bufferedFeature.features)) {
+                    bufferedFeatures.push(...bufferedFeature.features);
+                } else {
+                    skippedFeatureCount += 1;
+                }
+            } catch (_error) {
+                skippedFeatureCount += 1;
+            }
+        });
+
+        if (!bufferedFeatures.length) {
+            spatial?.addWarning({
+                code: 'buffer-empty-output',
+                message: 'Buffer produced no valid output features.',
+                layerId: target.layerId,
+                details: {
+                    inputFeatureCount: targetFeatures.length,
+                    skippedFeatureCount,
+                },
+            });
+            this.setStatus(2, 'Buffer produced no valid output.');
+            return;
+        }
+
+        if (skippedFeatureCount > 0) {
+            spatial?.addWarning({
+                code: 'buffer-skipped-features',
+                message: `Buffer skipped ${skippedFeatureCount} invalid or empty feature(s).`,
+                layerId: target.layerId,
+                details: {
+                    inputFeatureCount: targetFeatures.length,
+                    outputFeatureCount: bufferedFeatures.length,
+                    skippedFeatureCount,
+                },
+            });
+        }
+
+        const buffered = target.targetGeoJSON?.type === 'FeatureCollection'
+            ? {
+                type: 'FeatureCollection',
+                features: bufferedFeatures,
+            }
+            : (bufferedFeatures[0] || null);
+
+        if (!buffered) {
+            spatial?.addWarning({
+                code: 'buffer-empty-output',
+                message: 'Buffer produced no valid output features.',
+                layerId: target.layerId,
+                details: {
+                    inputFeatureCount: targetFeatures.length,
+                    skippedFeatureCount,
+                },
+            });
+            this.setStatus(2, 'Buffer produced no valid output.');
+            return;
+        }
         buffered.toolMetadata = {
             name: this.name,
             params: {
@@ -82,9 +188,13 @@ class BufferTool extends Tool {
         const res = applyToolResult({ addGeojson: buffered });
 
         if (res && res.ok) {
-            this.setStatus(0, target.mode === 'selection'
-                ? `Buffered ${target.selectedFeatureCount} selected feature(s).`
-                : 'Buffered layer added to map.');
+            if (skippedFeatureCount > 0) {
+                this.setStatus(0, `Buffered ${bufferedFeatures.length} feature(s); skipped ${skippedFeatureCount} invalid or empty feature(s).`);
+            } else {
+                this.setStatus(0, target.mode === 'selection'
+                    ? `Buffered ${target.selectedFeatureCount} selected feature(s).`
+                    : 'Buffered layer added to map.');
+            }
             return res;
         } else {
             this.setStatus(2, 'Failed to add buffered layer to map.');

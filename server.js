@@ -15,6 +15,7 @@ const {
 const { requestStructuredData } = require('./js/ai/requestStructuredData');
 const { getHeadlessToolCatalog, runHeadlessTool } = require('./js/headless-runtime');
 const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
+const { createSpatialSession, normalizeSpatialRequest, SPATIAL_METADATA } = require('./js/spatial');
 const MAX_AI_TOKENS = 4096;
 
 let rateLimit;
@@ -243,11 +244,16 @@ app.get('/api/run', (_req, res) => {
     ok: true,
     method: 'POST',
     supportedTools: getHeadlessToolCatalog(),
+    spatial: {
+      ...SPATIAL_METADATA,
+      warnings: [],
+    },
     notes: [
       'First pass: headless execution is currently limited to tools that are safe without the browser UI.',
       'Send request state.layers with stable ids and GeoJSON so params can reference them.',
       'Layer-state tools use state.layers; featureCollection tools use state.featureCollection.',
       'Tool validation failures return HTTP 200 with ok: false; unsupported tools and malformed API requests return 4xx.',
+      'GeoJSON coordinates are interpreted as EPSG:4326 longitude/latitude values and are suitable for lightweight web/runtime analysis, not survey-grade measurement.',
     ],
     requestShape: {
       tool: 'BufferTool',
@@ -273,22 +279,44 @@ app.get('/api/run', (_req, res) => {
 app.post('/api/run', async (req, res) => {
   try {
     const body = req.body || {};
+    const spatialRequest = normalizeSpatialRequest({
+      toolKey: body.tool,
+      state: body.state,
+    });
+    const spatial = createSpatialSession(spatialRequest.warnings);
+
+    if (!spatialRequest.ok) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Invalid spatial input.',
+        validation: spatialRequest.validation,
+        spatial: spatial.toJSON(),
+      });
+    }
+
     const startedAt = new Date();
-    const result = body?.state?.featureCollection
+    const result = spatialRequest.state?.featureCollection
       ? await runToolHeadlessly({
           toolKey: body.tool,
           params: body.params,
-          state: body.state,
+          state: spatialRequest.state,
+          spatial,
         })
-      : await runHeadlessTool(body);
+      : await runHeadlessTool({
+          tool: body.tool,
+          params: body.params,
+          state: spatialRequest.state,
+          spatial,
+        });
     const finishedAt = new Date();
 
     res.json({
       ...result,
+      spatial: spatial.toJSON(),
       execution: buildExecutionReceipt({
         toolKey: body.tool,
         params: body.params,
-        requestState: body.state,
+        requestState: spatialRequest.state,
         result,
         startedAt,
         finishedAt,

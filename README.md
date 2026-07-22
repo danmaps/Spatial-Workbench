@@ -17,6 +17,11 @@ Spatial Workbench is becoming a small spatial tool runtime built around:
 - GeoJSON as the core data model
 - A browser workbench for visual inspection and manual testing
 
+Current spatial assumption:
+- GeoJSON coordinates are interpreted as `EPSG:4326` `longitude,latitude`
+- results are intended for lightweight web/runtime analysis, not engineering, cadastral, or survey-grade measurement
+- when coordinates or geometry look suspicious, the headless API now returns machine-readable spatial warnings instead of silently pretending everything is fine
+
 Everything revolves around geometry as state and tools as first-class services.
 
 Agents should be able to discover a tool, understand its input schema, run it, inspect the output, and chain the result into another spatial workflow. Humans should be able to use the same tools directly and see what happened.
@@ -207,6 +212,9 @@ The returned result includes:
 - `output`
 - `state`
 - `execution`
+- `spatial`
+
+`spatial` declares the current runtime assumptions (`EPSG:4326`, longitude/latitude ordering, Turf-based measurement model) and carries structured warnings such as projected-looking coordinates, reversed coordinate order, null geometry, or skipped features.
 
 This is intentionally thin. The MCP layer does not reinterpret Workbench state or invent session semantics in v1; it simply exposes the existing headless API seam to MCP clients.
 

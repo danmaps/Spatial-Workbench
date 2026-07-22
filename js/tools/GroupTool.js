@@ -84,6 +84,7 @@ class GroupTool extends Tool {
         const distance = parseFloat(params.Distance);
         const units = params.Units || 'kilometers';
         const applyToolResult = context.applyResult || applyResult;
+        const spatial = context.spatial || null;
         const target = resolveTargetLayerData(inputLayerId, context);
 
         if (!target.ok || !target.targetGeoJSON) {
@@ -113,7 +114,16 @@ class GroupTool extends Tool {
             return;
         }
 
-        const centroidFeatures = sourceFeatures.map((feature, index) => {
+        let skippedFeatureCount = 0;
+        let centroidApproximationCount = 0;
+
+        const usableFeatures = sourceFeatures.filter((feature) => {
+            if (feature?.geometry) return true;
+            skippedFeatureCount += 1;
+            return false;
+        });
+
+        const centroidFeatures = usableFeatures.map((feature, index) => {
             if (feature?.geometry?.type === 'Point') {
                 return {
                     type: 'Feature',
@@ -124,6 +134,7 @@ class GroupTool extends Tool {
                 };
             }
 
+            centroidApproximationCount += 1;
             const centroid = turfLib.centroid(feature);
             centroid.properties = {
                 ...(centroid.properties || {}),
@@ -132,12 +143,49 @@ class GroupTool extends Tool {
             return centroid;
         });
 
+        if (skippedFeatureCount > 0) {
+            spatial?.addWarning({
+                code: 'group-skipped-features',
+                message: `Group skipped ${skippedFeatureCount} invalid or empty feature(s).`,
+                layerId: target.layerId,
+                details: {
+                    inputFeatureCount: sourceFeatures.length,
+                    skippedFeatureCount,
+                },
+            });
+        }
+
+        if (centroidApproximationCount > 0) {
+            spatial?.addWarning({
+                code: 'group-centroid-approximation',
+                message: `Group used centroid approximation for ${centroidApproximationCount} non-point feature(s).`,
+                layerId: target.layerId,
+                details: {
+                    centroidApproximationCount,
+                },
+            });
+        }
+
+        if (!centroidFeatures.length) {
+            spatial?.addWarning({
+                code: 'group-empty-output',
+                message: 'Group produced no valid output features.',
+                layerId: target.layerId,
+                details: {
+                    inputFeatureCount: sourceFeatures.length,
+                    skippedFeatureCount,
+                },
+            });
+            this.setStatus(2, 'Group produced no valid output.');
+            return;
+        }
+
         const clustered = turfLib.clustersDbscan({
             type: 'FeatureCollection',
             features: centroidFeatures,
         }, distance, { units });
 
-        const groupedFeatures = sourceFeatures.map((feature, index) => {
+        const groupedFeatures = usableFeatures.map((feature, index) => {
             const clusteredFeature = clustered?.features?.[index] || null;
             const groupId = clusteredFeature?.properties?.cluster;
             const dbscan = clusteredFeature?.properties?.dbscan || (groupId === undefined ? 'noise' : 'core');
@@ -190,12 +238,13 @@ class GroupTool extends Tool {
 
         const res = applyToolResult({ addGeojson: groupedGeojson });
         if (res && res.ok) {
-            const featureScope = target.mode === 'selection' ? `${target.selectedFeatureCount} selected feature(s)` : `${sourceFeatures.length} feature(s)`;
+            const featureScope = target.mode === 'selection' ? `${groupedFeatures.length} selected feature(s)` : `${groupedFeatures.length} feature(s)`;
             const groupSummaryLabel = summary.groupCount
                 ? `${summary.groupCount} group(s)`
                 : 'no multi-feature groups';
             const ungroupedLabel = summary.ungroupedCount ? `, ${summary.ungroupedCount} ungrouped` : '';
-            this.setStatus(0, `Grouped ${featureScope} into ${groupSummaryLabel}${ungroupedLabel}.`);
+            const skippedLabel = skippedFeatureCount ? ` Skipped ${skippedFeatureCount} invalid or empty feature(s).` : '';
+            this.setStatus(0, `Grouped ${featureScope} into ${groupSummaryLabel}${ungroupedLabel}.${skippedLabel}`.trim());
             return res;
         }
 

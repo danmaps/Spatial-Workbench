@@ -398,7 +398,7 @@ describe('headless runtime', () => {
         download: expect.objectContaining({
           filename: 'export-me.geojson',
           mimeType: 'application/json',
-          data: JSON.stringify(sourceGeojson),
+          data: expect.any(String),
         }),
       }),
       state: expect.objectContaining({
@@ -407,8 +407,34 @@ describe('headless runtime', () => {
         bbox: null,
       }),
     }));
+    expect(JSON.parse(result.output.download.data)).toEqual({
+      type: 'FeatureCollection',
+      features: [
+        expect.objectContaining({
+          type: 'Feature',
+          geometry: sourceGeojson.features[0].geometry,
+          properties: expect.objectContaining({
+            id: 1,
+            __id: 'export-me-1',
+          }),
+          id: 'export-me-1',
+        }),
+      ],
+    });
     expect(result.state.layers).toEqual([
-      expect.objectContaining({ id: 'export-me', name: 'Export Me', geojson: sourceGeojson }),
+      expect.objectContaining({
+        id: 'export-me',
+        name: 'Export Me',
+        geojson: expect.objectContaining({
+          type: 'FeatureCollection',
+          features: [
+            expect.objectContaining({
+              properties: expect.objectContaining({ id: 1, __id: 'export-me-1' }),
+              id: 'export-me-1',
+            }),
+          ],
+        }),
+      }),
     ]);
   });
 

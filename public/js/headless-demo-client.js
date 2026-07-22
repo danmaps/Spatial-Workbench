@@ -30,6 +30,7 @@
   function createReceiptCard(stepLabel, toolKey, response) {
     const execution = response.execution || {};
     const status = response.status || {};
+    const warnings = Array.isArray(response?.spatial?.warnings) ? response.spatial.warnings : [];
     const article = document.createElement('article');
     article.className = 'receipt-card';
     article.innerHTML = `
@@ -56,6 +57,14 @@
           <span class="receipt-detail-value">${execution.featureCounts?.input ?? 0} -> ${execution.featureCounts?.output ?? 0}</span>
         </div>
       </div>
+      ${warnings.length ? `
+        <div class="receipt-warnings">
+          <strong>Warnings</strong>
+          <ul>
+            ${warnings.map((warning) => `<li><code>${warning.code}</code> ${warning.message}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
     `;
     return article;
   }

@@ -9,6 +9,17 @@ Spatial Workbench exposes a server-side execution path for tools that can run fr
 
 The server does not persist workbench state between requests. Callers send the state needed for each run and receive the resulting state back in the response.
 
+## Spatial assumptions
+
+The current runtime assumes:
+
+- incoming GeoJSON coordinates are `EPSG:4326`
+- coordinate order is `longitude,latitude`
+- measurements run through `@turf/turf` and are suitable for lightweight web/runtime analysis
+- results are not framed as engineering, cadastral, or survey-grade precision
+
+The API now returns those assumptions in machine-readable `spatial` metadata and includes structured warnings whenever coordinates, geometry, or output quality look suspicious.
+
 ## Supported state modes
 
 Layer-state tools use `state.layers` plus optional `state.bbox` and `state.selection`:
@@ -110,6 +121,14 @@ All successful tool calls and tool-level validation failures use the same envelo
     "removed": [],
     "bbox": [-118.5, 33.5, -117.5, 34.5]
   },
+  "spatial": {
+    "crs": "EPSG:4326",
+    "coordinateOrder": "longitude,latitude",
+    "engine": "@turf/turf",
+    "measurementModel": "geodesic/web-oriented",
+    "precision": "not-survey-grade",
+    "warnings": []
+  },
   "execution": {
     "startedAt": "2026-07-21T03:27:44.000Z",
     "finishedAt": "2026-07-21T03:27:44.012Z",
@@ -126,6 +145,7 @@ All successful tool calls and tool-level validation failures use the same envelo
 
 For feature-collection tools, the updated FeatureCollection is returned in top-level `state`. The `output` object contains operation details such as counts and updated ids, not a nested state copy.
 `execution` is the API-level receipt used by the demo client and tests. It keeps the runtime inspectable without forcing every tool to share the same internal output shape.
+`spatial` is the honesty layer: it declares the current CRS/measurement assumptions and carries structured warnings that agents, scripts, and browser clients can inspect directly.
 
 ## Validation Failures
 
@@ -165,6 +185,61 @@ Tools run `validate(params, context)` before execution. Tool-level validation fa
 ```
 
 Unsupported tools and malformed API requests still use HTTP `4xx` responses.
+
+## Spatial validation failures
+
+Malformed spatial state now fails before tool execution with HTTP `400` and structured validation details:
+
+```json
+{
+  "ok": false,
+  "error": "Invalid spatial input.",
+  "validation": {
+    "ok": false,
+    "errors": [
+      {
+        "code": "coordinate-out-of-range",
+        "message": "Coordinates fall outside the valid EPSG:4326 longitude/latitude range.",
+        "path": "state.layers[0].geojson.features[0].geometry.coordinates"
+      }
+    ]
+  },
+  "spatial": {
+    "crs": "EPSG:4326",
+    "coordinateOrder": "longitude,latitude",
+    "engine": "@turf/turf",
+    "measurementModel": "geodesic/web-oriented",
+    "precision": "not-survey-grade",
+    "warnings": [
+      {
+        "code": "coordinates-look-reversed",
+        "severity": "warning",
+        "message": "Coordinates look like latitude/longitude may be reversed."
+      }
+    ]
+  }
+}
+```
+
+That distinction is intentional:
+
+- malformed spatial state => HTTP `400`
+- valid request shape but invalid tool params => HTTP `200` with `ok: false`
+- valid run with suspicious but usable geometry => HTTP `200` plus `spatial.warnings`
+
+## Structured spatial warnings
+
+Warnings are emitted without forcing the whole tool call to fail when the runtime can still produce a usable result. Examples:
+
+- `coordinates-look-projected`
+- `coordinates-look-reversed`
+- `geometry-null`
+- `geometry-required-by-tool`
+- `mixed-geometry-types`
+- `buffer-skipped-features`
+- `group-centroid-approximation`
+
+For example, `BufferTool` can now skip null/empty features, return a successful result for the valid remainder, and report the skipped count in `spatial.warnings`.
 
 ## API Test Fixtures
 

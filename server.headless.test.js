@@ -196,6 +196,14 @@ describe('/api/run', () => {
     expect(data.ok).toBe(true);
     expect(data.method).toBe('POST');
     expect(Array.isArray(data.supportedTools)).toBe(true);
+    expect(data.spatial).toEqual(expect.objectContaining({
+      crs: 'EPSG:4326',
+      coordinateOrder: 'longitude,latitude',
+      engine: '@turf/turf',
+      measurementModel: 'geodesic/web-oriented',
+      precision: 'not-survey-grade',
+      warnings: [],
+    }));
     expect(data.supportedTools.map((tool) => tool.key)).toEqual(
       expect.arrayContaining(['BufferTool', 'RandomPointsTool', 'ExportTool', 'ConvertTextToNumericTool'])
     );
@@ -267,6 +275,10 @@ describe('/api/run', () => {
         layers: expect.any(Array),
         bbox: [-1, -1, 1, 1],
       }),
+      spatial: expect.objectContaining({
+        crs: 'EPSG:4326',
+        warnings: [],
+      }),
       execution: expect.any(Object),
     }));
     expectExecutionReceipt(data.execution);
@@ -337,7 +349,12 @@ describe('/api/run', () => {
     expectExecutionReceipt(data.execution);
     expect(data.state.added).toHaveLength(1);
     const bufferLayer = data.state.added[0];
-    expect(summarizeSingleFeatureBufferLayer(bufferLayer)).toEqual(expectedTurfBufferPolygonWithHolesSummary);
+    expect(summarizeSingleFeatureBufferLayer(bufferLayer)).toEqual(expect.objectContaining({
+      ...expectedTurfBufferPolygonWithHolesSummary,
+      properties: expect.objectContaining({
+        __id: 'turf-poly-hole',
+      }),
+    }));
   });
 
   test('POST /api/run supports RandomPointsTool against request bbox without leaking prior state', async () => {
@@ -623,6 +640,188 @@ describe('/api/run', () => {
         layers: expect.any(Array),
       }));
     }
+  });
+
+  test('POST /api/run rejects reversed-looking coordinates with a structured validation response', async () => {
+    const response = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      body: {
+        tool: 'BufferTool',
+        params: {
+          'Input Layer': 'source-layer',
+          Distance: 1,
+          Units: 'kilometers',
+        },
+        state: {
+          layers: [
+            {
+              id: 'source-layer',
+              name: 'Reversed coordinates',
+              geojson: {
+                type: 'FeatureCollection',
+                features: [
+                  {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: { type: 'Point', coordinates: [45, 120] },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+    const data = response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.ok).toBe(false);
+    expect(data.error).toBe('Invalid spatial input.');
+    expect(data.validation).toEqual(expect.objectContaining({
+      ok: false,
+      errors: expect.arrayContaining([
+        expect.objectContaining({ code: 'coordinate-out-of-range', path: 'state.layers[0].geojson.features[0].geometry.coordinates' }),
+      ]),
+    }));
+    expect(data.spatial.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'coordinates-look-reversed' }),
+    ]));
+  });
+
+  test('POST /api/run rejects projected-looking coordinates with a structured validation response', async () => {
+    const response = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      body: {
+        tool: 'BufferTool',
+        params: {
+          'Input Layer': 'source-layer',
+          Distance: 1,
+          Units: 'kilometers',
+        },
+        state: {
+          layers: [
+            {
+              id: 'source-layer',
+              name: 'Projected coordinates',
+              geojson: {
+                type: 'FeatureCollection',
+                features: [
+                  {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: { type: 'Point', coordinates: [2000000, 5000000] },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+    const data = response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.ok).toBe(false);
+    expect(data.validation.ok).toBe(false);
+    expect(data.spatial.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'coordinates-look-projected' }),
+    ]));
+  });
+
+  test('POST /api/run rejects malformed polygon rings with a structured validation response', async () => {
+    const response = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      body: {
+        tool: 'RandomPointsTool',
+        params: {
+          'Points Count': 1,
+          'Inside Polygon': true,
+          Polygon: 'bad-polygon',
+        },
+        state: {
+          layers: [
+            {
+              id: 'bad-polygon',
+              name: 'Bad polygon',
+              geojson: {
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Polygon',
+                  coordinates: [[
+                    [0, 0],
+                    [0, 1],
+                    [1, 1],
+                    [1, 0],
+                  ]],
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+    const data = response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.ok).toBe(false);
+    expect(data.validation.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'polygon-ring-not-closed' }),
+    ]));
+  });
+
+  test('POST /api/run buffers valid features while surfacing structured spatial warnings for null geometry', async () => {
+    const response = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      body: {
+        tool: 'BufferTool',
+        params: {
+          'Input Layer': 'source-layer',
+          Distance: 1,
+          Units: 'kilometers',
+        },
+        state: {
+          layers: [
+            {
+              id: 'source-layer',
+              name: 'Mixed validity points',
+              geojson: {
+                type: 'FeatureCollection',
+                features: [
+                  {
+                    type: 'Feature',
+                    properties: { __id: 'good-point' },
+                    geometry: { type: 'Point', coordinates: [-118.25, 34.05] },
+                  },
+                  {
+                    type: 'Feature',
+                    properties: { __id: 'empty-point' },
+                    geometry: null,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+    const data = response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.ok).toBe(true);
+    expect(data.status).toEqual(expect.objectContaining({
+      code: 0,
+      message: 'Buffered 1 feature(s); skipped 1 invalid or empty feature(s).',
+    }));
+    expect(data.execution).toEqual(expect.objectContaining({
+      featureCounts: { input: 2, output: 1 },
+    }));
+    expect(data.spatial.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'geometry-null', featureId: 'empty-point' }),
+      expect.objectContaining({ code: 'geometry-required-by-tool', featureId: 'empty-point' }),
+      expect.objectContaining({ code: 'buffer-skipped-features', layerId: 'source-layer' }),
+    ]));
+    expect(data.state.added[0].geojson.features).toHaveLength(1);
   });
 
   test('POST /api/run supports RandomPointsTool inside a polygon from request state', async () => {

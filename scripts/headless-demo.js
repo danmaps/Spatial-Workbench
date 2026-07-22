@@ -10,15 +10,29 @@ function formatReceipt(stepNumber, toolKey, response) {
   const inputLayerIds = execution.inputLayerIds || [];
   const outputLayerIds = execution.outputLayerIds || [];
   const featureCounts = execution.featureCounts || {};
+  const warnings = response?.spatial?.warnings || [];
 
-  return [
+  const parts = [
     `[${stepNumber}/3] ${toolKey}`,
     `status=${status.code}:${status.message || 'unknown'}`,
     `duration=${execution.durationMs ?? '?'}ms`,
     `inputLayers=${inputLayerIds.length ? inputLayerIds.join(',') : 'none'}`,
     `outputLayers=${outputLayerIds.length ? outputLayerIds.join(',') : 'none'}`,
     `features=${featureCounts.input ?? 0}->${featureCounts.output ?? 0}`,
-  ].join(' | ');
+  ];
+
+  if (warnings.length) {
+    parts.push(`warnings=${warnings.length}`);
+  }
+
+  return parts.join(' | ');
+}
+
+function printWarnings(response) {
+  const warnings = Array.isArray(response?.spatial?.warnings) ? response.spatial.warnings : [];
+  warnings.forEach((warning) => {
+    console.log(`  warning[${warning.code}]: ${warning.message}`);
+  });
 }
 
 function getAddedLayerId(response, toolKey) {
@@ -77,6 +91,7 @@ async function main() {
     });
     assertOk(randomPoints, 'RandomPointsTool');
     console.log(formatReceipt(1, 'RandomPointsTool', randomPoints.data));
+    printWarnings(randomPoints.data);
     state = randomPoints.data.state;
     const randomPointsLayerId = getAddedLayerId(randomPoints.data, 'RandomPointsTool');
 
@@ -94,6 +109,7 @@ async function main() {
     });
     assertOk(buffer, 'BufferTool');
     console.log(formatReceipt(2, 'BufferTool', buffer.data));
+    printWarnings(buffer.data);
     state = buffer.data.state;
     const bufferedLayerId = getAddedLayerId(buffer.data, 'BufferTool');
 
@@ -110,6 +126,7 @@ async function main() {
     });
     assertOk(exportResult, 'ExportTool');
     console.log(formatReceipt(3, 'ExportTool', exportResult.data));
+    printWarnings(exportResult.data);
 
     const artifactData = exportResult.data?.output?.download?.data;
     if (typeof artifactData !== 'string' || !artifactData.trim()) {

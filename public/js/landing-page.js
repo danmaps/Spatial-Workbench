@@ -115,6 +115,12 @@
     };
   }
 
+  function appendWarnings(summary, response) {
+    const warnings = Array.isArray(response?.spatial?.warnings) ? response.spatial.warnings : [];
+    if (!warnings.length) return summary;
+    return `${summary} ${warnings.length} spatial warning(s).`;
+  }
+
   async function runWorkflow() {
     proofRunButton.disabled = true;
     heroRunButton.disabled = true;
@@ -153,7 +159,7 @@
       proofMap.classList.add('has-points');
       stepOutputs.pointsOutput.textContent = randomPoints.data.execution.outputLayerIds.join(', ');
       stepOutputs.pointsFeatures.textContent = `${randomPoints.data.execution.featureCounts.output} created`;
-      stepOutputs.pointsSummary.textContent = randomPoints.data.status.message;
+      stepOutputs.pointsSummary.textContent = appendWarnings(randomPoints.data.status.message, randomPoints.data);
       state = randomPoints.data.state;
       const randomPointsLayerId = getAddedLayerId(randomPoints.data, 'RandomPointsTool');
       markDone('RandomPointsTool');
@@ -180,7 +186,7 @@
       proofMap.classList.add('has-buffers');
       stepOutputs.bufferInput.textContent = randomPointsLayerId;
       stepOutputs.bufferOutput.textContent = buffer.data.execution.outputLayerIds.join(', ');
-      stepOutputs.bufferSummary.textContent = buffer.data.status.message;
+      stepOutputs.bufferSummary.textContent = appendWarnings(buffer.data.status.message, buffer.data);
       state = buffer.data.state;
       const bufferedLayerId = getAddedLayerId(buffer.data, 'BufferTool');
       markDone('BufferTool');
@@ -212,11 +218,12 @@
         tool: exportResult.data.tool,
         status: exportResult.data.status,
         execution: exportResult.data.execution,
+        spatial: exportResult.data.spatial,
       };
       const { blob, url } = createObjectUrl(artifactText);
       stepOutputs.exportArtifact.textContent = `headless-demo.geojson (${blob.size} bytes)`;
       stepOutputs.exportFeatures.textContent = `${exportResult.data.execution.featureCounts.output} features`;
-      stepOutputs.exportSummary.textContent = exportResult.data.status.message;
+      stepOutputs.exportSummary.textContent = appendWarnings(exportResult.data.status.message, exportResult.data);
       proofReceiptPreview.textContent = JSON.stringify(receiptPreview, null, 2);
       proofGeojsonPreview.textContent = artifactText.slice(0, 1400);
       proofDownloadLink.href = url;

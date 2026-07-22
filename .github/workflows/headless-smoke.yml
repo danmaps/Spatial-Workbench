@@ -29,8 +29,14 @@ jobs:
       - name: Headless demo
         run: npm run demo:headless
 
+      - name: Validate headless artifact
+        run: npm run validate:headless-artifact
+
       - name: Build
         run: npm run build
+
+      - name: Tool spec drift check
+        run: npm run spec:check
 
       - name: Upload headless artifact
         if: always()

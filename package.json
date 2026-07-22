@@ -14,6 +14,7 @@
     "watch": "webpack --watch",
     "demo:headless": "node scripts/headless-demo.js",
     "mcp:server": "node scripts/mcp-server.js",
+    "validate:headless-artifact": "node scripts/validate-headless-artifact.js",
     "spec:update": "node scripts/generate_specs.js && node scripts/generate_tool_docs.js",
     "spec:check": "node scripts/generate_specs.js --check",
     "docs:update": "node scripts/generate_tool_docs.js"

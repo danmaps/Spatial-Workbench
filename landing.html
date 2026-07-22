@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spatial Workbench | Spatial tools built for agents, scripts, and humans</title>
+    <meta name="description" content="Spatial Workbench turns GIS operations into tools that agents, scripts, and people can call, inspect, and chain.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/public/css/landing.css">
+</head>
+<body>
+    <div class="landing-grid-bg" aria-hidden="true"></div>
+    <main class="landing-shell">
+        <header class="site-header">
+            <a class="site-brand" href="/">
+                <span class="site-brand-mark">SW</span>
+                <span>Spatial Workbench</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary">
+                <a href="/workbench-gis">Workbench GIS</a>
+                <a href="/headless-demo">Headless Demo</a>
+                <a href="https://github.com/danmaps/Spatial-Workbench" target="_blank" rel="noopener noreferrer">GitHub</a>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <div class="hero-copy">
+                <p class="eyebrow">Callable spatial runtime</p>
+                <h1>Spatial tools built for agents, scripts, and humans</h1>
+                <p class="hero-subtitle">
+                    Discover spatial operations, run them through a simple API, pass GeoJSON between steps, and inspect exactly what happened.
+                </p>
+                <div class="hero-actions">
+                    <button id="heroRunButton" class="button button-primary" type="button">Run the live demo</button>
+                    <a class="button button-secondary" href="/api/run" target="_blank" rel="noopener noreferrer">Explore the API</a>
+                    <a class="button button-tertiary" href="https://github.com/danmaps/Spatial-Workbench" target="_blank" rel="noopener noreferrer">View the source</a>
+                </div>
+                <p class="hero-proof">No GIS desktop. No hidden state. No proprietary data format.</p>
+                <div class="proof-strip" aria-label="Product proof points">
+                    <span>Tool discovery</span>
+                    <span>Request-scoped state</span>
+                    <span>GeoJSON outputs</span>
+                    <span>Execution receipts</span>
+                </div>
+            </div>
+
+            <div class="hero-runtime" id="heroRuntime" data-phase="discover">
+                <div class="hero-chain">
+                    <div class="hero-chain-step is-active" data-step="discover">Discover tools</div>
+                    <div class="hero-chain-arrow" aria-hidden="true"></div>
+                    <div class="hero-chain-step" data-step="points"><code>RandomPointsTool</code></div>
+                    <div class="hero-chain-arrow" aria-hidden="true"></div>
+                    <div class="hero-chain-step" data-step="buffer"><code>BufferTool</code></div>
+                    <div class="hero-chain-arrow" aria-hidden="true"></div>
+                    <div class="hero-chain-step" data-step="export"><code>ExportTool</code></div>
+                </div>
+
+                <div class="runtime-card">
+                    <div class="runtime-visual">
+                        <svg viewBox="0 0 320 240" class="runtime-map" aria-hidden="true">
+                            <defs>
+                                <pattern id="runtimeGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+                                    <path d="M 32 0 L 0 0 0 32" fill="none" stroke="rgba(213, 236, 128, 0.14)" stroke-width="1"></path>
+                                </pattern>
+                            </defs>
+                            <rect width="320" height="240" rx="22" fill="url(#runtimeGrid)"></rect>
+                            <path class="map-boundary" d="M56,172 C74,112 114,64 177,58 C219,53 255,80 272,122 C285,155 277,190 240,201 C184,218 89,210 56,172 Z"></path>
+                            <g class="map-buffers">
+                                <circle cx="105" cy="153" r="22"></circle>
+                                <circle cx="138" cy="121" r="22"></circle>
+                                <circle cx="168" cy="165" r="22"></circle>
+                                <circle cx="208" cy="136" r="22"></circle>
+                                <circle cx="234" cy="176" r="22"></circle>
+                            </g>
+                            <g class="map-points">
+                                <circle cx="105" cy="153" r="4"></circle>
+                                <circle cx="138" cy="121" r="4"></circle>
+                                <circle cx="168" cy="165" r="4"></circle>
+                                <circle cx="208" cy="136" r="4"></circle>
+                                <circle cx="234" cy="176" r="4"></circle>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="runtime-receipt">
+                        <div class="receipt-terminal">
+                            <div class="receipt-line" data-line="discover">GET /api/run -> 6 tools discovered</div>
+                            <div class="receipt-line" data-line="points">result-1 · 5 features · 2 ms</div>
+                            <div class="receipt-line" data-line="buffer">result-2 · input result-1 · 14 ms</div>
+                            <div class="receipt-line" data-line="export">GeoJSON ready · 5 features · 1 ms</div>
+                        </div>
+                        <div class="runtime-export-chip">artifact: <span>headless-demo.geojson</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="problem">
+            <div class="section-heading">
+                <p class="eyebrow">Why this exists</p>
+                <h2>Spatial analysis should be callable, composable, and inspectable</h2>
+            </div>
+            <div class="contrast-grid">
+                <article class="contrast-card contrast-card-muted">
+                    <h3>Traditional GIS tools</h3>
+                    <ul>
+                        <li>Tied to desktop interfaces</li>
+                        <li>Difficult for agents to discover</li>
+                        <li>State hidden inside applications</li>
+                        <li>Awkward to automate</li>
+                        <li>Outputs often coupled to the UI</li>
+                    </ul>
+                </article>
+                <article class="contrast-card contrast-card-accent">
+                    <h3>Spatial Workbench</h3>
+                    <ul>
+                        <li>Structured tool definitions</li>
+                        <li>Serializable GeoJSON state</li>
+                        <li>API and script execution</li>
+                        <li>Inspectable receipts</li>
+                        <li>Browser visualization when useful</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <section class="live-proof" id="liveProof">
+            <div class="section-heading">
+                <p class="eyebrow">Live proof</p>
+                <h2>See a spatial workflow execute live</h2>
+                <p>
+                    This is the product claim in one workflow: discover tools, generate five points, buffer them, and export a real GeoJSON artifact.
+                </p>
+            </div>
+
+            <div class="proof-toolbar">
+                <button id="proofRunButton" class="button button-primary" type="button">Run workflow</button>
+                <a class="button button-secondary" href="/headless-demo">Open full demo</a>
+                <div id="proofStatus" class="status-pill">Ready</div>
+            </div>
+
+            <div class="proof-cards">
+                <article class="proof-step-card" id="proofStepPoints">
+                    <span class="step-index">1</span>
+                    <h3><code>RandomPointsTool</code></h3>
+                    <p id="proofStepPointsSummary">Creates five sample features inside a request-scoped bbox.</p>
+                    <dl>
+                        <div><dt>Output</dt><dd id="proofPointsOutput">pending</dd></div>
+                        <div><dt>Features</dt><dd id="proofPointsFeatures">5 planned</dd></div>
+                    </dl>
+                </article>
+                <article class="proof-step-card" id="proofStepBuffer">
+                    <span class="step-index">2</span>
+                    <h3><code>BufferTool</code></h3>
+                    <p id="proofStepBufferSummary">Buffers the returned layer id from step one.</p>
+                    <dl>
+                        <div><dt>Input</dt><dd id="proofBufferInput">pending</dd></div>
+                        <div><dt>Output</dt><dd id="proofBufferOutput">pending</dd></div>
+                    </dl>
+                </article>
+                <article class="proof-step-card" id="proofStepExport">
+                    <span class="step-index">3</span>
+                    <h3><code>ExportTool</code></h3>
+                    <p id="proofStepExportSummary">Exports the buffered layer as portable GeoJSON.</p>
+                    <dl>
+                        <div><dt>Artifact</dt><dd id="proofExportArtifact">pending</dd></div>
+                        <div><dt>Features</dt><dd id="proofExportFeatures">pending</dd></div>
+                    </dl>
+                </article>
+            </div>
+
+            <div class="proof-grid">
+                <article class="proof-panel">
+                    <div class="panel-header">
+                        <h3>Workflow map</h3>
+                        <span class="panel-badge">live states</span>
+                    </div>
+                    <svg viewBox="0 0 420 280" id="proofMap" class="proof-map" aria-label="Workflow map preview">
+                        <defs>
+                            <pattern id="proofGrid" width="28" height="28" patternUnits="userSpaceOnUse">
+                                <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(213, 236, 128, 0.12)" stroke-width="1"></path>
+                            </pattern>
+                        </defs>
+                        <rect width="420" height="280" rx="26" fill="url(#proofGrid)"></rect>
+                        <path class="proof-boundary" d="M72,214 C96,118 156,59 235,54 C295,51 347,90 364,147 C380,203 354,235 286,244 C205,255 102,249 72,214 Z"></path>
+                        <g id="proofBuffers" class="proof-buffers">
+                            <circle cx="131" cy="185" r="28"></circle>
+                            <circle cx="177" cy="134" r="28"></circle>
+                            <circle cx="221" cy="196" r="28"></circle>
+                            <circle cx="277" cy="157" r="28"></circle>
+                            <circle cx="313" cy="212" r="28"></circle>
+                        </g>
+                        <g id="proofPoints" class="proof-points">
+                            <circle cx="131" cy="185" r="5"></circle>
+                            <circle cx="177" cy="134" r="5"></circle>
+                            <circle cx="221" cy="196" r="5"></circle>
+                            <circle cx="277" cy="157" r="5"></circle>
+                            <circle cx="313" cy="212" r="5"></circle>
+                        </g>
+                    </svg>
+                </article>
+
+                <article class="proof-panel">
+                    <div class="panel-header">
+                        <h3>Execution receipt</h3>
+                        <span class="panel-badge">audit trail</span>
+                    </div>
+                    <pre id="proofReceiptPreview" class="code-block">Run the workflow to populate a real receipt.</pre>
+                </article>
+
+                <article class="proof-panel">
+                    <div class="panel-header">
+                        <h3>GeoJSON preview</h3>
+                        <a id="proofDownloadLink" class="inline-link is-disabled" href="#" download="headless-demo.geojson" aria-disabled="true">Download artifact</a>
+                    </div>
+                    <pre id="proofGeojsonPreview" class="code-block">Waiting for export...</pre>
+                </article>
+            </div>
+        </section>
+
+        <section class="how-it-works">
+            <div class="section-heading">
+                <p class="eyebrow">How it works</p>
+                <h2>Discover, execute, chain</h2>
+            </div>
+            <div class="three-up">
+                <article>
+                    <h3>Discover</h3>
+                    <p>Agents and clients retrieve tool definitions, parameters, descriptions, and supported state modes.</p>
+                </article>
+                <article>
+                    <h3>Execute</h3>
+                    <p>Each tool receives explicit parameters plus serialized spatial state.</p>
+                </article>
+                <article>
+                    <h3>Chain</h3>
+                    <p>The returned state and receipts become the input to the next operation.</p>
+                </article>
+            </div>
+            <pre class="code-snippet"><code>const result = await runTool({
+  tool: "BufferTool",
+  params: {
+    "Input Layer": "result-1",
+    Distance: 0.5,
+    Units: "kilometers"
+  },
+  state
+});</code></pre>
+        </section>
+
+        <section class="principles">
+            <div class="section-heading">
+                <p class="eyebrow">Why it feels different</p>
+                <h2>Built for callable spatial workflows</h2>
+            </div>
+            <div class="principle-grid">
+                <article><h3>Agent-first</h3><p>Tools expose clear schemas and machine-readable results.</p></article>
+                <article><h3>GeoJSON-native</h3><p>Inputs, intermediate state, and outputs remain portable.</p></article>
+                <article><h3>Inspectable</h3><p>Every execution returns status, timing, feature counts, and layer receipts.</p></article>
+                <article><h3>Composable</h3><p>One tool’s returned state can feed directly into the next tool.</p></article>
+                <article><h3>Human-visible</h3><p>The same operations can be visualized and inspected in the browser.</p></article>
+            </div>
+        </section>
+
+        <section class="use-cases">
+            <div class="section-heading">
+                <p class="eyebrow">Use cases</p>
+                <h2>Useful before it becomes huge</h2>
+            </div>
+            <div class="use-case-grid">
+                <article>
+                    <h3>Agent-driven analysis</h3>
+                    <p>An assistant discovers available spatial tools and executes the right operation instead of guessing.</p>
+                </article>
+                <article>
+                    <h3>Automated spatial pipelines</h3>
+                    <p>Scripts chain spatial transformations and export reusable data.</p>
+                </article>
+                <article>
+                    <h3>Lightweight GIS applications</h3>
+                    <p>Developers assemble narrow-purpose mapping tools without building a full GIS platform.</p>
+                </article>
+                <article>
+                    <h3>Interactive validation</h3>
+                    <p>Humans inspect the geometry, parameters, provenance, and outputs produced by automation.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="trust">
+            <div class="section-heading">
+                <p class="eyebrow">Trust and transparency</p>
+                <h2>No invisible GIS magic</h2>
+                <p>
+                    Every operation has explicit parameters. Every input is serializable. Every result includes an execution receipt. Every geometry output can be inspected as GeoJSON.
+                </p>
+            </div>
+            <div class="trust-grid">
+                <pre class="code-block trust-receipt">{
+  "tool": "BufferTool",
+  "status": {
+    "code": 0,
+    "message": "Buffered layer added."
+  },
+  "execution": {
+    "durationMs": 14,
+    "inputLayerIds": ["result-1"],
+    "outputLayerIds": ["result-2"],
+    "featureCounts": {
+      "input": 5,
+      "output": 5
+    }
+  }
+}</pre>
+                <div class="trust-actions">
+                    <a class="button button-primary" href="/headless-demo">Run the live workflow</a>
+                    <a class="button button-secondary" href="/workbench-gis">Open Workbench GIS</a>
+                    <a class="button button-tertiary" href="https://github.com/danmaps/Spatial-Workbench" target="_blank" rel="noopener noreferrer">Inspect the source</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/public/js/landing-page.js"></script>
+</body>
+</html>

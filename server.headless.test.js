@@ -219,6 +219,24 @@ describe('/api/run', () => {
     expect(response.text).toContain('/public/js/headless-demo-client.js');
   });
 
+  test('GET / serves the landing page shell', async () => {
+    const response = await requestText(baseUrl, '/');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('text/html');
+    expect(response.text).toContain('Spatial tools built for agents, scripts, and humans');
+    expect(response.text).toContain('/public/js/landing-page.js');
+  });
+
+  test('GET /workbench-gis serves the existing GIS app shell', async () => {
+    const response = await requestText(baseUrl, '/workbench-gis');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('text/html');
+    expect(response.text).toContain('Spatial Workbench');
+    expect(response.text).toContain('public/dist/bundle.js');
+  });
+
   test('POST /api/run buffers sample GeoJSON and returns a known polygon result shape', async () => {
     const response = await requestJson(baseUrl, '/api/run', {
       method: 'POST',

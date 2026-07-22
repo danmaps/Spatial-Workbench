@@ -217,16 +217,20 @@ if (allowedOrigins.length > 0) {
   app.use(cors());
 }
 
-// Serve the project root so index.html and /public assets are both reachable.
-app.use(express.static(__dirname));
-
 app.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'landing.html'));
+});
+
+app.get(['/workbench-gis', '/workbench-gis/'], (_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.get('/headless-demo', (_req, res) => {
   res.sendFile(path.join(__dirname, 'headless-demo.html'));
 });
+
+// Serve the project root so the HTML shells and /public assets are both reachable.
+app.use(express.static(__dirname, { index: false }));
 
 const toolSpecs = require('./js/tools/specs.json');
 

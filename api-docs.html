@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spatial Workbench API | Reference</title>
+  <meta name="description" content="Reference documentation for the Spatial Workbench callable spatial runtime.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public/css/api-docs.css">
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark">SW</span><span>Spatial Workbench</span></a>
+    <nav aria-label="Primary"><a href="/">Overview</a><a href="/headless-demo">Live demo</a><a href="/workbench-gis">Workbench GIS</a><a href="https://github.com/danmaps/Spatial-Workbench" target="_blank" rel="noopener noreferrer">GitHub ↗</a></nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-nav" aria-label="API reference navigation">
+      <p class="nav-label">API reference</p>
+      <a class="is-current" href="#overview">Overview</a>
+      <a href="#quickstart">Quickstart</a>
+      <p class="nav-label">Endpoints</p>
+      <a href="#discover"><span class="method get">GET</span> Discover tools</a>
+      <a href="#run"><span class="method post">POST</span> Run a tool</a>
+      <p class="nav-label">Concepts</p>
+      <a href="#state">Request-scoped state</a>
+      <a href="#responses">Responses &amp; errors</a>
+      <a href="#tools">Tool catalog <span id="toolCount" class="count"></span></a>
+    </aside>
+
+    <main class="docs-content">
+      <section id="overview" class="intro-section">
+        <p class="eyebrow">Callable spatial runtime</p>
+        <h1>Spatial analysis, in a small API.</h1>
+        <p class="lead">Discover a tool, send GeoJSON state, and receive the next state plus an execution receipt. The API is stateless: your response becomes the next request.</p>
+        <div class="base-url"><span>Base URL</span><code id="baseUrl">https://workbench.dannymcvey.com</code><button class="copy-button" data-copy-target="baseUrl" type="button">Copy</button></div>
+        <div class="callouts"><div><strong>GeoJSON-native</strong><span>Inputs and results stay portable.</span></div><div><strong>Inspectable</strong><span>Every run returns timing and feature counts.</span></div><div><strong>Honest spatial metadata</strong><span>Warnings surface CRS and geometry concerns.</span></div></div>
+      </section>
+
+      <section id="quickstart">
+        <div class="section-title"><p class="eyebrow">First request</p><h2>Generate five points</h2></div>
+        <p>Call <code>RandomPointsTool</code> with a bounding box. Save the returned <code>state</code> to use as input for your next operation.</p>
+        <div class="code-card"><div class="code-head"><span>JavaScript</span><button class="copy-button" data-copy-code="quickstartCode" type="button">Copy</button></div><pre id="quickstartCode"><code>const response = await fetch('/api/run', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    tool: 'RandomPointsTool',
+    params: { 'Points Count': 5, 'Inside Polygon': false },
+    state: { bbox: [-118.5, 33.5, -118.2, 33.8] }
+  })
+});
+
+const result = await response.json();
+// result.state is ready for the next API call</code></pre></div>
+      </section>
+
+      <section id="discover">
+        <div class="endpoint-heading"><span class="method get">GET</span><h2><code>/api/run</code></h2></div>
+        <p>Returns the live catalog of supported headless tools, their parameters, the API’s spatial assumptions, and an example request shape. This is the endpoint agents should call before choosing a tool.</p>
+        <div class="endpoint-meta"><span><b>200</b> JSON response</span><a href="/api/run" target="_blank" rel="noopener noreferrer">Open raw response ↗</a></div>
+        <div class="code-card"><div class="code-head"><span>cURL</span><button class="copy-button" data-copy-code="discoverCode" type="button">Copy</button></div><pre id="discoverCode"><code>curl https://workbench.dannymcvey.com/api/run</code></pre></div>
+      </section>
+
+      <section id="run">
+        <div class="endpoint-heading"><span class="method post">POST</span><h2><code>/api/run</code></h2></div>
+        <p>Executes one headless tool against the state you provide. Use the returned state as the authoritative handoff for a chained workflow.</p>
+        <h3>Request body</h3>
+        <div class="field-table"><div><code>tool</code><span>string</span><p>The key returned by discovery, such as <code>BufferTool</code>.</p></div><div><code>params</code><span>object</span><p>Parameters for that tool. Names match the tool catalog exactly.</p></div><div><code>state</code><span>object</span><p>Serialized spatial state. Use either <code>layers</code> or <code>featureCollection</code>.</p></div></div>
+        <div class="code-card"><div class="code-head"><span>cURL</span><button class="copy-button" data-copy-code="runCode" type="button">Copy</button></div><pre id="runCode"><code>curl -X POST https://workbench.dannymcvey.com/api/run \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "tool": "RandomPointsTool",
+    "params": { "Points Count": 5, "Inside Polygon": false },
+    "state": { "bbox": [-118.5, 33.5, -118.2, 33.8] }
+  }'</code></pre></div>
+      </section>
+
+      <section id="state">
+        <div class="section-title"><p class="eyebrow">State model</p><h2>State is explicit and request-scoped.</h2></div>
+        <p>The server does not save a session. For layer tools, send <code>state.layers</code>; for attribute tools, send <code>state.featureCollection</code>. Each layer needs a stable <code>id</code> and GeoJSON.</p>
+        <div class="state-diagram"><div><small>1. Send</small><code>state + params</code></div><span>→</span><div><small>2. Run</small><code>tool execution</code></div><span>→</span><div><small>3. Chain</small><code>returned state</code></div></div>
+        <aside class="notice"><strong>Coordinate assumptions</strong><p>Coordinates are interpreted as <code>EPSG:4326</code> in longitude, latitude order. Measurements are web-oriented and not survey-grade.</p></aside>
+      </section>
+
+      <section id="responses">
+        <div class="section-title"><p class="eyebrow">Response contract</p><h2>Know what happened, not just what returned.</h2></div>
+        <p>Successful executions include <code>status</code>, <code>output</code>, the next <code>state</code>, <code>spatial</code> metadata, and an <code>execution</code> receipt.</p>
+        <div class="response-grid"><div><h3>200 · completed</h3><p>Valid tool calls—including tool-level validation failures—return a consistent envelope. Check <code>ok</code> and <code>status</code>.</p></div><div><h3>400 · malformed input</h3><p>Invalid request shapes or invalid spatial state return structured validation details.</p></div><div><h3>4xx · unsupported tool</h3><p>Unknown or unsupported tool keys are rejected before execution.</p></div></div>
+      </section>
+
+      <section id="tools">
+        <div class="section-title"><p class="eyebrow">Live catalog</p><h2>Tools available now</h2><p id="catalogStatus">Loading the current catalog…</p></div>
+        <div id="toolCatalog" class="tool-grid" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+  <script src="/public/js/api-docs.js"></script>
+</body>
+</html>

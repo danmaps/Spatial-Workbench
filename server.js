@@ -230,6 +230,10 @@ app.get('/headless-demo', (_req, res) => {
   res.sendFile(path.join(__dirname, 'headless-demo.html'));
 });
 
+app.get(['/api-docs', '/api-docs/'], (_req, res) => {
+  res.sendFile(path.join(__dirname, 'api-docs.html'));
+});
+
 // Serve the project root so the HTML shells and /public assets are both reachable.
 app.use(express.static(__dirname, { index: false }));
 

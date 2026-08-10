@@ -367,6 +367,18 @@ app.get('/api/tools', (_req, res) => {
   res.json({ ok: true, tools: toolSpecs });
 });
 
+app.get('/api/state', (_req, res) => {
+  res.json({
+    ok: true,
+    status: 'ok',
+    uptime: process.uptime(),
+    toolCount: getHeadlessToolCatalog().length,
+    spatial: { ...SPATIAL_METADATA },
+    rateLimiting: rateLimit !== null && typeof rateLimit === 'function',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.post('/api/datasets', (req, res) => {
   try {
     const ownerId = getDatasetOwnerId(req);

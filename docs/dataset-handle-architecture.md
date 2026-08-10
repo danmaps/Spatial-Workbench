@@ -38,6 +38,7 @@ Current implementation is process-local in-memory storage so it can be replaced 
 - A handle can only be resolved/materialized/deleted by the same owner id.
 - Handles include TTL (`ttlMs`) and expire automatically.
 - `POST /api/datasets/cleanup` removes expired records explicitly.
+- `POST /api/datasets/cleanup` can be gated with `DATASET_CLEANUP_TOKEN`.
 
 Failure modes are explicit:
 

@@ -22,6 +22,12 @@ function createDatasetStoreError(message, { statusCode = 400, code = 'dataset-er
   return error;
 }
 
+function normalizeNameString(name) {
+  if (typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  return trimmed ? trimmed : null;
+}
+
 function createInMemoryDatasetStore({ now = () => Date.now(), defaultTtlMs = 15 * 60 * 1000 } = {}) {
   const datasets = new Map();
 
@@ -76,13 +82,14 @@ function createInMemoryDatasetStore({ now = () => Date.now(), defaultTtlMs = 15 
       });
     }
 
+    const normalizedName = normalizeNameString(name);
     const id = crypto.randomBytes(12).toString('hex');
     const createdAt = now();
     const expiresAt = createdAt + parsedTtlMs;
     datasets.set(id, {
       id,
       ownerId,
-      name: typeof name === 'string' && name.trim() ? name.trim() : null,
+      name: normalizedName,
       geojson: deepClone(geojson),
       createdAt,
       expiresAt,
@@ -92,7 +99,7 @@ function createInMemoryDatasetStore({ now = () => Date.now(), defaultTtlMs = 15 
       id,
       datasetRef: formatDatasetRef(id),
       ownerId,
-      name: typeof name === 'string' && name.trim() ? name.trim() : null,
+      name: normalizedName,
       createdAt: new Date(createdAt).toISOString(),
       expiresAt: new Date(expiresAt).toISOString(),
       ttlMs: parsedTtlMs,

@@ -125,7 +125,7 @@ function buildReferenceResponseState({ requestState, responseState, ownerId, dat
       : datasetStore.registerDataset({
           ownerId,
           geojson: layer.geojson,
-          ttlMs: datasetTtlMs || undefined,
+          ttlMs: datasetTtlMs,
           name: layer.name,
         }).datasetRef;
 
@@ -397,7 +397,7 @@ app.post('/api/datasets', (req, res) => {
     const dataset = datasetStore.registerDataset({
       ownerId,
       geojson: normalized.state.layers[0].geojson,
-      ttlMs: ttlMs || undefined,
+      ttlMs,
       name: body.name || null,
     });
 
@@ -414,7 +414,17 @@ app.post('/api/datasets', (req, res) => {
   }
 });
 
-app.post('/api/datasets/cleanup', (_req, res) => {
+app.post('/api/datasets/cleanup', (req, res) => {
+  const expectedToken = process.env.DATASET_CLEANUP_TOKEN;
+  if (expectedToken) {
+    const token = req.get('x-dataset-cleanup-token');
+    if (token !== expectedToken) {
+      return res.status(403).json({
+        ok: false,
+        error: 'Invalid cleanup token.',
+      });
+    }
+  }
   const expired = datasetStore.cleanupExpiredDatasets();
   res.json({
     ok: true,

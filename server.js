@@ -69,9 +69,8 @@ function getDatasetTtlMs(rawValue) {
 function resolveDatasetStateReferences(rawState, ownerId) {
   const state = deepClone(rawState || {});
   const resolvedInputs = [];
-  const requestLayerRefsById = {};
   if (!Array.isArray(state.layers)) {
-    return { state, resolvedInputs, requestLayerRefsById };
+    return { state, resolvedInputs };
   }
 
   state.layers = state.layers.map((layer, index) => {
@@ -82,9 +81,7 @@ function resolveDatasetStateReferences(rawState, ownerId) {
       ownerId,
     });
     const layerId = layer.id || `layer-${index + 1}`;
-    const canonicalRef = resolved.datasetRef;
-    requestLayerRefsById[layerId] = canonicalRef;
-    resolvedInputs.push({ layerId, datasetRef: canonicalRef });
+    resolvedInputs.push({ layerId, datasetRef: resolved.datasetRef });
     return {
       ...layer,
       geojson: resolved.geojson,
@@ -92,7 +89,7 @@ function resolveDatasetStateReferences(rawState, ownerId) {
     };
   });
 
-  return { state, resolvedInputs, requestLayerRefsById };
+  return { state, resolvedInputs };
 }
 
 function buildReferenceResponseState({ requestState, responseState, ownerId, datasetTtlMs }) {
@@ -417,6 +414,15 @@ app.post('/api/datasets', (req, res) => {
   }
 });
 
+app.post('/api/datasets/cleanup', (_req, res) => {
+  const expired = datasetStore.cleanupExpiredDatasets();
+  res.json({
+    ok: true,
+    expired,
+    removedCount: expired.length,
+  });
+});
+
 app.get('/api/datasets/:id', (req, res) => {
   try {
     const ownerId = getDatasetOwnerId(req);
@@ -459,15 +465,6 @@ app.delete('/api/datasets/:id', (req, res) => {
       ...(error.details ? { details: error.details } : {}),
     });
   }
-});
-
-app.post('/api/datasets/cleanup', (_req, res) => {
-  const expired = datasetStore.cleanupExpiredDatasets();
-  res.json({
-    ok: true,
-    expired,
-    removedCount: expired.length,
-  });
 });
 
 app.get('/api/run', (_req, res) => {
@@ -526,12 +523,10 @@ app.post('/api/run', async (req, res) => {
 
     let resolvedState;
     let resolvedDatasetInputs = [];
-    let requestLayerRefsById = {};
     try {
       const resolved = resolveDatasetStateReferences(body.state, ownerId);
       resolvedState = resolved.state;
       resolvedDatasetInputs = resolved.resolvedInputs;
-      requestLayerRefsById = resolved.requestLayerRefsById;
     } catch (error) {
       return res.status(error.statusCode || 500).json({
         ok: false,
@@ -580,8 +575,10 @@ app.post('/api/run', async (req, res) => {
       ...rawResult,
       state: referenceResponse.state,
     };
-    const readDatasetHandles = collectInputLayerIds(body.tool, body.params)
-      .map((layerId) => requestLayerRefsById[layerId])
+    const toolInputLayerIds = new Set(collectInputLayerIds(body.tool, body.params));
+    const readDatasetHandles = resolvedDatasetInputs
+      .filter((entry) => toolInputLayerIds.size === 0 || toolInputLayerIds.has(entry.layerId))
+      .map((entry) => entry.datasetRef)
       .filter(Boolean);
 
     res.json({
@@ -595,7 +592,7 @@ app.post('/api/run', async (req, res) => {
         startedAt,
         finishedAt,
         datasetHandles: {
-          read: [...new Set([...resolvedDatasetInputs.map((entry) => entry.datasetRef), ...readDatasetHandles])],
+          read: [...new Set(readDatasetHandles)],
           produced: referenceResponse.producedOutputs,
           expired: [],
         },

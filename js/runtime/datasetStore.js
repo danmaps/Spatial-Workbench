@@ -11,8 +11,8 @@ function formatDatasetRef(id) {
 function parseDatasetRef(ref) {
   if (typeof ref !== 'string') return null;
   const trimmed = ref.trim();
-  if (!trimmed) return null;
-  return trimmed.startsWith('dataset://') ? trimmed.slice('dataset://'.length) : trimmed;
+  if (!trimmed || !trimmed.startsWith('dataset://')) return null;
+  return trimmed.slice('dataset://'.length) || null;
 }
 
 function createDatasetStoreError(message, { statusCode = 400, code = 'dataset-error', datasetRef } = {}) {

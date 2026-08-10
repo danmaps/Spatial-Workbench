@@ -223,6 +223,29 @@ describe('/api/run', () => {
     }));
   });
 
+  test('GET /api/state returns server state', async () => {
+    const response = await requestJson(baseUrl, '/api/state');
+    const data = response.json();
+
+    expect(response.ok).toBe(true);
+    expect(data.ok).toBe(true);
+    expect(data.status).toBe('ok');
+    expect(typeof data.uptime).toBe('number');
+    expect(data.uptime).toBeGreaterThanOrEqual(0);
+    expect(typeof data.toolCount).toBe('number');
+    expect(data.toolCount).toBeGreaterThan(0);
+    expect(data.spatial).toEqual(expect.objectContaining({
+      crs: 'EPSG:4326',
+      coordinateOrder: 'longitude,latitude',
+      engine: '@turf/turf',
+      measurementModel: 'geodesic/web-oriented',
+      precision: 'not-survey-grade',
+    }));
+    expect(typeof data.rateLimiting).toBe('boolean');
+    expect(typeof data.timestamp).toBe('string');
+    expect(new Date(data.timestamp).toISOString()).toBe(data.timestamp);
+  });
+
   test('GET /headless-demo serves the browser client shell', async () => {
     const response = await requestText(baseUrl, '/headless-demo');
 

@@ -223,6 +223,25 @@ describe('/api/run', () => {
     }));
   });
 
+  test('GET /api/state returns request-scoped runtime state metadata', async () => {
+    const response = await requestJson(baseUrl, '/api/state');
+    const data = response.json();
+
+    expect(response.ok).toBe(true);
+    expect(data.ok).toBe(true);
+    expect(data.sessionModel).toBe('request-scoped');
+    expect(data.headless).toEqual(expect.objectContaining({
+      supportedToolCount: expect.any(Number),
+      supportedToolKeys: expect.arrayContaining(['BufferTool', 'RandomPointsTool', 'ExportTool']),
+    }));
+    expect(data.spatial).toEqual(expect.objectContaining({
+      crs: 'EPSG:4326',
+      coordinateOrder: 'longitude,latitude',
+    }));
+    expect(Array.isArray(data.notes)).toBe(true);
+    expect(data.notes.length).toBeGreaterThan(0);
+  });
+
   test('GET /headless-demo serves the browser client shell', async () => {
     const response = await requestText(baseUrl, '/headless-demo');
 

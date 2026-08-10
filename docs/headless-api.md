@@ -6,8 +6,13 @@ Spatial Workbench exposes a server-side execution path for tools that can run fr
 
 - `GET /api/run` returns discovery metadata for callable tools.
 - `POST /api/run` executes a tool against request-scoped state.
+- `POST /api/datasets` registers GeoJSON and returns a dataset handle.
+- `GET /api/datasets/:id` returns metadata and optional materialized GeoJSON (`?includeData=true`).
+- `DELETE /api/datasets/:id` removes a dataset handle.
+- `POST /api/datasets/cleanup` removes expired datasets from local storage.
 
 The server does not persist workbench state between requests. Callers send the state needed for each run and receive the resulting state back in the response.
+For workflows that outgrow inline payloads, an optional handle mode is available. See `docs/dataset-handle-architecture.md`.
 
 ## Spatial assumptions
 
@@ -71,6 +76,21 @@ Not yet supported headlessly:
 ```
 
 Tools that refer to layers by id expect those ids to be present in `state.layers`. `state.bbox` is used by tools like `RandomPointsTool` when they need map bounds in headless mode.
+
+Layer entries can optionally use `datasetRef` instead of inline `geojson`:
+
+```json
+{
+  "state": {
+    "layers": [
+      {
+        "id": "source-layer",
+        "datasetRef": "dataset://abc123"
+      }
+    ]
+  }
+}
+```
 
 ## Feature-Collection Request
 
@@ -138,6 +158,13 @@ All successful tool calls and tool-level validation failures use the same envelo
     "featureCounts": {
       "input": 3,
       "output": 3
+    },
+    "datasetHandles": {
+      "read": ["dataset://abc123"],
+      "produced": [
+        { "layerId": "result-1", "datasetRef": "dataset://def456" }
+      ],
+      "expired": []
     }
   }
 }

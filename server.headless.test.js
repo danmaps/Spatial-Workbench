@@ -35,6 +35,7 @@ function requestJson(baseUrl, path, options = {}) {
       method: options.method || 'GET',
       headers: {
         ...(body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } : {}),
+        ...(options.headers || {}),
       },
     }, (res) => {
       let data = '';
@@ -79,6 +80,10 @@ function requestText(baseUrl, path, options = {}) {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function normalizeToolOutputGeojson(geojson) {
@@ -478,6 +483,190 @@ describe('/api/run', () => {
     expect(data.details.supportedTools).toEqual(
       expect.arrayContaining(['BufferTool', 'RandomPointsTool', 'ExportTool'])
     );
+  });
+
+  test('POST /api/datasets registers and GET /api/datasets/:id materializes owned GeoJSON', async () => {
+    const ownerHeaders = { 'x-workbench-owner': 'dataset-owner-a' };
+    const registerResponse = await requestJson(baseUrl, '/api/datasets', {
+      method: 'POST',
+      headers: ownerHeaders,
+      body: {
+        name: 'Source points dataset',
+        geojson: sourcePointsGeojson,
+      },
+    });
+    const registerData = registerResponse.json();
+
+    expect(registerResponse.status).toBe(201);
+    expect(registerData).toEqual(expect.objectContaining({
+      ok: true,
+      dataset: expect.objectContaining({
+        datasetRef: expect.stringMatching(/^dataset:\/\//),
+      }),
+    }));
+    const datasetRef = registerData.dataset.datasetRef;
+    const datasetId = datasetRef.replace('dataset://', '');
+
+    const materializeResponse = await requestJson(baseUrl, `/api/datasets/${datasetId}?includeData=true`, {
+      headers: ownerHeaders,
+    });
+    const materializeData = materializeResponse.json();
+
+    expect(materializeResponse.status).toBe(200);
+    expect(materializeData.dataset.geojson).toEqual(sourcePointsGeojson);
+
+    const deleteResponse = await requestJson(baseUrl, `/api/datasets/${datasetId}`, {
+      method: 'DELETE',
+      headers: ownerHeaders,
+    });
+    const deleteData = deleteResponse.json();
+    expect(deleteResponse.status).toBe(200);
+    expect(deleteData).toEqual(expect.objectContaining({
+      ok: true,
+      deleted: expect.objectContaining({ datasetRef }),
+    }));
+  });
+
+  test('POST /api/run chains BufferTool -> ExportTool using dataset handles without resending full GeoJSON', async () => {
+    const ownerHeaders = { 'x-workbench-owner': 'dataset-owner-chain' };
+    const registerResponse = await requestJson(baseUrl, '/api/datasets', {
+      method: 'POST',
+      headers: ownerHeaders,
+      body: {
+        name: 'Source points for handle chain',
+        geojson: sourcePointsGeojson,
+      },
+    });
+    const registerData = registerResponse.json();
+    const sourceDatasetRef = registerData.dataset.datasetRef;
+
+    const bufferResponse = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      headers: ownerHeaders,
+      body: {
+        tool: 'BufferTool',
+        params: {
+          'Input Layer': 'source-layer',
+          Distance: 1,
+          Units: 'kilometers',
+        },
+        state: {
+          layers: [{ id: 'source-layer', datasetRef: sourceDatasetRef }],
+        },
+      },
+    });
+    const bufferData = bufferResponse.json();
+
+    expect(bufferResponse.status).toBe(200);
+    expect(bufferData.ok).toBe(true);
+    expect(bufferData.execution.datasetHandles.read).toEqual(expect.arrayContaining([sourceDatasetRef]));
+    expect(bufferData.execution.datasetHandles.produced).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        layerId: bufferData.state.added[0].id,
+        datasetRef: expect.stringMatching(/^dataset:\/\//),
+      }),
+    ]));
+    expect(bufferData.state.layers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'source-layer', datasetRef: sourceDatasetRef }),
+    ]));
+    bufferData.state.layers.forEach((layer) => {
+      expect(layer.geojson).toBeUndefined();
+      expect(layer.datasetRef).toMatch(/^dataset:\/\//);
+    });
+
+    const bufferedLayerId = bufferData.state.added[0].id;
+    const exportResponse = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      headers: ownerHeaders,
+      body: {
+        tool: 'ExportTool',
+        params: {
+          Layer: bufferedLayerId,
+          Format: 'GeoJSON',
+        },
+        state: bufferData.state,
+      },
+    });
+    const exportData = exportResponse.json();
+
+    expect(exportResponse.status).toBe(200);
+    expect(exportData.ok).toBe(true);
+    expect(exportData.execution.datasetHandles.read.length).toBeGreaterThan(0);
+    const exportedGeojson = JSON.parse(exportData.output.download.data);
+    expect(exportedGeojson.type).toBe('FeatureCollection');
+    expect(exportedGeojson.features).toHaveLength(sourcePointsGeojson.features.length);
+  });
+
+  test('dataset handles fail clearly for missing, unauthorized, and expired references', async () => {
+    const ownerA = { 'x-workbench-owner': 'dataset-owner-secure-a' };
+    const ownerB = { 'x-workbench-owner': 'dataset-owner-secure-b' };
+    const registerResponse = await requestJson(baseUrl, '/api/datasets', {
+      method: 'POST',
+      headers: ownerA,
+      body: {
+        geojson: sourcePointsGeojson,
+        ttlMs: 10,
+      },
+    });
+    const registerData = registerResponse.json();
+    const datasetRef = registerData.dataset.datasetRef;
+
+    const unauthorizedResponse = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      headers: ownerB,
+      body: {
+        tool: 'ExportTool',
+        params: { Layer: 'source-layer', Format: 'GeoJSON' },
+        state: {
+          layers: [{ id: 'source-layer', datasetRef }],
+        },
+      },
+    });
+    const unauthorizedData = unauthorizedResponse.json();
+    expect(unauthorizedResponse.status).toBe(403);
+    expect(unauthorizedData.details).toEqual(expect.objectContaining({ code: 'dataset-access-denied' }));
+
+    await waitMs(25);
+    const expiredResponse = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      headers: ownerA,
+      body: {
+        tool: 'ExportTool',
+        params: { Layer: 'source-layer', Format: 'GeoJSON' },
+        state: {
+          layers: [{ id: 'source-layer', datasetRef }],
+        },
+      },
+    });
+    const expiredData = expiredResponse.json();
+    expect(expiredResponse.status).toBe(410);
+    expect(expiredData.details).toEqual(expect.objectContaining({ code: 'dataset-expired' }));
+
+    const missingResponse = await requestJson(baseUrl, '/api/run', {
+      method: 'POST',
+      headers: ownerA,
+      body: {
+        tool: 'ExportTool',
+        params: { Layer: 'source-layer', Format: 'GeoJSON' },
+        state: {
+          layers: [{ id: 'source-layer', datasetRef: 'dataset://missing-does-not-exist' }],
+        },
+      },
+    });
+    const missingData = missingResponse.json();
+    expect(missingResponse.status).toBe(404);
+    expect(missingData.details).toEqual(expect.objectContaining({ code: 'dataset-not-found' }));
+
+    const cleanupResponse = await requestJson(baseUrl, '/api/datasets/cleanup', {
+      method: 'POST',
+    });
+    const cleanupData = cleanupResponse.json();
+    expect(cleanupResponse.status).toBe(200);
+    expect(cleanupData).toEqual(expect.objectContaining({
+      ok: true,
+      removedCount: expect.any(Number),
+      expired: expect.any(Array),
+    }));
   });
 
   test('POST /api/run chains RandomPointsTool to BufferTool to ExportTool using returned state verbatim', async () => {

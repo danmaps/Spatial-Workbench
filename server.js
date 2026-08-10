@@ -16,7 +16,9 @@ const { requestStructuredData } = require('./js/ai/requestStructuredData');
 const { getHeadlessToolCatalog, runHeadlessTool } = require('./js/headless-runtime');
 const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
 const { createSpatialSession, normalizeSpatialRequest, SPATIAL_METADATA } = require('./js/spatial');
+const { createInMemoryDatasetStore, formatDatasetRef, parseDatasetRef } = require('./js/runtime/datasetStore');
 const MAX_AI_TOKENS = 4096;
+const DEFAULT_DATASET_TTL_MS = 15 * 60 * 1000;
 
 let rateLimit;
 try {
@@ -27,6 +29,9 @@ try {
 
 const app = express();
 require('dotenv').config();
+const datasetStore = createInMemoryDatasetStore({
+  defaultTtlMs: Number(process.env.DATASET_TTL_MS) > 0 ? Number(process.env.DATASET_TTL_MS) : DEFAULT_DATASET_TTL_MS,
+});
 
 app.use(express.json());
 
@@ -45,6 +50,119 @@ function getLayerFeatureCount(state, layerId) {
   return countGeojsonFeatures(layer?.geojson);
 }
 
+function deepClone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function getDatasetOwnerId(req) {
+  const ownerId = req.get('x-workbench-owner');
+  return typeof ownerId === 'string' && ownerId.trim() ? ownerId.trim() : 'anonymous';
+}
+
+function getDatasetTtlMs(rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === '') return undefined;
+  const ttlMs = Number(rawValue);
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0) return null;
+  return ttlMs;
+}
+
+function resolveDatasetStateReferences(rawState, ownerId) {
+  const state = deepClone(rawState || {});
+  const resolvedInputs = [];
+  const requestLayerRefsById = {};
+  if (!Array.isArray(state.layers)) {
+    return { state, resolvedInputs, requestLayerRefsById };
+  }
+
+  state.layers = state.layers.map((layer, index) => {
+    if (!layer || typeof layer !== 'object' || typeof layer.datasetRef !== 'string') return layer;
+
+    const resolved = datasetStore.resolveDatasetReference({
+      datasetRef: layer.datasetRef,
+      ownerId,
+    });
+    const layerId = layer.id || `layer-${index + 1}`;
+    const canonicalRef = resolved.datasetRef;
+    requestLayerRefsById[layerId] = canonicalRef;
+    resolvedInputs.push({ layerId, datasetRef: canonicalRef });
+    return {
+      ...layer,
+      geojson: resolved.geojson,
+      id: layerId,
+    };
+  });
+
+  return { state, resolvedInputs, requestLayerRefsById };
+}
+
+function buildReferenceResponseState({ requestState, responseState, ownerId, datasetTtlMs }) {
+  const requestLayers = Array.isArray(requestState?.layers) ? requestState.layers : [];
+  const responseLayers = Array.isArray(responseState?.layers) ? responseState.layers : [];
+  const referenceMode = requestLayers.some((layer) => typeof layer?.datasetRef === 'string');
+  if (!referenceMode) {
+    return {
+      state: responseState,
+      producedOutputs: [],
+    };
+  }
+
+  const inputRefsByLayerId = requestLayers.reduce((acc, layer) => {
+    if (!layer || typeof layer !== 'object' || typeof layer.id !== 'string' || typeof layer.datasetRef !== 'string') return acc;
+    const datasetId = parseDatasetRef(layer.datasetRef);
+    if (datasetId) {
+      acc[layer.id] = formatDatasetRef(datasetId);
+    }
+    return acc;
+  }, {});
+
+  const addedLayerIds = new Set(Array.isArray(responseState?.added) ? responseState.added.map((layer) => layer.id).filter(Boolean) : []);
+  const producedOutputs = [];
+  const refsByLayerId = {};
+  const nextLayers = responseLayers.map((layer) => {
+    if (!layer || typeof layer !== 'object') return layer;
+
+    const existingRef = inputRefsByLayerId[layer.id];
+    const shouldReuseExistingRef = existingRef && !addedLayerIds.has(layer.id);
+    const datasetRef = shouldReuseExistingRef
+      ? existingRef
+      : datasetStore.registerDataset({
+          ownerId,
+          geojson: layer.geojson,
+          ttlMs: datasetTtlMs || undefined,
+          name: layer.name,
+        }).datasetRef;
+
+    refsByLayerId[layer.id] = datasetRef;
+    if (addedLayerIds.has(layer.id)) {
+      producedOutputs.push({ layerId: layer.id, datasetRef });
+    }
+
+    return {
+      id: layer.id,
+      name: layer.name,
+      geometryType: layer.geometryType,
+      datasetRef,
+    };
+  });
+
+  const nextAdded = Array.isArray(responseState?.added)
+    ? responseState.added.map((layer) => ({
+        id: layer.id,
+        name: layer.name,
+        datasetRef: refsByLayerId[layer.id],
+      }))
+    : [];
+
+  return {
+    state: {
+      ...responseState,
+      layers: nextLayers,
+      added: nextAdded,
+    },
+    producedOutputs,
+  };
+}
+
 function collectInputLayerIds(toolKey, params = {}) {
   const ids = [];
 
@@ -61,7 +179,15 @@ function collectInputLayerIds(toolKey, params = {}) {
   return [...new Set(ids)];
 }
 
-function buildExecutionReceipt({ toolKey, params, requestState, result, startedAt, finishedAt }) {
+function buildExecutionReceipt({
+  toolKey,
+  params,
+  requestState,
+  result,
+  startedAt,
+  finishedAt,
+  datasetHandles = { read: [], produced: [], expired: [] },
+}) {
   const inputLayerIds = collectInputLayerIds(toolKey, params);
   const outputLayerIds = Array.isArray(result?.state?.added)
     ? result.state.added.map((layer) => layer.id).filter(Boolean)
@@ -93,6 +219,11 @@ function buildExecutionReceipt({ toolKey, params, requestState, result, startedA
     featureCounts: {
       input: inputFeatureCount,
       output: outputFeatureCount,
+    },
+    datasetHandles: {
+      read: Array.isArray(datasetHandles.read) ? datasetHandles.read : [],
+      produced: Array.isArray(datasetHandles.produced) ? datasetHandles.produced : [],
+      expired: Array.isArray(datasetHandles.expired) ? datasetHandles.expired : [],
     },
   };
 }
@@ -239,6 +370,106 @@ app.get('/api/tools', (_req, res) => {
   res.json({ ok: true, tools: toolSpecs });
 });
 
+app.post('/api/datasets', (req, res) => {
+  try {
+    const ownerId = getDatasetOwnerId(req);
+    const body = req.body || {};
+    const normalized = normalizeSpatialRequest({
+      toolKey: 'DatasetRegister',
+      state: {
+        layers: [{ id: body.id || 'dataset', name: body.name || 'Dataset', geojson: body.geojson }],
+      },
+    });
+
+    if (!normalized.ok) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Invalid dataset GeoJSON.',
+        validation: normalized.validation,
+      });
+    }
+
+    const ttlMs = getDatasetTtlMs(body.ttlMs);
+    if (body.ttlMs !== undefined && ttlMs === null) {
+      return res.status(400).json({
+        ok: false,
+        error: 'ttlMs must be a positive number.',
+      });
+    }
+
+    const dataset = datasetStore.registerDataset({
+      ownerId,
+      geojson: normalized.state.layers[0].geojson,
+      ttlMs: ttlMs || undefined,
+      name: body.name || null,
+    });
+
+    return res.status(201).json({
+      ok: true,
+      dataset,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      error: error.message || 'Failed to register dataset.',
+      ...(error.details ? { details: error.details } : {}),
+    });
+  }
+});
+
+app.get('/api/datasets/:id', (req, res) => {
+  try {
+    const ownerId = getDatasetOwnerId(req);
+    const includeData = String(req.query.includeData || '').toLowerCase() === 'true';
+    const dataset = datasetStore.getDataset({
+      datasetRef: formatDatasetRef(req.params.id),
+      ownerId,
+      includeData,
+    });
+
+    return res.json({
+      ok: true,
+      dataset,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      error: error.message || 'Failed to load dataset.',
+      ...(error.details ? { details: error.details } : {}),
+    });
+  }
+});
+
+app.delete('/api/datasets/:id', (req, res) => {
+  try {
+    const ownerId = getDatasetOwnerId(req);
+    const deleted = datasetStore.deleteDataset({
+      datasetRef: formatDatasetRef(req.params.id),
+      ownerId,
+    });
+
+    return res.json({
+      ok: true,
+      deleted,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      error: error.message || 'Failed to delete dataset.',
+      ...(error.details ? { details: error.details } : {}),
+    });
+  }
+});
+
+app.post('/api/datasets/cleanup', (_req, res) => {
+  const expired = datasetStore.cleanupExpiredDatasets();
+  res.json({
+    ok: true,
+    expired,
+    removedCount: expired.length,
+  });
+});
+
 app.get('/api/run', (_req, res) => {
   res.json({
     ok: true,
@@ -251,6 +482,7 @@ app.get('/api/run', (_req, res) => {
     notes: [
       'First pass: headless execution is currently limited to tools that are safe without the browser UI.',
       'Send request state.layers with stable ids and GeoJSON so params can reference them.',
+      'Optional dataset references are supported via state.layers[].datasetRef handles created by /api/datasets.',
       'Layer-state tools use state.layers; featureCollection tools use state.featureCollection.',
       'Tool validation failures return HTTP 200 with ok: false; unsupported tools and malformed API requests return 4xx.',
       'GeoJSON coordinates are interpreted as EPSG:4326 longitude/latitude values and are suitable for lightweight web/runtime analysis, not survey-grade measurement.',
@@ -269,6 +501,10 @@ app.get('/api/run', (_req, res) => {
             name: 'Source Layer',
             geojson: { type: 'FeatureCollection', features: [] },
           },
+          {
+            id: 'source-layer-ref',
+            datasetRef: 'dataset://abc123',
+          },
         ],
         bbox: [-118.5, 33.5, -117.5, 34.5],
       },
@@ -279,9 +515,34 @@ app.get('/api/run', (_req, res) => {
 app.post('/api/run', async (req, res) => {
   try {
     const body = req.body || {};
+    const ownerId = getDatasetOwnerId(req);
+    const datasetTtlMs = getDatasetTtlMs(body.datasetTtlMs);
+    if (body.datasetTtlMs !== undefined && datasetTtlMs === null) {
+      return res.status(400).json({
+        ok: false,
+        error: 'datasetTtlMs must be a positive number.',
+      });
+    }
+
+    let resolvedState;
+    let resolvedDatasetInputs = [];
+    let requestLayerRefsById = {};
+    try {
+      const resolved = resolveDatasetStateReferences(body.state, ownerId);
+      resolvedState = resolved.state;
+      resolvedDatasetInputs = resolved.resolvedInputs;
+      requestLayerRefsById = resolved.requestLayerRefsById;
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        ok: false,
+        error: error.message || 'Failed to resolve dataset references.',
+        ...(error.details ? { details: error.details } : {}),
+      });
+    }
+
     const spatialRequest = normalizeSpatialRequest({
       toolKey: body.tool,
-      state: body.state,
+      state: resolvedState,
     });
     const spatial = createSpatialSession(spatialRequest.warnings);
 
@@ -295,7 +556,7 @@ app.post('/api/run', async (req, res) => {
     }
 
     const startedAt = new Date();
-    const result = spatialRequest.state?.featureCollection
+    const rawResult = spatialRequest.state?.featureCollection
       ? await runToolHeadlessly({
           toolKey: body.tool,
           params: body.params,
@@ -309,6 +570,19 @@ app.post('/api/run', async (req, res) => {
           spatial,
         });
     const finishedAt = new Date();
+    const referenceResponse = buildReferenceResponseState({
+      requestState: body.state,
+      responseState: rawResult.state,
+      ownerId,
+      datasetTtlMs,
+    });
+    const result = {
+      ...rawResult,
+      state: referenceResponse.state,
+    };
+    const readDatasetHandles = collectInputLayerIds(body.tool, body.params)
+      .map((layerId) => requestLayerRefsById[layerId])
+      .filter(Boolean);
 
     res.json({
       ...result,
@@ -317,9 +591,14 @@ app.post('/api/run', async (req, res) => {
         toolKey: body.tool,
         params: body.params,
         requestState: spatialRequest.state,
-        result,
+        result: rawResult,
         startedAt,
         finishedAt,
+        datasetHandles: {
+          read: [...new Set([...resolvedDatasetInputs.map((entry) => entry.datasetRef), ...readDatasetHandles])],
+          produced: referenceResponse.producedOutputs,
+          expired: [],
+        },
       }),
     });
   } catch (error) {

@@ -380,6 +380,9 @@ app.get('/api/state', (_req, res) => {
       ...SPATIAL_METADATA,
       warnings: [],
     },
+    uptime: process.uptime(),
+    rateLimiting: rateLimit !== null && typeof rateLimit === 'function',
+    timestamp: new Date().toISOString(),
     notes: [
       'Execution is request-scoped. No server-side session state is persisted between calls.',
       'Pass state into POST /api/run and receive the updated state back in the response.',

@@ -237,7 +237,15 @@ describe('/api/run', () => {
     expect(data.spatial).toEqual(expect.objectContaining({
       crs: 'EPSG:4326',
       coordinateOrder: 'longitude,latitude',
+      engine: '@turf/turf',
+      measurementModel: 'geodesic/web-oriented',
+      precision: 'not-survey-grade',
     }));
+    expect(typeof data.uptime).toBe('number');
+    expect(data.uptime).toBeGreaterThanOrEqual(0);
+    expect(typeof data.rateLimiting).toBe('boolean');
+    expect(typeof data.timestamp).toBe('string');
+    expect(new Date(data.timestamp).toISOString()).toBe(data.timestamp);
     expect(Array.isArray(data.notes)).toBe(true);
     expect(data.notes.length).toBeGreaterThan(0);
   });

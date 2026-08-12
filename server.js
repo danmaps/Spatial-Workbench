@@ -368,14 +368,26 @@ app.get('/api/tools', (_req, res) => {
 });
 
 app.get('/api/state', (_req, res) => {
+  const catalog = getHeadlessToolCatalog();
   res.json({
     ok: true,
-    status: 'ok',
+    sessionModel: 'request-scoped',
+    headless: {
+      supportedToolCount: catalog.length,
+      supportedToolKeys: catalog.map((t) => t.key),
+    },
+    spatial: {
+      ...SPATIAL_METADATA,
+      warnings: [],
+    },
     uptime: process.uptime(),
-    toolCount: getHeadlessToolCatalog().length,
-    spatial: { ...SPATIAL_METADATA },
     rateLimiting: rateLimit !== null && typeof rateLimit === 'function',
     timestamp: new Date().toISOString(),
+    notes: [
+      'Execution is request-scoped. No server-side session state is persisted between calls.',
+      'Pass state into POST /api/run and receive the updated state back in the response.',
+      'Use /api/datasets to register large GeoJSON payloads and reference them by handle across calls.',
+    ],
   });
 });
 

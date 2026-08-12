@@ -4,6 +4,8 @@ Spatial Workbench exposes a server-side execution path for tools that can run fr
 
 ## Endpoints
 
+- `GET /api/tools` → returns the full tool spec catalog (all registered tools, including browser-only ones).
+- `GET /api/state` → inspect the current server runtime state: session model, headless-safe tool keys, and spatial metadata.
 - `GET /api/run` returns discovery metadata for callable tools.
 - `POST /api/run` executes a tool against request-scoped state.
 - `POST /api/datasets` registers GeoJSON and returns a dataset handle.
@@ -297,10 +299,44 @@ It is designed to be:
 - explicit about inputs and outputs
 - non-breaking for the existing browser UI
 
+## CLI
+
+A thin CLI wrapper over the headless runtime is available at `scripts/workbench-cli.js`:
+
+```bash
+# List supported headless tools
+node scripts/workbench-cli.js list
+
+# Inspect server runtime state
+node scripts/workbench-cli.js state
+
+# Run a tool
+node scripts/workbench-cli.js run --tool RandomPointsTool \
+  --params '{"Points Count":5,"Inside Polygon":false}' \
+  --state '{"bbox":[-118.5,33.5,-118.2,33.8]}'
+
+# Pretty-print the full JSON response
+node scripts/workbench-cli.js run --tool ExportTool \
+  --params '{"Layer":"layer-1","Format":"GeoJSON"}' \
+  --state state.json --pretty
+```
+
+Or use the npm script alias:
+
+```bash
+npm run cli -- list
+npm run cli -- run --tool RandomPointsTool --params '{"Points Count":3,"Inside Polygon":false}' --state '{"bbox":[-118.5,33.5,-118.2,33.8]}'
+```
+
+Set `HEADLESS_API_URL` to point the CLI at an already-running server instead of starting a local one:
+
+```bash
+HEADLESS_API_URL=https://workbench.example.com npm run cli -- list
+```
+
 ## Next likely steps
 
 1. extend the demo contract to more tools after the chained `RandomPointsTool -> BufferTool -> ExportTool` flow is stable
 2. make `AddDataTool` accept JSON/file-path friendly server inputs
 3. decouple AI geometry generation from browser localStorage
-4. build an MCP-facing adapter on top of this contract
-5. expand GroupTool output options beyond per-feature group attribution if hulls or centroids become useful
+4. expand GroupTool output options beyond per-feature group attribution if hulls or centroids become useful

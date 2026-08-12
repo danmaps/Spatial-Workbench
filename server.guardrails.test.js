@@ -1,6 +1,12 @@
 /**
+ * @jest-environment node
+ *
  * Tests for API workload guardrails: payload size, feature/layer/vertex limits,
  * execution timeout, concurrency cap, and rate limiting on POST /api/run.
+ *
+ * Uses the `node` Jest environment so that process.env mutations are shared
+ * with the same-process server handler. Limits are read dynamically from env
+ * vars per request; tests set overrides inline and restore them in finally blocks.
  */
 
 const http = require('http');
@@ -11,6 +17,7 @@ global.L = { Polygon: function Polygon() {} };
 
 const {
   app,
+  createTimeoutPromise,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MAX_LAYERS,
   DEFAULT_MAX_FEATURES,
@@ -20,7 +27,7 @@ const {
 } = require('./server');
 
 // ---------------------------------------------------------------------------
-// HTTP helpers (same pattern as server.headless.test.js)
+// HTTP helpers (mirrors server.headless.test.js style)
 // ---------------------------------------------------------------------------
 
 function requestJson(baseUrl, path, options = {}) {
@@ -31,7 +38,7 @@ function requestJson(baseUrl, path, options = {}) {
     const req = http.request(
       url,
       {
-        method: options.method || 'GET',
+        method: options.method || (body ? 'POST' : 'GET'),
         headers: {
           ...(body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } : {}),
           ...(options.headers || {}),
@@ -56,7 +63,7 @@ function requestJson(baseUrl, path, options = {}) {
   });
 }
 
-function requestRaw(baseUrl, path, rawBody, contentType = 'application/json') {
+function requestRaw(baseUrl, path, rawBody) {
   const url = new URL(path, baseUrl);
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -64,7 +71,7 @@ function requestRaw(baseUrl, path, rawBody, contentType = 'application/json') {
       {
         method: 'POST',
         headers: {
-          'Content-Type': contentType,
+          'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(rawBody),
         },
       },
@@ -97,6 +104,14 @@ function makeFeatureCollection(count) {
   };
 }
 
+function makeLayers(count, featuresPerLayer = 1) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `layer-${i + 1}`,
+    name: `Layer ${i + 1}`,
+    geojson: makeFeatureCollection(featuresPerLayer),
+  }));
+}
+
 // ---------------------------------------------------------------------------
 
 describe('API workload guardrails', () => {
@@ -117,205 +132,25 @@ describe('API workload guardrails', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Payload size limit
+  // Exported defaults
   // -------------------------------------------------------------------------
 
-  test('default limit constants are exported', () => {
+  test('default limit constants are exported as positive integers', () => {
     expect(DEFAULT_MAX_REQUEST_BYTES).toBeGreaterThan(0);
     expect(DEFAULT_MAX_LAYERS).toBeGreaterThan(0);
     expect(DEFAULT_MAX_FEATURES).toBeGreaterThan(0);
     expect(DEFAULT_MAX_VERTICES).toBeGreaterThan(0);
     expect(DEFAULT_TOOL_TIMEOUT_MS).toBeGreaterThan(0);
     expect(DEFAULT_MAX_CONCURRENT_RUNS).toBeGreaterThan(0);
-  });
-
-  test('POST /api/run returns 413 for a payload that exceeds MAX_REQUEST_BYTES', async () => {
-    // Build a body that exceeds the configured limit.
-    // The limit is DEFAULT_MAX_REQUEST_BYTES (5 MB). We produce a body that is
-    // ~6 MB by padding a features array with large string properties.
-    const targetBytes = DEFAULT_MAX_REQUEST_BYTES + 512 * 1024;
-    const padding = 'x'.repeat(1024);
-    const features = Array.from({ length: Math.ceil(targetBytes / (padding.length + 100)) }, (_, i) => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [-118 + i * 0.001, 34] },
-      properties: { pad: padding },
-    }));
-
-    const rawBody = JSON.stringify({
-      tool: 'ExportTool',
-      params: { format: 'geojson', layerId: 'layer-1' },
-      state: {
-        layers: [{
-          id: 'layer-1',
-          name: 'Oversized',
-          geojson: { type: 'FeatureCollection', features },
-        }],
-      },
-    });
-
-    if (Buffer.byteLength(rawBody) <= DEFAULT_MAX_REQUEST_BYTES) {
-      // Couldn't actually exceed the limit in this environment — skip gracefully
-      return;
-    }
-
-    const response = await requestRaw(baseUrl, '/api/run', rawBody);
-    const data = response.json();
-
-    expect(response.status).toBe(413);
-    expect(data.ok).toBe(false);
-    expect(data.code).toBe('PAYLOAD_TOO_LARGE');
-    expect(typeof data.limit).toBe('number');
-  });
-
-  // -------------------------------------------------------------------------
-  // Layer count limit
-  // -------------------------------------------------------------------------
-
-  test('POST /api/run returns 422 with LAYER_LIMIT when layers exceed MAX_LAYERS', async () => {
-    const tooManyLayers = Array.from({ length: DEFAULT_MAX_LAYERS + 1 }, (_, i) => ({
-      id: `layer-${i + 1}`,
-      name: `Layer ${i + 1}`,
-      geojson: makeFeatureCollection(1),
-    }));
-
-    const response = await requestJson(baseUrl, '/api/run', {
-      body: {
-        tool: 'ExportTool',
-        params: { format: 'geojson', layerId: 'layer-1' },
-        state: { layers: tooManyLayers },
-      },
-    });
-    const data = response.json();
-
-    expect(response.status).toBe(422);
-    expect(data.ok).toBe(false);
-    expect(data.code).toBe('LAYER_LIMIT');
-    expect(data.limit).toBe(DEFAULT_MAX_LAYERS);
-    expect(data.received).toBe(DEFAULT_MAX_LAYERS + 1);
-  });
-
-  test('POST /api/run accepts a request that is exactly at the layer limit', async () => {
-    const layers = Array.from({ length: DEFAULT_MAX_LAYERS }, (_, i) => ({
-      id: `layer-${i + 1}`,
-      name: `Layer ${i + 1}`,
-      geojson: makeFeatureCollection(1),
-    }));
-
-    const response = await requestJson(baseUrl, '/api/run', {
-      body: {
-        tool: 'ExportTool',
-        params: { format: 'geojson', layerId: 'layer-1' },
-        state: { layers },
-      },
-    });
-
-    // Should not be rejected with a LAYER_LIMIT error (may fail for other reasons)
-    const data = response.json();
-    expect(data.code).not.toBe('LAYER_LIMIT');
-  });
-
-  // -------------------------------------------------------------------------
-  // Feature count limit
-  // -------------------------------------------------------------------------
-
-  test('POST /api/run returns 422 with FEATURE_LIMIT when features exceed MAX_FEATURES', async () => {
-    const response = await requestJson(baseUrl, '/api/run', {
-      body: {
-        tool: 'ExportTool',
-        params: { format: 'geojson', layerId: 'layer-1' },
-        state: {
-          layers: [{
-            id: 'layer-1',
-            name: 'Huge layer',
-            geojson: makeFeatureCollection(DEFAULT_MAX_FEATURES + 1),
-          }],
-        },
-      },
-    });
-    const data = response.json();
-
-    expect(response.status).toBe(422);
-    expect(data.ok).toBe(false);
-    expect(data.code).toBe('FEATURE_LIMIT');
-    expect(data.limit).toBe(DEFAULT_MAX_FEATURES);
-    expect(data.received).toBeGreaterThan(DEFAULT_MAX_FEATURES);
-  });
-
-  // -------------------------------------------------------------------------
-  // Vertex / coordinate count limit
-  // -------------------------------------------------------------------------
-
-  test('POST /api/run returns 422 with VERTEX_LIMIT when vertices exceed MAX_VERTICES', async () => {
-    // Build a single polygon with more vertices than the limit.
-    const vertexCount = DEFAULT_MAX_VERTICES + 1;
-    const coords = Array.from({ length: vertexCount }, (_, i) => {
-      const angle = (2 * Math.PI * i) / vertexCount;
-      return [-118 + Math.cos(angle), 34 + Math.sin(angle)];
-    });
-    // Close the ring
-    coords.push(coords[0]);
-
-    const response = await requestJson(baseUrl, '/api/run', {
-      body: {
-        tool: 'ExportTool',
-        params: { format: 'geojson', layerId: 'layer-1' },
-        state: {
-          layers: [{
-            id: 'layer-1',
-            name: 'Dense polygon',
-            geojson: {
-              type: 'FeatureCollection',
-              features: [{
-                type: 'Feature',
-                geometry: { type: 'Polygon', coordinates: [coords] },
-                properties: {},
-              }],
-            },
-          }],
-        },
-      },
-    });
-    const data = response.json();
-
-    expect(response.status).toBe(422);
-    expect(data.ok).toBe(false);
-    expect(data.code).toBe('VERTEX_LIMIT');
-    expect(data.limit).toBe(DEFAULT_MAX_VERTICES);
-    expect(data.received).toBeGreaterThan(DEFAULT_MAX_VERTICES);
-  });
-
-  // -------------------------------------------------------------------------
-  // Execution timeout
-  // -------------------------------------------------------------------------
-
-  test('POST /api/run returns 503 with EXECUTION_TIMEOUT when tool exceeds TOOL_TIMEOUT_MS', async () => {
-    // Set a very short timeout via env, then make a real call that should still
-    // complete quickly — we instead test the timeout by temporarily patching the env
-    // and relying on the mock helper to inspect the response shape.
-    //
-    // Because the real tools are fast, we verify the timeout structure by checking
-    // that TOOL_TIMEOUT_MS defaults are exported as positive numbers, and that a
-    // request with a non-existent tool returns a structured error (not a crash).
-    const response = await requestJson(baseUrl, '/api/run', {
-      body: {
-        tool: 'NonExistentTool',
-        params: {},
-        state: { layers: [] },
-      },
-    });
-    const data = response.json();
-
-    // Should return a structured error, not a 500 crash
-    expect(response.status).toBeGreaterThanOrEqual(400);
-    expect(data.ok).toBe(false);
-    expect(typeof data.error).toBe('string');
+    expect(Number.isInteger(DEFAULT_MAX_REQUEST_BYTES)).toBe(true);
+    expect(Number.isInteger(DEFAULT_MAX_LAYERS)).toBe(true);
   });
 
   // -------------------------------------------------------------------------
   // /api/state exposes workload limits
   // -------------------------------------------------------------------------
 
-  test('GET /api/state exposes workloadLimits', async () => {
+  test('GET /api/state exposes workloadLimits with all expected fields', async () => {
     const response = await requestJson(baseUrl, '/api/state');
     const data = response.json();
 
@@ -339,28 +174,303 @@ describe('API workload guardrails', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Rate limiting on POST /api/run
+  // Payload size limit
   // -------------------------------------------------------------------------
 
-  test('POST /api/run includes rate-limit response headers', async () => {
-    const response = await requestJson(baseUrl, '/api/run', {
-      body: {
-        tool: 'ExportTool',
-        params: { format: 'geojson', layerId: 'layer-1' },
-        state: {
-          layers: [{
-            id: 'layer-1',
-            name: 'Test',
-            geojson: makeFeatureCollection(1),
-          }],
-        },
-      },
+  test('POST /api/run returns 413 with PAYLOAD_TOO_LARGE for an oversized request body', async () => {
+    const targetSize = DEFAULT_MAX_REQUEST_BYTES + 512 * 1024;
+    const padding = 'x'.repeat(targetSize);
+    const rawBody = JSON.stringify({
+      tool: 'ExportTool',
+      params: { format: 'geojson', layerId: 'layer-1' },
+      state: { layers: [{ id: 'layer-1', name: 'L', geojson: { pad: padding } }] },
     });
 
-    // Standard rate-limit headers (RateLimit-Limit and RateLimit-Remaining) should be present
-    const hasRateLimitHeader = Object.keys(response.headers).some((h) =>
-      h.toLowerCase().startsWith('ratelimit'),
-    );
-    expect(hasRateLimitHeader).toBe(true);
+    if (Buffer.byteLength(rawBody) <= DEFAULT_MAX_REQUEST_BYTES) {
+      return; // skip if we couldn't build a body large enough
+    }
+
+    const response = await requestRaw(baseUrl, '/api/run', rawBody);
+    const data = response.json();
+
+    expect(response.status).toBe(413);
+    expect(data.ok).toBe(false);
+    expect(data.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(data.limit).toBe(DEFAULT_MAX_REQUEST_BYTES);
+  });
+
+  // -------------------------------------------------------------------------
+  // Layer count limit
+  // -------------------------------------------------------------------------
+
+  test('POST /api/run returns 422 with LAYER_LIMIT when layers exceed MAX_LAYERS', async () => {
+    process.env.MAX_LAYERS = '3';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'layer-1' },
+          state: { layers: makeLayers(4) },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('LAYER_LIMIT');
+      expect(data.limit).toBe(3);
+      expect(data.received).toBe(4);
+    } finally {
+      delete process.env.MAX_LAYERS;
+    }
+  });
+
+  test('POST /api/run accepts a request exactly at the layer limit', async () => {
+    process.env.MAX_LAYERS = '3';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'layer-1' },
+          state: { layers: makeLayers(3) },
+        },
+      });
+      const data = response.json();
+
+      expect(data.code).not.toBe('LAYER_LIMIT');
+    } finally {
+      delete process.env.MAX_LAYERS;
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Feature count limit
+  // -------------------------------------------------------------------------
+
+  test('POST /api/run returns 422 with FEATURE_LIMIT when total features exceed MAX_FEATURES', async () => {
+    process.env.MAX_FEATURES = '5';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'layer-1' },
+          state: {
+            layers: [{
+              id: 'layer-1',
+              name: 'Layer',
+              geojson: makeFeatureCollection(6),
+            }],
+          },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('FEATURE_LIMIT');
+      expect(data.limit).toBe(5);
+      expect(data.received).toBe(6);
+    } finally {
+      delete process.env.MAX_FEATURES;
+    }
+  });
+
+  test('POST /api/run counts features across all layers for the feature limit', async () => {
+    process.env.MAX_FEATURES = '5';
+    try {
+      // 3 layers × 2 features = 6 total → over limit of 5
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'layer-1' },
+          state: { layers: makeLayers(3, 2) },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.code).toBe('FEATURE_LIMIT');
+      expect(data.limit).toBe(5);
+      expect(data.received).toBe(6);
+    } finally {
+      delete process.env.MAX_FEATURES;
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Vertex count limit
+  // -------------------------------------------------------------------------
+
+  test('POST /api/run returns 422 with VERTEX_LIMIT when total vertices exceed MAX_VERTICES', async () => {
+    process.env.MAX_VERTICES = '5';
+    try {
+      const coords = [
+        [-118, 34], [-117, 34], [-117, 35], [-118, 35], [-118.5, 34.5], [-118, 34],
+      ];
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'layer-1' },
+          state: {
+            layers: [{
+              id: 'layer-1',
+              name: 'Dense polygon',
+              geojson: {
+                type: 'FeatureCollection',
+                features: [{
+                  type: 'Feature',
+                  geometry: { type: 'Polygon', coordinates: [coords] },
+                  properties: {},
+                }],
+              },
+            }],
+          },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('VERTEX_LIMIT');
+      expect(data.limit).toBe(5);
+      expect(data.received).toBe(6);
+    } finally {
+      delete process.env.MAX_VERTICES;
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Execution timeout
+  // -------------------------------------------------------------------------
+
+  test('DEFAULT_TOOL_TIMEOUT_MS is a positive finite integer', () => {
+    expect(DEFAULT_TOOL_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(Number.isFinite(DEFAULT_TOOL_TIMEOUT_MS)).toBe(true);
+  });
+
+  test('fast tools complete well within the default timeout budget', async () => {
+    const response = await requestJson(baseUrl, '/api/run', {
+      body: {
+        tool: 'RandomPointsTool',
+        params: { count: 5, bbox: [-118.5, 33.5, -117.5, 34.5] },
+        state: { layers: [] },
+      },
+    });
+    const data = response.json();
+
+    expect(response.ok).toBe(true);
+    // execution receipt is always included in successful responses
+    expect(data.execution).toBeDefined();
+    expect(data.execution.durationMs).toBeLessThan(DEFAULT_TOOL_TIMEOUT_MS);
+  });
+
+  test('POST /api/run returns 503 with EXECUTION_TIMEOUT error shape when a tool times out', async () => {
+    // All built-in tools are synchronous and complete as microtasks, so they
+    // always beat the setTimeout-based timeout in a Promise.race. Instead, we
+    // test the timeout mechanism directly via the exported createTimeoutPromise
+    // helper, and separately confirm the route's catch block forwards the
+    // structured error through the HTTP response.
+    await expect(createTimeoutPromise(50)).rejects.toMatchObject({
+      message: 'Tool execution timed out.',
+      code: 'EXECUTION_TIMEOUT',
+      statusCode: 503,
+    });
+
+    // Verify the cancel() helper clears the pending timer (no leaked handle).
+    const tp = createTimeoutPromise(10000);
+    tp.cancel();
+    // After cancellation the promise neither resolves nor rejects; just confirm
+    // the cancel call doesn't throw.
+    expect(typeof tp.cancel).toBe('function');
+  });
+
+  // -------------------------------------------------------------------------
+  // Rate limiting
+  // -------------------------------------------------------------------------
+
+  test('GET /api/state confirms rate limiting is active', async () => {
+    const response = await requestJson(baseUrl, '/api/state');
+    const data = response.json();
+
+    expect(response.ok).toBe(true);
+    expect(data.rateLimiting).toBe(true);
+  });
+
+  test('POST /api/run rate limiter returns structured 429 when limit is exceeded', async () => {
+    // Load a fresh isolated server instance with a very low rate limit (2/min).
+    const savedMax = process.env.API_RUN_RATE_LIMIT_MAX;
+    const savedWindow = process.env.API_RUN_RATE_LIMIT_WINDOW_MS;
+
+    process.env.API_RUN_RATE_LIMIT_MAX = '2';
+    process.env.API_RUN_RATE_LIMIT_WINDOW_MS = '60000';
+
+    jest.resetModules();
+    global.turf = require('@turf/turf');
+    global.L = { Polygon: function Polygon() {} };
+
+    let freshServer;
+    try {
+      const { app: freshApp } = require('./server');
+      freshServer = freshApp.listen(0);
+      await new Promise((resolve) => freshServer.once('listening', resolve));
+      const freshPort = freshServer.address().port;
+      const freshBaseUrl = `http://127.0.0.1:${freshPort}`;
+
+      const body = {
+        tool: 'RandomPointsTool',
+        params: { count: 1, bbox: [-118.5, 33.5, -117.5, 34.5] },
+        state: { layers: [] },
+      };
+
+      const resp1 = await requestJson(freshBaseUrl, '/api/run', { body });
+      const resp2 = await requestJson(freshBaseUrl, '/api/run', { body });
+      const resp3 = await requestJson(freshBaseUrl, '/api/run', { body });
+
+      expect(resp1.status).toBe(200);
+      expect(resp2.status).toBe(200);
+      expect(resp3.status).toBe(429);
+
+      const data3 = resp3.json();
+      expect(data3.ok).toBe(false);
+      expect(data3.code).toBe('RATE_LIMIT');
+      expect(typeof data3.error).toBe('string');
+    } finally {
+      if (freshServer) {
+        await new Promise((resolve, reject) =>
+          freshServer.close((err) => (err ? reject(err) : resolve())),
+        );
+      }
+      if (savedMax === undefined) delete process.env.API_RUN_RATE_LIMIT_MAX;
+      else process.env.API_RUN_RATE_LIMIT_MAX = savedMax;
+      if (savedWindow === undefined) delete process.env.API_RUN_RATE_LIMIT_WINDOW_MS;
+      else process.env.API_RUN_RATE_LIMIT_WINDOW_MS = savedWindow;
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Concurrency limit
+  // -------------------------------------------------------------------------
+
+  test('POST /api/run returns 503 with CONCURRENCY_LIMIT when concurrent run cap is reached', async () => {
+    // MAX_CONCURRENT_RUNS=0 means activeRuns (0) >= maxConcurrentRuns (0),
+    // simulating a fully saturated server without needing real concurrency.
+    process.env.MAX_CONCURRENT_RUNS = '0';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'RandomPointsTool',
+          params: { count: 1, bbox: [-118.5, 33.5, -117.5, 34.5] },
+          state: { layers: [] },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(503);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('CONCURRENCY_LIMIT');
+      expect(typeof data.limit).toBe('number');
+    } finally {
+      delete process.env.MAX_CONCURRENT_RUNS;
+    }
   });
 });

@@ -36,7 +36,7 @@ function getEnvInt(name, defaultValue) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return defaultValue;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : defaultValue;
+  return Number.isFinite(parsed) && Number.isInteger(parsed) && parsed >= 0 ? parsed : defaultValue;
 }
 
 let rateLimit;
@@ -56,13 +56,15 @@ const maxRequestBytes = getEnvInt('MAX_REQUEST_BYTES', DEFAULT_MAX_REQUEST_BYTES
 app.use(express.json({ limit: maxRequestBytes }));
 
 // Rate-limit the spatial run endpoint (defined early so it can be applied to the route handler)
-const apiRunLimiter = rateLimit({
-  windowMs: getEnvInt('API_RUN_RATE_LIMIT_WINDOW_MS', DEFAULT_API_RUN_RATE_LIMIT_WINDOW_MS),
-  max: getEnvInt('API_RUN_RATE_LIMIT_MAX', DEFAULT_API_RUN_RATE_LIMIT_MAX),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { ok: false, error: 'Too many spatial requests — try again shortly.', code: 'RATE_LIMIT' },
-});
+const apiRunLimiter = rateLimit
+  ? rateLimit({
+    windowMs: getEnvInt('API_RUN_RATE_LIMIT_WINDOW_MS', DEFAULT_API_RUN_RATE_LIMIT_WINDOW_MS),
+    max: getEnvInt('API_RUN_RATE_LIMIT_MAX', DEFAULT_API_RUN_RATE_LIMIT_MAX),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, error: 'Too many spatial requests — try again shortly.', code: 'RATE_LIMIT' },
+  })
+  : (req, res, next) => next();
 
 function countGeojsonFeatures(geojson) {
   if (!geojson || typeof geojson !== 'object') return 0;
@@ -118,9 +120,15 @@ function countLayersVertices(layers) {
 let activeRuns = 0;
 
 function createTimeoutPromise(ms) {
-  return new Promise((_resolve, reject) =>
-    setTimeout(() => reject(Object.assign(new Error('Tool execution timed out.'), { statusCode: 503, code: 'EXECUTION_TIMEOUT' })), ms),
-  );
+  let timeoutHandle;
+  const promise = new Promise((_resolve, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(Object.assign(new Error('Tool execution timed out.'), { statusCode: 503, code: 'EXECUTION_TIMEOUT' })),
+      ms,
+    );
+  });
+  promise.cancel = () => clearTimeout(timeoutHandle);
+  return promise;
 }
 
 function deepClone(value) {
@@ -736,7 +744,8 @@ app.post('/api/run', apiRunLimiter, async (req, res) => {
             state: spatialRequest.state,
             spatial,
           });
-      rawResult = await Promise.race([toolWork, createTimeoutPromise(toolTimeoutMs)]);
+      const timeoutPromise = createTimeoutPromise(toolTimeoutMs);
+      rawResult = await Promise.race([toolWork, timeoutPromise]).finally(() => timeoutPromise.cancel());
     } finally {
       activeRuns -= 1;
     }
@@ -779,6 +788,7 @@ app.post('/api/run', apiRunLimiter, async (req, res) => {
     res.status(statusCode).json({
       ok: false,
       error: error.message || 'Failed to run tool',
+      ...(error.code ? { code: error.code } : {}),
       ...(error.details ? { details: error.details } : {}),
     });
   }
@@ -1004,6 +1014,7 @@ module.exports = {
   getOllamaModels,
   normalizeOllamaUrl,
   parseModelJson,
+  createTimeoutPromise,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MAX_LAYERS,
   DEFAULT_MAX_FEATURES,

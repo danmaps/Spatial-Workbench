@@ -31,6 +31,9 @@ const DEFAULT_TOOL_TIMEOUT_MS = 30000; // 30 s
 const DEFAULT_MAX_CONCURRENT_RUNS = 10;
 const DEFAULT_API_RUN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const DEFAULT_API_RUN_RATE_LIMIT_MAX = 60;
+// Tool-specific parameter bounds
+const DEFAULT_MAX_RANDOM_POINTS = 10000;
+const DEFAULT_MAX_BUFFER_DISTANCE = 500; // in the requested units
 
 function getEnvInt(name, defaultValue) {
   const raw = process.env[name];
@@ -95,8 +98,12 @@ function countGeojsonVertices(geojson) {
   }
 
   function countGeometry(geometry) {
-    if (!geometry || !geometry.coordinates) return;
-    countCoords(geometry.coordinates);
+    if (!geometry) return;
+    if (geometry.type === 'GeometryCollection') {
+      (geometry.geometries || []).forEach(countGeometry);
+    } else if (geometry.coordinates) {
+      countCoords(geometry.coordinates);
+    }
   }
 
   if (geojson.type === 'FeatureCollection') {
@@ -465,7 +472,7 @@ app.get('/api/state', (_req, res) => {
     rateLimiting: rateLimit !== null && typeof rateLimit === 'function',
     timestamp: new Date().toISOString(),
     workloadLimits: {
-      maxRequestBytes: getEnvInt('MAX_REQUEST_BYTES', DEFAULT_MAX_REQUEST_BYTES),
+      maxRequestBytes,
       maxLayers: getEnvInt('MAX_LAYERS', DEFAULT_MAX_LAYERS),
       maxFeatures: getEnvInt('MAX_FEATURES', DEFAULT_MAX_FEATURES),
       maxVertices: getEnvInt('MAX_VERTICES', DEFAULT_MAX_VERTICES),
@@ -665,26 +672,35 @@ app.post('/api/run', apiRunLimiter, async (req, res) => {
       });
     }
 
-    const totalFeatures = requestLayers.reduce((sum, l) => sum + countGeojsonFeatures(l?.geojson), 0);
-    if (totalFeatures > maxFeatures) {
-      return res.status(422).json({
-        ok: false,
-        error: `Request exceeds the maximum allowed feature count of ${maxFeatures}.`,
-        code: 'FEATURE_LIMIT',
-        limit: maxFeatures,
-        received: totalFeatures,
-      });
+    // Tool-specific parameter bounds — checked before any expensive work
+    const toolKey = body.tool;
+    if (toolKey === 'RandomPointsTool') {
+      const maxRandomPoints = getEnvInt('MAX_RANDOM_POINTS', DEFAULT_MAX_RANDOM_POINTS);
+      const requestedCount = parseInt(body.params?.['Points Count'], 10);
+      if (requestedCount > maxRandomPoints) {
+        return res.status(422).json({
+          ok: false,
+          error: `RandomPointsTool: "Points Count" (${requestedCount}) exceeds the maximum of ${maxRandomPoints}.`,
+          code: 'PARAM_LIMIT',
+          param: 'Points Count',
+          limit: maxRandomPoints,
+          received: requestedCount,
+        });
+      }
     }
-
-    const totalVertices = countLayersVertices(requestLayers);
-    if (totalVertices > maxVertices) {
-      return res.status(422).json({
-        ok: false,
-        error: `Request exceeds the maximum allowed vertex/coordinate count of ${maxVertices}.`,
-        code: 'VERTEX_LIMIT',
-        limit: maxVertices,
-        received: totalVertices,
-      });
+    if (toolKey === 'BufferTool') {
+      const maxBufferDistance = getEnvInt('MAX_BUFFER_DISTANCE', DEFAULT_MAX_BUFFER_DISTANCE);
+      const requestedDistance = parseFloat(body.params?.['Distance']);
+      if (Number.isFinite(requestedDistance) && Math.abs(requestedDistance) > maxBufferDistance) {
+        return res.status(422).json({
+          ok: false,
+          error: `BufferTool: "Distance" (${requestedDistance}) exceeds the maximum absolute value of ${maxBufferDistance}.`,
+          code: 'PARAM_LIMIT',
+          param: 'Distance',
+          limit: maxBufferDistance,
+          received: requestedDistance,
+        });
+      }
     }
 
     // -----------------------------------------------------------------------
@@ -712,6 +728,35 @@ app.post('/api/run', apiRunLimiter, async (req, res) => {
       });
     }
 
+    // Feature and vertex limits are enforced after dataset-reference resolution
+    // so that stored GeoJSON and featureCollection-mode state are both counted.
+    const resolvedLayers = Array.isArray(resolvedState?.layers) ? resolvedState.layers : [];
+    const totalFeatures =
+      resolvedLayers.reduce((sum, l) => sum + countGeojsonFeatures(l?.geojson), 0) +
+      countGeojsonFeatures(resolvedState?.featureCollection);
+    if (totalFeatures > maxFeatures) {
+      return res.status(422).json({
+        ok: false,
+        error: `Request exceeds the maximum allowed feature count of ${maxFeatures}.`,
+        code: 'FEATURE_LIMIT',
+        limit: maxFeatures,
+        received: totalFeatures,
+      });
+    }
+
+    const totalVertices =
+      countLayersVertices(resolvedLayers) +
+      countGeojsonVertices(resolvedState?.featureCollection);
+    if (totalVertices > maxVertices) {
+      return res.status(422).json({
+        ok: false,
+        error: `Request exceeds the maximum allowed vertex/coordinate count of ${maxVertices}.`,
+        code: 'VERTEX_LIMIT',
+        limit: maxVertices,
+        received: totalVertices,
+      });
+    }
+
     const spatialRequest = normalizeSpatialRequest({
       toolKey: body.tool,
       state: resolvedState,
@@ -730,24 +775,34 @@ app.post('/api/run', apiRunLimiter, async (req, res) => {
     activeRuns += 1;
     const startedAt = new Date();
     let rawResult;
+    const toolWork = spatialRequest.state?.featureCollection
+      ? runToolHeadlessly({
+          toolKey: body.tool,
+          params: body.params,
+          state: spatialRequest.state,
+          spatial,
+        })
+      : runHeadlessTool({
+          tool: body.tool,
+          params: body.params,
+          state: spatialRequest.state,
+          spatial,
+        });
+    const timeoutPromise = createTimeoutPromise(toolTimeoutMs);
     try {
-      const toolWork = spatialRequest.state?.featureCollection
-        ? runToolHeadlessly({
-            toolKey: body.tool,
-            params: body.params,
-            state: spatialRequest.state,
-            spatial,
-          })
-        : runHeadlessTool({
-            tool: body.tool,
-            params: body.params,
-            state: spatialRequest.state,
-            spatial,
-          });
-      const timeoutPromise = createTimeoutPromise(toolTimeoutMs);
-      rawResult = await Promise.race([toolWork, timeoutPromise]).finally(() => timeoutPromise.cancel());
-    } finally {
+      rawResult = await Promise.race([toolWork, timeoutPromise]);
       activeRuns -= 1;
+    } catch (error) {
+      if (error.code === 'EXECUTION_TIMEOUT') {
+        // The underlying toolWork continues running; decrement only after it settles
+        // so activeRuns accurately reflects in-flight resource usage.
+        toolWork.then(() => { activeRuns -= 1; }, () => { activeRuns -= 1; });
+      } else {
+        activeRuns -= 1;
+      }
+      throw error;
+    } finally {
+      try { timeoutPromise.cancel(); } catch (_) { /* noop */ }
     }
     const finishedAt = new Date();
     const referenceResponse = buildReferenceResponseState({
@@ -1021,4 +1076,6 @@ module.exports = {
   DEFAULT_MAX_VERTICES,
   DEFAULT_TOOL_TIMEOUT_MS,
   DEFAULT_MAX_CONCURRENT_RUNS,
+  DEFAULT_MAX_RANDOM_POINTS,
+  DEFAULT_MAX_BUFFER_DISTANCE,
 };

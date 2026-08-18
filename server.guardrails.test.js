@@ -24,6 +24,8 @@ const {
   DEFAULT_MAX_VERTICES,
   DEFAULT_TOOL_TIMEOUT_MS,
   DEFAULT_MAX_CONCURRENT_RUNS,
+  DEFAULT_MAX_RANDOM_POINTS,
+  DEFAULT_MAX_BUFFER_DISTANCE,
 } = require('./server');
 
 // ---------------------------------------------------------------------------
@@ -142,6 +144,8 @@ describe('API workload guardrails', () => {
     expect(DEFAULT_MAX_VERTICES).toBeGreaterThan(0);
     expect(DEFAULT_TOOL_TIMEOUT_MS).toBeGreaterThan(0);
     expect(DEFAULT_MAX_CONCURRENT_RUNS).toBeGreaterThan(0);
+    expect(DEFAULT_MAX_RANDOM_POINTS).toBeGreaterThan(0);
+    expect(DEFAULT_MAX_BUFFER_DISTANCE).toBeGreaterThan(0);
     expect(Number.isInteger(DEFAULT_MAX_REQUEST_BYTES)).toBe(true);
     expect(Number.isInteger(DEFAULT_MAX_LAYERS)).toBe(true);
   });
@@ -352,13 +356,14 @@ describe('API workload guardrails', () => {
     const response = await requestJson(baseUrl, '/api/run', {
       body: {
         tool: 'RandomPointsTool',
-        params: { count: 5, bbox: [-118.5, 33.5, -117.5, 34.5] },
-        state: { layers: [] },
+        params: { 'Points Count': 5 },
+        state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
       },
     });
     const data = response.json();
 
     expect(response.ok).toBe(true);
+    expect(data.ok).toBe(true);
     // execution receipt is always included in successful responses
     expect(data.execution).toBeDefined();
     expect(data.execution.durationMs).toBeLessThan(DEFAULT_TOOL_TIMEOUT_MS);
@@ -418,8 +423,8 @@ describe('API workload guardrails', () => {
 
       const body = {
         tool: 'RandomPointsTool',
-        params: { count: 1, bbox: [-118.5, 33.5, -117.5, 34.5] },
-        state: { layers: [] },
+        params: { 'Points Count': 1 },
+        state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
       };
 
       const resp1 = await requestJson(freshBaseUrl, '/api/run', { body });
@@ -459,8 +464,8 @@ describe('API workload guardrails', () => {
       const response = await requestJson(baseUrl, '/api/run', {
         body: {
           tool: 'RandomPointsTool',
-          params: { count: 1, bbox: [-118.5, 33.5, -117.5, 34.5] },
-          state: { layers: [] },
+          params: { 'Points Count': 1 },
+          state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
         },
       });
       const data = response.json();
@@ -472,5 +477,161 @@ describe('API workload guardrails', () => {
     } finally {
       delete process.env.MAX_CONCURRENT_RUNS;
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // GeometryCollection vertex counting
+  // -------------------------------------------------------------------------
+
+  test('POST /api/run counts vertices inside a GeometryCollection against the vertex limit', async () => {
+    process.env.MAX_VERTICES = '4';
+    try {
+      // GeometryCollection with two LineStrings (3 + 3 = 6 vertices) exceeds limit of 4
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'layer-gc' },
+          state: {
+            layers: [{
+              id: 'layer-gc',
+              name: 'GeometryCollection layer',
+              geojson: {
+                type: 'FeatureCollection',
+                features: [{
+                  type: 'Feature',
+                  geometry: {
+                    type: 'GeometryCollection',
+                    geometries: [
+                      { type: 'LineString', coordinates: [[-118, 34], [-117, 34], [-116, 34]] },
+                      { type: 'LineString', coordinates: [[-118, 35], [-117, 35], [-116, 35]] },
+                    ],
+                  },
+                  properties: {},
+                }],
+              },
+            }],
+          },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('VERTEX_LIMIT');
+      expect(data.limit).toBe(4);
+      expect(data.received).toBe(6);
+    } finally {
+      delete process.env.MAX_VERTICES;
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // featureCollection-mode limits (stateMode: 'featureCollection')
+  // -------------------------------------------------------------------------
+
+  test('POST /api/run counts featureCollection features against the feature limit', async () => {
+    process.env.MAX_FEATURES = '3';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'layer-1' },
+          state: {
+            layers: [],
+            featureCollection: makeFeatureCollection(4),
+          },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('FEATURE_LIMIT');
+      expect(data.limit).toBe(3);
+      expect(data.received).toBe(4);
+    } finally {
+      delete process.env.MAX_FEATURES;
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Tool-specific parameter bounds
+  // -------------------------------------------------------------------------
+
+  test('POST /api/run returns 422 with PARAM_LIMIT when RandomPointsTool "Points Count" exceeds MAX_RANDOM_POINTS', async () => {
+    process.env.MAX_RANDOM_POINTS = '10';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'RandomPointsTool',
+          params: { 'Points Count': 11 },
+          state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('PARAM_LIMIT');
+      expect(data.param).toBe('Points Count');
+      expect(data.limit).toBe(10);
+      expect(data.received).toBe(11);
+    } finally {
+      delete process.env.MAX_RANDOM_POINTS;
+    }
+  });
+
+  test('POST /api/run accepts RandomPointsTool request exactly at MAX_RANDOM_POINTS', async () => {
+    process.env.MAX_RANDOM_POINTS = '5';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'RandomPointsTool',
+          params: { 'Points Count': 5 },
+          state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+        },
+      });
+      const data = response.json();
+
+      expect(data.code).not.toBe('PARAM_LIMIT');
+      expect(data.ok).toBe(true);
+    } finally {
+      delete process.env.MAX_RANDOM_POINTS;
+    }
+  });
+
+  test('POST /api/run returns 422 with PARAM_LIMIT when BufferTool "Distance" exceeds MAX_BUFFER_DISTANCE', async () => {
+    process.env.MAX_BUFFER_DISTANCE = '100';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'BufferTool',
+          params: { Distance: 101, Units: 'miles' },
+          state: {
+            layers: [{
+              id: 'layer-1',
+              name: 'Points',
+              geojson: makeFeatureCollection(1),
+            }],
+          },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('PARAM_LIMIT');
+      expect(data.param).toBe('Distance');
+      expect(data.limit).toBe(100);
+    } finally {
+      delete process.env.MAX_BUFFER_DISTANCE;
+    }
+  });
+
+  test('DEFAULT_MAX_RANDOM_POINTS and DEFAULT_MAX_BUFFER_DISTANCE are exported positive integers', () => {
+    expect(DEFAULT_MAX_RANDOM_POINTS).toBeGreaterThan(0);
+    expect(Number.isInteger(DEFAULT_MAX_RANDOM_POINTS)).toBe(true);
+    expect(DEFAULT_MAX_BUFFER_DISTANCE).toBeGreaterThan(0);
+    expect(Number.isInteger(DEFAULT_MAX_BUFFER_DISTANCE)).toBe(true);
   });
 });

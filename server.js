@@ -20,6 +20,28 @@ const { createInMemoryDatasetStore, formatDatasetRef, parseDatasetRef } = requir
 const MAX_AI_TOKENS = 4096;
 const DEFAULT_DATASET_TTL_MS = 15 * 60 * 1000;
 
+// ---------------------------------------------------------------------------
+// Workload guardrail defaults — all overridable via environment variables
+// ---------------------------------------------------------------------------
+const DEFAULT_MAX_REQUEST_BYTES = 5 * 1024 * 1024; // 5 MB
+const DEFAULT_MAX_LAYERS = 20;
+const DEFAULT_MAX_FEATURES = 50000;
+const DEFAULT_MAX_VERTICES = 2000000;
+const DEFAULT_TOOL_TIMEOUT_MS = 30000; // 30 s
+const DEFAULT_MAX_CONCURRENT_RUNS = 10;
+const DEFAULT_API_RUN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const DEFAULT_API_RUN_RATE_LIMIT_MAX = 60;
+// Tool-specific parameter bounds
+const DEFAULT_MAX_RANDOM_POINTS = 10000;
+const DEFAULT_MAX_BUFFER_DISTANCE = 500; // in the requested units
+
+function getEnvInt(name, defaultValue) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return defaultValue;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && Number.isInteger(parsed) && parsed >= 0 ? parsed : defaultValue;
+}
+
 let rateLimit;
 try {
   rateLimit = require('express-rate-limit');
@@ -33,7 +55,19 @@ const datasetStore = createInMemoryDatasetStore({
   defaultTtlMs: Number(process.env.DATASET_TTL_MS) > 0 ? Number(process.env.DATASET_TTL_MS) : DEFAULT_DATASET_TTL_MS,
 });
 
-app.use(express.json());
+const maxRequestBytes = getEnvInt('MAX_REQUEST_BYTES', DEFAULT_MAX_REQUEST_BYTES);
+app.use(express.json({ limit: maxRequestBytes }));
+
+// Rate-limit the spatial run endpoint (defined early so it can be applied to the route handler)
+const apiRunLimiter = rateLimit
+  ? rateLimit({
+    windowMs: getEnvInt('API_RUN_RATE_LIMIT_WINDOW_MS', DEFAULT_API_RUN_RATE_LIMIT_WINDOW_MS),
+    max: getEnvInt('API_RUN_RATE_LIMIT_MAX', DEFAULT_API_RUN_RATE_LIMIT_MAX),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, error: 'Too many spatial requests — try again shortly.', code: 'RATE_LIMIT' },
+  })
+  : (req, res, next) => next();
 
 function countGeojsonFeatures(geojson) {
   if (!geojson || typeof geojson !== 'object') return 0;
@@ -48,6 +82,60 @@ function countGeojsonFeatures(geojson) {
 function getLayerFeatureCount(state, layerId) {
   const layer = Array.isArray(state?.layers) ? state.layers.find((entry) => entry.id === layerId) : null;
   return countGeojsonFeatures(layer?.geojson);
+}
+
+function countGeojsonVertices(geojson) {
+  if (!geojson || typeof geojson !== 'object') return 0;
+  let total = 0;
+
+  function countCoords(coords) {
+    if (!Array.isArray(coords)) return;
+    if (typeof coords[0] === 'number') {
+      total += 1;
+    } else {
+      coords.forEach(countCoords);
+    }
+  }
+
+  function countGeometry(geometry) {
+    if (!geometry) return;
+    if (geometry.type === 'GeometryCollection') {
+      (geometry.geometries || []).forEach(countGeometry);
+    } else if (geometry.coordinates) {
+      countCoords(geometry.coordinates);
+    }
+  }
+
+  if (geojson.type === 'FeatureCollection') {
+    (geojson.features || []).forEach((f) => countGeometry(f?.geometry));
+  } else if (geojson.type === 'Feature') {
+    countGeometry(geojson.geometry);
+  } else {
+    countGeometry(geojson);
+  }
+
+  return total;
+}
+
+function countLayersVertices(layers) {
+  return (layers || []).reduce((sum, layer) => sum + countGeojsonVertices(layer?.geojson), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency semaphore for POST /api/run
+// ---------------------------------------------------------------------------
+let activeRuns = 0;
+
+function createTimeoutPromise(ms) {
+  let timeoutHandle;
+  const promise = new Promise((_resolve, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(Object.assign(new Error('Tool execution timed out.'), { statusCode: 503, code: 'EXECUTION_TIMEOUT' })),
+      ms,
+    );
+  });
+  promise.cancel = () => clearTimeout(timeoutHandle);
+  return promise;
 }
 
 function deepClone(value) {
@@ -383,6 +471,14 @@ app.get('/api/state', (_req, res) => {
     uptime: process.uptime(),
     rateLimiting: rateLimit !== null && typeof rateLimit === 'function',
     timestamp: new Date().toISOString(),
+    workloadLimits: {
+      maxRequestBytes,
+      maxLayers: getEnvInt('MAX_LAYERS', DEFAULT_MAX_LAYERS),
+      maxFeatures: getEnvInt('MAX_FEATURES', DEFAULT_MAX_FEATURES),
+      maxVertices: getEnvInt('MAX_VERTICES', DEFAULT_MAX_VERTICES),
+      toolTimeoutMs: getEnvInt('TOOL_TIMEOUT_MS', DEFAULT_TOOL_TIMEOUT_MS),
+      maxConcurrentRuns: getEnvInt('MAX_CONCURRENT_RUNS', DEFAULT_MAX_CONCURRENT_RUNS),
+    },
     notes: [
       'Execution is request-scoped. No server-side session state is persisted between calls.',
       'Pass state into POST /api/run and receive the updated state back in the response.',
@@ -543,9 +639,72 @@ app.get('/api/run', (_req, res) => {
   });
 });
 
-app.post('/api/run', async (req, res) => {
+app.post('/api/run', apiRunLimiter, async (req, res) => {
   try {
+    // -----------------------------------------------------------------------
+    // Workload guardrails
+    // -----------------------------------------------------------------------
+    const maxLayers = getEnvInt('MAX_LAYERS', DEFAULT_MAX_LAYERS);
+    const maxFeatures = getEnvInt('MAX_FEATURES', DEFAULT_MAX_FEATURES);
+    const maxVertices = getEnvInt('MAX_VERTICES', DEFAULT_MAX_VERTICES);
+    const toolTimeoutMs = getEnvInt('TOOL_TIMEOUT_MS', DEFAULT_TOOL_TIMEOUT_MS);
+    const maxConcurrentRuns = getEnvInt('MAX_CONCURRENT_RUNS', DEFAULT_MAX_CONCURRENT_RUNS);
+
+    if (activeRuns >= maxConcurrentRuns) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Server capacity reached. Too many concurrent spatial requests — try again shortly.',
+        code: 'CONCURRENCY_LIMIT',
+        limit: maxConcurrentRuns,
+      });
+    }
+
     const body = req.body || {};
+
+    const requestLayers = Array.isArray(body.state?.layers) ? body.state.layers : [];
+    if (requestLayers.length > maxLayers) {
+      return res.status(422).json({
+        ok: false,
+        error: `Request exceeds the maximum allowed layer count of ${maxLayers}.`,
+        code: 'LAYER_LIMIT',
+        limit: maxLayers,
+        received: requestLayers.length,
+      });
+    }
+
+    // Tool-specific parameter bounds — checked before any expensive work
+    const toolKey = body.tool;
+    if (toolKey === 'RandomPointsTool') {
+      const maxRandomPoints = getEnvInt('MAX_RANDOM_POINTS', DEFAULT_MAX_RANDOM_POINTS);
+      const requestedCount = parseInt(body.params?.['Points Count'], 10);
+      if (requestedCount > maxRandomPoints) {
+        return res.status(422).json({
+          ok: false,
+          error: `RandomPointsTool: "Points Count" (${requestedCount}) exceeds the maximum of ${maxRandomPoints}.`,
+          code: 'PARAM_LIMIT',
+          param: 'Points Count',
+          limit: maxRandomPoints,
+          received: requestedCount,
+        });
+      }
+    }
+    if (toolKey === 'BufferTool') {
+      const maxBufferDistance = getEnvInt('MAX_BUFFER_DISTANCE', DEFAULT_MAX_BUFFER_DISTANCE);
+      const requestedDistance = parseFloat(body.params?.['Distance']);
+      if (Number.isFinite(requestedDistance) && Math.abs(requestedDistance) > maxBufferDistance) {
+        return res.status(422).json({
+          ok: false,
+          error: `BufferTool: "Distance" (${requestedDistance}) exceeds the maximum absolute value of ${maxBufferDistance}.`,
+          code: 'PARAM_LIMIT',
+          param: 'Distance',
+          limit: maxBufferDistance,
+          received: requestedDistance,
+        });
+      }
+    }
+
+    // -----------------------------------------------------------------------
+
     const ownerId = getDatasetOwnerId(req);
     const datasetTtlMs = getDatasetTtlMs(body.datasetTtlMs);
     if (body.datasetTtlMs !== undefined && datasetTtlMs === null) {
@@ -569,6 +728,35 @@ app.post('/api/run', async (req, res) => {
       });
     }
 
+    // Feature and vertex limits are enforced after dataset-reference resolution
+    // so that stored GeoJSON and featureCollection-mode state are both counted.
+    const resolvedLayers = Array.isArray(resolvedState?.layers) ? resolvedState.layers : [];
+    const totalFeatures =
+      resolvedLayers.reduce((sum, l) => sum + countGeojsonFeatures(l?.geojson), 0) +
+      countGeojsonFeatures(resolvedState?.featureCollection);
+    if (totalFeatures > maxFeatures) {
+      return res.status(422).json({
+        ok: false,
+        error: `Request exceeds the maximum allowed feature count of ${maxFeatures}.`,
+        code: 'FEATURE_LIMIT',
+        limit: maxFeatures,
+        received: totalFeatures,
+      });
+    }
+
+    const totalVertices =
+      countLayersVertices(resolvedLayers) +
+      countGeojsonVertices(resolvedState?.featureCollection);
+    if (totalVertices > maxVertices) {
+      return res.status(422).json({
+        ok: false,
+        error: `Request exceeds the maximum allowed vertex/coordinate count of ${maxVertices}.`,
+        code: 'VERTEX_LIMIT',
+        limit: maxVertices,
+        received: totalVertices,
+      });
+    }
+
     const spatialRequest = normalizeSpatialRequest({
       toolKey: body.tool,
       state: resolvedState,
@@ -584,20 +772,38 @@ app.post('/api/run', async (req, res) => {
       });
     }
 
+    activeRuns += 1;
     const startedAt = new Date();
-    const rawResult = spatialRequest.state?.featureCollection
-      ? await runToolHeadlessly({
+    let rawResult;
+    const toolWork = spatialRequest.state?.featureCollection
+      ? runToolHeadlessly({
           toolKey: body.tool,
           params: body.params,
           state: spatialRequest.state,
           spatial,
         })
-      : await runHeadlessTool({
+      : runHeadlessTool({
           tool: body.tool,
           params: body.params,
           state: spatialRequest.state,
           spatial,
         });
+    const timeoutPromise = createTimeoutPromise(toolTimeoutMs);
+    try {
+      rawResult = await Promise.race([toolWork, timeoutPromise]);
+      activeRuns -= 1;
+    } catch (error) {
+      if (error.code === 'EXECUTION_TIMEOUT') {
+        // The underlying toolWork continues running; decrement only after it settles
+        // so activeRuns accurately reflects in-flight resource usage.
+        toolWork.then(() => { activeRuns -= 1; }, () => { activeRuns -= 1; });
+      } else {
+        activeRuns -= 1;
+      }
+      throw error;
+    } finally {
+      try { timeoutPromise.cancel(); } catch (_) { /* noop */ }
+    }
     const finishedAt = new Date();
     const referenceResponse = buildReferenceResponseState({
       requestState: body.state,
@@ -637,6 +843,7 @@ app.post('/api/run', async (req, res) => {
     res.status(statusCode).json({
       ok: false,
       error: error.message || 'Failed to run tool',
+      ...(error.code ? { code: error.code } : {}),
       ...(error.details ? { details: error.details } : {}),
     });
   }
@@ -836,6 +1043,20 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
+// Handle payload-too-large errors from express.json with a structured response
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({
+      ok: false,
+      error: `Request payload exceeds the maximum allowed size of ${getEnvInt('MAX_REQUEST_BYTES', DEFAULT_MAX_REQUEST_BYTES)} bytes.`,
+      code: 'PAYLOAD_TOO_LARGE',
+      limit: getEnvInt('MAX_REQUEST_BYTES', DEFAULT_MAX_REQUEST_BYTES),
+    });
+  }
+  next(err);
+});
+
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
@@ -848,4 +1069,13 @@ module.exports = {
   getOllamaModels,
   normalizeOllamaUrl,
   parseModelJson,
+  createTimeoutPromise,
+  DEFAULT_MAX_REQUEST_BYTES,
+  DEFAULT_MAX_LAYERS,
+  DEFAULT_MAX_FEATURES,
+  DEFAULT_MAX_VERTICES,
+  DEFAULT_TOOL_TIMEOUT_MS,
+  DEFAULT_MAX_CONCURRENT_RUNS,
+  DEFAULT_MAX_RANDOM_POINTS,
+  DEFAULT_MAX_BUFFER_DISTANCE,
 };

@@ -57,9 +57,9 @@ const datasetStore = createInMemoryDatasetStore({
 });
 
 const maxRequestBytes = getEnvInt('MAX_REQUEST_BYTES', DEFAULT_MAX_REQUEST_BYTES);
-app.use(express.json({ limit: maxRequestBytes }));
 
-// Rate-limit the spatial run endpoint (defined early so it can be applied to the route handler)
+// Rate-limit the spatial run endpoint. Mounted before the body parser so that
+// throttled callers are rejected before the payload is parsed or executed.
 const apiRunLimiter = rateLimit
   ? rateLimit({
     windowMs: getEnvInt('API_RUN_RATE_LIMIT_WINDOW_MS', DEFAULT_API_RUN_RATE_LIMIT_WINDOW_MS),
@@ -69,6 +69,12 @@ const apiRunLimiter = rateLimit
     message: { ok: false, error: 'Too many spatial requests — try again shortly.', code: 'RATE_LIMIT' },
   })
   : (req, res, next) => next();
+
+app.use('/api/run', (req, res, next) => (
+  req.method === 'POST' ? apiRunLimiter(req, res, next) : next()
+));
+
+app.use(express.json({ limit: maxRequestBytes }));
 
 function countGeojsonFeatures(geojson) {
   if (!geojson || typeof geojson !== 'object') return 0;
@@ -650,7 +656,7 @@ app.get('/api/run', (_req, res) => {
   });
 });
 
-app.post('/api/run', apiRunLimiter, async (req, res) => {
+app.post('/api/run', async (req, res) => {
   try {
     // -----------------------------------------------------------------------
     // Workload guardrails

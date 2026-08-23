@@ -424,7 +424,7 @@ describe('API workload guardrails', () => {
   });
 
   test('timeout does not block unrelated parent-process requests while worker is running', async () => {
-    process.env.TOOL_TIMEOUT_MS = '25';
+    process.env.TOOL_TIMEOUT_MS = '50';
     try {
       const timedOutRun = requestJson(baseUrl, '/api/run', {
         body: {
@@ -434,12 +434,13 @@ describe('API workload guardrails', () => {
             layers: [{
               id: 'dense',
               name: 'Dense Polygon',
-              geojson: makeDensePolygonFeatureCollection(50000),
+              geojson: makeDensePolygonFeatureCollection(),
             }],
           },
         },
       });
 
+      await waitForActiveRuns(1);
       const stateStartedAt = Date.now();
       const stateResponse = await requestJson(baseUrl, '/api/state');
       const stateDurationMs = Date.now() - stateStartedAt;
@@ -447,6 +448,8 @@ describe('API workload guardrails', () => {
       const timedOutData = timedOutResponse.json();
 
       expect(stateResponse.status).toBe(200);
+      // Keep this comfortably below the heavy tool runtime (~500ms in local CI)
+      // so this fails if synchronous execution ever blocks the parent loop again.
       expect(stateDurationMs).toBeLessThan(400);
       expect(timedOutResponse.status).toBe(503);
       expect(timedOutData.code).toBe('EXECUTION_TIMEOUT');

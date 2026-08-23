@@ -15,6 +15,7 @@ const {
 const { requestStructuredData } = require('./js/ai/requestStructuredData');
 const { getHeadlessToolCatalog, runHeadlessTool } = require('./js/headless-runtime');
 const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
+const { runToolInWorker, getActiveWorkerCount } = require('./js/runtime/workerExecutor');
 const { createSpatialSession, normalizeSpatialRequest, SPATIAL_METADATA } = require('./js/spatial');
 const { createInMemoryDatasetStore, formatDatasetRef, parseDatasetRef } = require('./js/runtime/datasetStore');
 const MAX_AI_TOKENS = 4096;
@@ -121,22 +122,6 @@ function countLayersVertices(layers) {
   return (layers || []).reduce((sum, layer) => sum + countGeojsonVertices(layer?.geojson), 0);
 }
 
-// ---------------------------------------------------------------------------
-// Concurrency semaphore for POST /api/run
-// ---------------------------------------------------------------------------
-let activeRuns = 0;
-
-function createTimeoutPromise(ms) {
-  let timeoutHandle;
-  const promise = new Promise((_resolve, reject) => {
-    timeoutHandle = setTimeout(
-      () => reject(Object.assign(new Error('Tool execution timed out.'), { statusCode: 503, code: 'EXECUTION_TIMEOUT' })),
-      ms,
-    );
-  });
-  promise.cancel = () => clearTimeout(timeoutHandle);
-  return promise;
-}
 
 function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -478,11 +463,37 @@ app.get('/api/state', (_req, res) => {
       maxVertices: getEnvInt('MAX_VERTICES', DEFAULT_MAX_VERTICES),
       toolTimeoutMs: getEnvInt('TOOL_TIMEOUT_MS', DEFAULT_TOOL_TIMEOUT_MS),
       maxConcurrentRuns: getEnvInt('MAX_CONCURRENT_RUNS', DEFAULT_MAX_CONCURRENT_RUNS),
+      maxRandomPoints: getEnvInt('MAX_RANDOM_POINTS', DEFAULT_MAX_RANDOM_POINTS),
+      maxBufferDistance: getEnvInt('MAX_BUFFER_DISTANCE', DEFAULT_MAX_BUFFER_DISTANCE),
+    },
+    limitConfiguration: {
+      // Read per request, so changes take effect without a restart.
+      dynamic: [
+        'MAX_LAYERS',
+        'MAX_FEATURES',
+        'MAX_VERTICES',
+        'TOOL_TIMEOUT_MS',
+        'MAX_CONCURRENT_RUNS',
+        'MAX_RANDOM_POINTS',
+        'MAX_BUFFER_DISTANCE',
+      ],
+      // Bound to middleware constructed at startup; a restart is required.
+      startupOnly: [
+        'MAX_REQUEST_BYTES',
+        'API_RUN_RATE_LIMIT_MAX',
+        'API_RUN_RATE_LIMIT_WINDOW_MS',
+      ],
+    },
+    execution: {
+      isolation: 'worker-thread',
+      activeRuns: getActiveWorkerCount(),
     },
     notes: [
       'Execution is request-scoped. No server-side session state is persisted between calls.',
       'Pass state into POST /api/run and receive the updated state back in the response.',
       'Use /api/datasets to register large GeoJSON payloads and reference them by handle across calls.',
+      'POST /api/run executes in a worker thread that is terminated when TOOL_TIMEOUT_MS elapses.',
+      'workloadLimits values listed in limitConfiguration.dynamic are re-read per request; startupOnly values require a restart.',
     ],
   });
 });
@@ -650,7 +661,7 @@ app.post('/api/run', apiRunLimiter, async (req, res) => {
     const toolTimeoutMs = getEnvInt('TOOL_TIMEOUT_MS', DEFAULT_TOOL_TIMEOUT_MS);
     const maxConcurrentRuns = getEnvInt('MAX_CONCURRENT_RUNS', DEFAULT_MAX_CONCURRENT_RUNS);
 
-    if (activeRuns >= maxConcurrentRuns) {
+    if (getActiveWorkerCount() >= maxConcurrentRuns) {
       return res.status(503).json({
         ok: false,
         error: 'Server capacity reached. Too many concurrent spatial requests — try again shortly.',
@@ -772,38 +783,21 @@ app.post('/api/run', apiRunLimiter, async (req, res) => {
       });
     }
 
-    activeRuns += 1;
     const startedAt = new Date();
-    let rawResult;
-    const toolWork = spatialRequest.state?.featureCollection
-      ? runToolHeadlessly({
-          toolKey: body.tool,
-          params: body.params,
-          state: spatialRequest.state,
-          spatial,
-        })
-      : runHeadlessTool({
-          tool: body.tool,
-          params: body.params,
-          state: spatialRequest.state,
-          spatial,
-        });
-    const timeoutPromise = createTimeoutPromise(toolTimeoutMs);
-    try {
-      rawResult = await Promise.race([toolWork, timeoutPromise]);
-      activeRuns -= 1;
-    } catch (error) {
-      if (error.code === 'EXECUTION_TIMEOUT') {
-        // The underlying toolWork continues running; decrement only after it settles
-        // so activeRuns accurately reflects in-flight resource usage.
-        toolWork.then(() => { activeRuns -= 1; }, () => { activeRuns -= 1; });
-      } else {
-        activeRuns -= 1;
-      }
-      throw error;
-    } finally {
-      try { timeoutPromise.cancel(); } catch (_) { /* noop */ }
-    }
+    // Execution runs in a worker thread so the deadline is enforceable: on
+    // timeout the worker is terminated, which stops synchronous geometry work
+    // instead of leaving it blocking the process. Concurrency is accounted by
+    // live workers, released exactly once when the thread exits.
+    const execution = await runToolInWorker({
+      toolKey: body.tool,
+      params: body.params,
+      state: spatialRequest.state,
+      spatialWarnings: spatial.getWarnings(),
+      timeoutMs: toolTimeoutMs,
+      maxConcurrentRuns,
+    });
+    const rawResult = execution.result;
+    spatial.addWarnings(execution.spatialWarnings);
     const finishedAt = new Date();
     const referenceResponse = buildReferenceResponseState({
       requestState: body.state,
@@ -844,6 +838,7 @@ app.post('/api/run', apiRunLimiter, async (req, res) => {
       ok: false,
       error: error.message || 'Failed to run tool',
       ...(error.code ? { code: error.code } : {}),
+      ...(error.details?.limit !== undefined ? { limit: error.details.limit } : {}),
       ...(error.details ? { details: error.details } : {}),
     });
   }
@@ -1069,7 +1064,6 @@ module.exports = {
   getOllamaModels,
   normalizeOllamaUrl,
   parseModelJson,
-  createTimeoutPromise,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MAX_LAYERS,
   DEFAULT_MAX_FEATURES,

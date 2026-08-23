@@ -17,7 +17,6 @@ global.L = { Polygon: function Polygon() {} };
 
 const {
   app,
-  createTimeoutPromise,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MAX_LAYERS,
   DEFAULT_MAX_FEATURES,
@@ -27,6 +26,7 @@ const {
   DEFAULT_MAX_RANDOM_POINTS,
   DEFAULT_MAX_BUFFER_DISTANCE,
 } = require('./server');
+const { getActiveWorkerCount } = require('./js/runtime/workerExecutor');
 
 // ---------------------------------------------------------------------------
 // HTTP helpers (mirrors server.headless.test.js style)
@@ -112,6 +112,14 @@ function makeLayers(count, featuresPerLayer = 1) {
     name: `Layer ${i + 1}`,
     geojson: makeFeatureCollection(featuresPerLayer),
   }));
+}
+
+async function waitForActiveRuns(expected, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (getActiveWorkerCount() !== expected && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return getActiveWorkerCount();
 }
 
 // ---------------------------------------------------------------------------
@@ -369,24 +377,108 @@ describe('API workload guardrails', () => {
     expect(data.execution.durationMs).toBeLessThan(DEFAULT_TOOL_TIMEOUT_MS);
   });
 
-  test('POST /api/run returns 503 with EXECUTION_TIMEOUT error shape when a tool times out', async () => {
-    // All built-in tools are synchronous and complete as microtasks, so they
-    // always beat the setTimeout-based timeout in a Promise.race. Instead, we
-    // test the timeout mechanism directly via the exported createTimeoutPromise
-    // helper, and separately confirm the route's catch block forwards the
-    // structured error through the HTTP response.
-    await expect(createTimeoutPromise(50)).rejects.toMatchObject({
-      message: 'Tool execution timed out.',
-      code: 'EXECUTION_TIMEOUT',
-      statusCode: 503,
-    });
+  test('POST /api/run returns 503 with EXECUTION_TIMEOUT when the deadline elapses', async () => {
+    // Execution happens in a worker thread; a 1 ms budget always elapses before
+    // the worker can boot and finish, so this exercises the real HTTP timeout
+    // path (including worker termination) rather than a timer in isolation.
+    process.env.TOOL_TIMEOUT_MS = '1';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'RandomPointsTool',
+          params: { 'Points Count': 5 },
+          state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+        },
+      });
+      const data = response.json();
 
-    // Verify the cancel() helper clears the pending timer (no leaked handle).
-    const tp = createTimeoutPromise(10000);
-    tp.cancel();
-    // After cancellation the promise neither resolves nor rejects; just confirm
-    // the cancel call doesn't throw.
-    expect(typeof tp.cancel).toBe('function');
+      expect(response.status).toBe(503);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('EXECUTION_TIMEOUT');
+      expect(typeof data.error).toBe('string');
+    } finally {
+      delete process.env.TOOL_TIMEOUT_MS;
+    }
+  });
+
+  test('concurrency slots are released after a timeout so later requests succeed', async () => {
+    process.env.TOOL_TIMEOUT_MS = '1';
+    try {
+      const timedOut = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'RandomPointsTool',
+          params: { 'Points Count': 5 },
+          state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+        },
+      });
+      expect(timedOut.status).toBe(503);
+    } finally {
+      delete process.env.TOOL_TIMEOUT_MS;
+    }
+
+    // Wait for the terminated worker to fully exit and release its slot.
+    await waitForActiveRuns(0);
+
+    const response = await requestJson(baseUrl, '/api/run', {
+      body: {
+        tool: 'RandomPointsTool',
+        params: { 'Points Count': 5 },
+        state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+      },
+    });
+    const data = response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.ok).toBe(true);
+  });
+
+  test('GET /api/state reports worker-thread isolation and a settled run count', async () => {
+    await waitForActiveRuns(0);
+    const response = await requestJson(baseUrl, '/api/state');
+    const data = response.json();
+
+    expect(data.execution).toEqual(
+      expect.objectContaining({ isolation: 'worker-thread', activeRuns: 0 }),
+    );
+  });
+
+  test('GET /api/state documents which limits are dynamic and which are startup-only', async () => {
+    const response = await requestJson(baseUrl, '/api/state');
+    const data = response.json();
+
+    expect(data.limitConfiguration.dynamic).toEqual(
+      expect.arrayContaining(['MAX_LAYERS', 'MAX_FEATURES', 'MAX_VERTICES', 'TOOL_TIMEOUT_MS', 'MAX_CONCURRENT_RUNS']),
+    );
+    expect(data.limitConfiguration.startupOnly).toEqual(
+      expect.arrayContaining(['MAX_REQUEST_BYTES', 'API_RUN_RATE_LIMIT_MAX', 'API_RUN_RATE_LIMIT_WINDOW_MS']),
+    );
+  });
+
+  test('concurrent requests are bounded by MAX_CONCURRENT_RUNS', async () => {
+    await waitForActiveRuns(0);
+    process.env.MAX_CONCURRENT_RUNS = '1';
+    try {
+      const body = {
+        tool: 'RandomPointsTool',
+        params: { 'Points Count': 200 },
+        state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+      };
+      const responses = await Promise.all([
+        requestJson(baseUrl, '/api/run', { body }),
+        requestJson(baseUrl, '/api/run', { body }),
+        requestJson(baseUrl, '/api/run', { body }),
+      ]);
+      const statuses = responses.map((r) => r.status);
+
+      expect(statuses).toContain(503);
+      expect(statuses.filter((status) => status === 503).length).toBeGreaterThanOrEqual(1);
+      responses
+        .filter((r) => r.status === 503)
+        .forEach((r) => expect(r.json().code).toBe('CONCURRENCY_LIMIT'));
+    } finally {
+      delete process.env.MAX_CONCURRENT_RUNS;
+      await waitForActiveRuns(0);
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -416,6 +508,7 @@ describe('API workload guardrails', () => {
     let freshServer;
     try {
       const { app: freshApp } = require('./server');
+const { getActiveWorkerCount } = require('./js/runtime/workerExecutor');
       freshServer = freshApp.listen(0);
       await new Promise((resolve) => freshServer.once('listening', resolve));
       const freshPort = freshServer.address().port;

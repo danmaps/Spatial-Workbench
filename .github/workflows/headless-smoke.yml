@@ -27,7 +27,8 @@ jobs:
         run: npm run test:headless
 
       - name: Headless demo
-        run: npm run demo:headless
+        shell: bash
+        run: npm run demo:headless 2>&1 | tee /tmp/headless-demo.log; exit ${PIPESTATUS[0]}
 
       - name: Validate headless artifact
         run: npm run validate:headless-artifact
@@ -45,3 +46,11 @@ jobs:
           name: headless-demo-geojson
           path: artifacts/headless-demo.geojson
           if-no-files-found: error
+
+      - name: Upload smoke test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-smoke-logs
+          path: /tmp/headless-demo.log
+          if-no-files-found: warn

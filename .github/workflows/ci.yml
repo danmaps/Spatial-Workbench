@@ -20,11 +20,25 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Validate lockfile registry URLs
+        run: |
+          if grep -E '"resolved"\s*:\s*"https?://(?!registry\.npmjs\.org)' package-lock.json; then
+            echo "ERROR: package-lock.json contains non-npmjs.org registry URLs. Remove private or inaccessible registry entries before merging."
+            exit 1
+          fi
+          echo "Lockfile registry URLs OK."
+
       - name: Install
         run: npm ci
 
       - name: Test
         run: npm test
+
+      - name: Headless integration tests
+        run: npm run test:headless
+
+      - name: Build
+        run: npm run build
 
       - name: Tool spec drift check
         run: npm run spec:check

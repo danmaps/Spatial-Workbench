@@ -1,5 +1,12 @@
 # Hosted workload envelope
 
+> **Non-authoritative notice:** The hosted API is suitable for exploration,
+> prototyping, and bounded GeoJSON analysis. It is **not** authoritative for
+> production, regulated, or mission-critical use until enterprise authentication,
+> audit logging, change-approval workflows, and data-governance controls are in
+> place. Do not process personally identifiable information, classified data, or
+> datasets subject to regulatory compliance on the public hosted instance.
+
 `POST /api/run` executes spatial tools synchronously inside a bounded execution
 envelope. This page documents what the hosted deployment is designed to handle,
 what it is not, and how to change the limits for a self-hosted instance.
@@ -40,6 +47,15 @@ Every violation returns the same envelope:
 ```json
 { "ok": false, "code": "FEATURE_LIMIT", "error": "...", "limit": 50000, "received": 61200 }
 ```
+
+## HTTP error response meanings
+
+| HTTP status | When it is returned | What to do |
+|---|---|---|
+| **413 Payload Too Large** | The raw request body exceeds `MAX_REQUEST_BYTES` (default 5 MB). The body is rejected before parsing. | Reduce inline GeoJSON. Use `POST /api/datasets` to register large layers as handles and pass `datasetRef` references instead. |
+| **422 Unprocessable Entity** | The request was parsed and structurally valid, but one or more workload limits were exceeded (`LAYER_LIMIT`, `FEATURE_LIMIT`, `VERTEX_LIMIT`, `PARAM_LIMIT`) or the spatial input failed validation. | Reduce the number of layers, features, or vertices; lower the tool-specific parameter value; or fix the malformed geometry. |
+| **429 Too Many Requests** | The caller has exceeded the per-IP rate limit (`API_RUN_RATE_LIMIT_MAX` per `API_RUN_RATE_LIMIT_WINDOW_MS`, default 60 req/min). | Back off and retry after the window resets. The `Retry-After` header indicates the wait time. For sustained workloads, run a self-hosted instance with a higher limit. |
+| **503 Service Unavailable** | Either the tool execution timed out (`EXECUTION_TIMEOUT`) or all concurrency slots are occupied (`CONCURRENCY_LIMIT`). The server is healthy but currently cannot accept the request. | Reduce payload size or try again shortly. For jobs that regularly approach the timeout, run them locally or on a self-hosted instance with a higher `TOOL_TIMEOUT_MS`. |
 
 ## Configuration scope
 

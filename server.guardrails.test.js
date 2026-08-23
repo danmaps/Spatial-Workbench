@@ -114,6 +114,28 @@ function makeLayers(count, featuresPerLayer = 1) {
   }));
 }
 
+function makeDensePolygonFeatureCollection(vertexCount = 50000) {
+  const ring = [];
+  for (let i = 0; i < vertexCount; i += 1) {
+    const angle = (i / vertexCount) * Math.PI * 2;
+    const radius = 1 + (0.2 * Math.sin(10 * angle));
+    ring.push([
+      -118 + (radius * Math.cos(angle) * 0.1),
+      34 + (radius * Math.sin(angle) * 0.1),
+    ]);
+  }
+  ring.push(ring[0]);
+
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Polygon', coordinates: [ring] },
+    }],
+  };
+}
+
 async function waitForActiveRuns(expected, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   while (getActiveWorkerCount() !== expected && Date.now() < deadline) {
@@ -396,6 +418,38 @@ describe('API workload guardrails', () => {
       expect(data.ok).toBe(false);
       expect(data.code).toBe('EXECUTION_TIMEOUT');
       expect(typeof data.error).toBe('string');
+    } finally {
+      delete process.env.TOOL_TIMEOUT_MS;
+    }
+  });
+
+  test('timeout does not block unrelated parent-process requests while worker is running', async () => {
+    process.env.TOOL_TIMEOUT_MS = '25';
+    try {
+      const timedOutRun = requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'BufferTool',
+          params: { 'Input Layer': 'dense', Distance: 1, Units: 'kilometers' },
+          state: {
+            layers: [{
+              id: 'dense',
+              name: 'Dense Polygon',
+              geojson: makeDensePolygonFeatureCollection(50000),
+            }],
+          },
+        },
+      });
+
+      const stateStartedAt = Date.now();
+      const stateResponse = await requestJson(baseUrl, '/api/state');
+      const stateDurationMs = Date.now() - stateStartedAt;
+      const timedOutResponse = await timedOutRun;
+      const timedOutData = timedOutResponse.json();
+
+      expect(stateResponse.status).toBe(200);
+      expect(stateDurationMs).toBeLessThan(400);
+      expect(timedOutResponse.status).toBe(503);
+      expect(timedOutData.code).toBe('EXECUTION_TIMEOUT');
     } finally {
       delete process.env.TOOL_TIMEOUT_MS;
     }

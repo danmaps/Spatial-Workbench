@@ -5,7 +5,7 @@
   "main": "js/app.js",
   "scripts": {
     "test": "jest",
-    "test:headless": "npm test -- --runInBand js/headless-runtime.test.js server.headless.test.js",
+    "test:headless": "npm test -- --runInBand js/headless-runtime.test.js server.headless.test.js server.guardrails.test.js",
     "test:mcp": "npm test -- --runInBand mcp-server.test.js",
     "start": "nodemon server.js",
     "start:prod": "node server.js",

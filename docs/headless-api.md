@@ -176,6 +176,22 @@ For feature-collection tools, the updated FeatureCollection is returned in top-l
 `execution` is the API-level receipt used by the demo client and tests. It keeps the runtime inspectable without forcing every tool to share the same internal output shape.
 `spatial` is the honesty layer: it declares the current CRS/measurement assumptions and carries structured warnings that agents, scripts, and browser clients can inspect directly.
 
+## Workload limits
+
+`POST /api/run` is bounded: payload size, layer/feature/vertex counts,
+tool-specific parameters, execution time, concurrency, and request rate are all
+enforced, and every violation returns a structured `{ ok: false, code, error, limit, received }`
+envelope. Execution runs in a worker thread that is terminated when the deadline
+elapses, so a timed-out request stops consuming CPU.
+
+Effective values are published by `GET /api/state` under `workloadLimits`, with
+`limitConfiguration` describing which environment variables are re-read per
+request and which require a restart.
+
+See `docs/hosted-workload-envelope.md` for defaults, error codes, appropriate
+and inappropriate hosted workloads, and how to raise the limits for a
+self-hosted instance.
+
 ## Validation Failures
 
 Tools run `validate(params, context)` before execution. Tool-level validation failures return HTTP `200` with `ok: false`, `output: null`, and the normalized request state.

@@ -508,7 +508,6 @@ describe('API workload guardrails', () => {
     let freshServer;
     try {
       const { app: freshApp } = require('./server');
-const { getActiveWorkerCount } = require('./js/runtime/workerExecutor');
       freshServer = freshApp.listen(0);
       await new Promise((resolve) => freshServer.once('listening', resolve));
       const freshPort = freshServer.address().port;

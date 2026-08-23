@@ -844,7 +844,7 @@ app.post('/api/run', async (req, res) => {
       ok: false,
       error: error.message || 'Failed to run tool',
       ...(error.code ? { code: error.code } : {}),
-      ...(error.details?.limit !== undefined ? { limit: error.details.limit } : {}),
+      ...(error.limit !== undefined ? { limit: error.limit } : {}),
       ...(error.details ? { details: error.details } : {}),
     });
   }

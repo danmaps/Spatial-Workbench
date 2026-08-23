@@ -22,11 +22,12 @@ function getActiveWorkerCount() {
   return activeWorkers;
 }
 
-function createExecutionError(message, { statusCode = 500, code, details } = {}) {
+function createExecutionError(message, { statusCode = 500, code, details, limit } = {}) {
   const error = new Error(message);
   error.statusCode = statusCode;
   if (code) error.code = code;
   if (details) error.details = details;
+  if (limit !== undefined) error.limit = limit;
   return error;
 }
 
@@ -54,7 +55,7 @@ function runToolInWorker({
   if (Number.isFinite(maxConcurrentRuns) && activeWorkers >= maxConcurrentRuns) {
     return Promise.reject(createExecutionError(
       'Server capacity reached. Too many concurrent spatial requests — try again shortly.',
-      { statusCode: 503, code: 'CONCURRENCY_LIMIT', details: { limit: maxConcurrentRuns } },
+      { statusCode: 503, code: 'CONCURRENCY_LIMIT', limit: maxConcurrentRuns },
     ));
   }
 
@@ -110,6 +111,8 @@ function runToolInWorker({
       }));
     });
 
+    // 'exit' always fires last — after success, after an 'error' event, and after
+    // termination — so it is the single place the concurrency slot is released.
     worker.on('exit', (code) => {
       releaseSlot();
       settle(reject, createExecutionError(`Tool execution worker exited unexpectedly (code ${code}).`, {

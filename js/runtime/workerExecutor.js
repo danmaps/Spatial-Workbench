@@ -36,6 +36,7 @@ function reviveWorkerError(serialized) {
     statusCode: serialized?.statusCode || 500,
     code: serialized?.code,
     details: serialized?.details,
+    limit: serialized?.limit,
   });
 }
 

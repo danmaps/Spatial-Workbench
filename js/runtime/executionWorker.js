@@ -8,7 +8,7 @@
  * Input (workerData): { toolKey, params, state, spatialWarnings }
  * Output (postMessage):
  *   { ok: true, result, spatialWarnings }
- *   { ok: false, error: { message, statusCode, code, details } }
+ *   { ok: false, error: { message, statusCode, code, details, limit } }
  */
 
 const { parentPort, workerData } = require('worker_threads');
@@ -38,6 +38,7 @@ execute(workerData || {})
         statusCode: error?.statusCode || 500,
         ...(error?.code ? { code: error.code } : {}),
         ...(error?.details ? { details: error.details } : {}),
+        ...(error?.limit !== undefined ? { limit: error.limit } : {}),
       },
     });
   });

@@ -783,4 +783,163 @@ describe('API workload guardrails', () => {
     expect(DEFAULT_MAX_BUFFER_DISTANCE).toBeGreaterThan(0);
     expect(Number.isInteger(DEFAULT_MAX_BUFFER_DISTANCE)).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // Concurrency recovery after success and failure
+  // -------------------------------------------------------------------------
+
+  test('concurrency slot is released after a successful run so the next request succeeds', async () => {
+    await waitForActiveRuns(0);
+    process.env.MAX_CONCURRENT_RUNS = '1';
+    try {
+      // First request: should succeed and release its slot.
+      const first = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'RandomPointsTool',
+          params: { 'Points Count': 3 },
+          state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+        },
+      });
+      expect(first.status).toBe(200);
+      expect(first.json().ok).toBe(true);
+
+      // Slot must be freed before the next request.
+      await waitForActiveRuns(0);
+
+      // Second request: should also succeed because the slot was released.
+      const second = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'RandomPointsTool',
+          params: { 'Points Count': 3 },
+          state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+        },
+      });
+      expect(second.status).toBe(200);
+      expect(second.json().ok).toBe(true);
+    } finally {
+      delete process.env.MAX_CONCURRENT_RUNS;
+      await waitForActiveRuns(0);
+    }
+  });
+
+  test('concurrency slot is released after a tool execution failure so the next request succeeds', async () => {
+    await waitForActiveRuns(0);
+    process.env.MAX_CONCURRENT_RUNS = '1';
+    try {
+      // ExportTool referencing a non-existent layer triggers a tool-level
+      // error (not a timeout), so the worker exits with a failure result.
+      const failing = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'does-not-exist' },
+          state: { layers: [] },
+        },
+      });
+      // The response should not be 503 CONCURRENCY_LIMIT — the slot was held
+      // for this run and released on completion.
+      expect(failing.json().code).not.toBe('CONCURRENCY_LIMIT');
+
+      await waitForActiveRuns(0);
+
+      // Next request must succeed because the slot was released after the failure.
+      const next = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'RandomPointsTool',
+          params: { 'Points Count': 3 },
+          state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+        },
+      });
+      expect(next.status).toBe(200);
+      expect(next.json().ok).toBe(true);
+    } finally {
+      delete process.env.MAX_CONCURRENT_RUNS;
+      await waitForActiveRuns(0);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Dataset reference expansion — limits apply to resolved GeoJSON
+  // -------------------------------------------------------------------------
+
+  test('POST /api/run enforces the feature limit against a layer supplied via datasetRef', async () => {
+    // Register a dataset containing more features than the imposed limit.
+    const registerResponse = await requestJson(baseUrl, '/api/datasets', {
+      body: {
+        name: 'Many points',
+        geojson: makeFeatureCollection(6),
+      },
+    });
+    expect(registerResponse.status).toBe(201);
+    const { dataset } = registerResponse.json();
+
+    process.env.MAX_FEATURES = '3';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'ref-layer' },
+          state: {
+            layers: [{ id: 'ref-layer', name: 'Ref Layer', datasetRef: dataset.datasetRef }],
+          },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('FEATURE_LIMIT');
+      expect(data.limit).toBe(3);
+      expect(data.received).toBe(6);
+    } finally {
+      delete process.env.MAX_FEATURES;
+    }
+  });
+
+  test('POST /api/run enforces the vertex limit against a layer supplied via datasetRef', async () => {
+    // Build a polygon ring with 10 vertices (11 including the closing repeat).
+    const ring = [];
+    for (let i = 0; i < 10; i += 1) {
+      const angle = (i / 10) * Math.PI * 2;
+      ring.push([-118 + (Math.cos(angle) * 0.1), 34 + (Math.sin(angle) * 0.1)]);
+    }
+    ring.push(ring[0]); // close the ring
+
+    const registerResponse = await requestJson(baseUrl, '/api/datasets', {
+      body: {
+        name: 'Dense polygon',
+        geojson: {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Polygon', coordinates: [ring] },
+          }],
+        },
+      },
+    });
+    expect(registerResponse.status).toBe(201);
+    const { dataset } = registerResponse.json();
+
+    process.env.MAX_VERTICES = '5';
+    try {
+      const response = await requestJson(baseUrl, '/api/run', {
+        body: {
+          tool: 'ExportTool',
+          params: { format: 'geojson', layerId: 'ref-layer' },
+          state: {
+            layers: [{ id: 'ref-layer', name: 'Ref Layer', datasetRef: dataset.datasetRef }],
+          },
+        },
+      });
+      const data = response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.code).toBe('VERTEX_LIMIT');
+      expect(data.limit).toBe(5);
+      expect(data.received).toBeGreaterThan(5);
+    } finally {
+      delete process.env.MAX_VERTICES;
+    }
+  });
 });

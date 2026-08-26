@@ -6,6 +6,41 @@ The long-term intent is to make spatial operations easy for agents, scripts, and
 
 This project is intentionally simple, inspectable, and extensible while the service model evolves.
 
+## Current state
+
+The agent-first runtime is now a working, deployed surface rather than only a
+design direction:
+
+- **Landing page:** [`workbench.dannymcvey.com`](https://workbench.dannymcvey.com)
+  explains the callable-runtime model and runs a live API proof.
+- **Interactive GIS:** [`/workbench-gis`](https://workbench.dannymcvey.com/workbench-gis)
+  remains the browser surface for drawing, importing, inspecting, and editing.
+- **Headless proof:** [`/headless-demo`](https://workbench.dannymcvey.com/headless-demo)
+  runs `RandomPointsTool -> BufferTool -> ExportTool` against the deployed API.
+- **Agent transport:** the thin MCP adapter exposes tool discovery and execution
+  without creating a second runtime or state model.
+- **AI boundary:** provider responses are normalized, transient failures have
+  bounded retries/timeouts, and operational usage telemetry records provider,
+  model, tokens, latency, and estimated cost without recording prompts or
+  responses.
+
+The current architecture is:
+
+```text
+browser / script / MCP client
+            |
+       POST /api/run
+            |
+   headless runtime + worker limits
+            |
+      tool registry + GeoJSON state
+            |
+ execution receipt + artifacts + spatial warnings
+```
+
+The hosted API is intentionally bounded for lightweight analysis. It is not a
+general-purpose GIS processing cluster or a survey-grade measurement service.
+
 ---
 
 ## What is this?
@@ -39,6 +74,8 @@ Agents should be able to discover a tool, understand its input schema, run it, i
   - Buffers
   - Grouping by distance
   - Export to GeoJSON
+  - AI-generated field values
+  - Text-to-numeric conversion
 - Upload external data (GeoJSON, CSV, XLSX with coordinates)
 - See post-import summaries and coordinate warnings after Add Data ingest
 - Zoom to individual layers or the current layer selection from the Contents pane
@@ -114,24 +151,31 @@ You do not need ArcGIS, QGIS, or credentials to use this.
 
 ## Status
 
-This is an experimental, work-in-progress project. The architecture is moving from browser-centered exploration toward agent-first spatial services, so the UI, APIs, and tool contracts will continue to evolve.
+This is an experimental but usable work-in-progress project. The core path is
+now: discover a headless tool, submit request-scoped GeoJSON state, execute in
+a bounded worker, inspect the execution receipt and spatial warnings, and pass
+the returned state to the next call. The UI, APIs, and tool contracts will
+continue to evolve.
 
 Expect rough edges. That’s intentional.
 
 ---
 
-## Roadmap ideas
+## Next on the roadmap
 
-Some directions this could grow into:
-- Tool discovery and schema publication for agents
-- More complete headless execution coverage
-- MCP or similar adapters for agent runtimes
+The next platform work is focused on making the runtime repeatable for agents:
+
+- Provider fallback after the normalized AI/retry/telemetry foundation
+- Replayable multi-step workflows with execution receipts and artifact links
+- More tool contracts with examples, preconditions, and deterministic fixtures
+- Spatial join, clip/intersect, geocode/enrich, and suitability workflows
 - Geometry comparison and scoring services
 - Provenance and replayable workflows
-- More spatial analysis tools
 - Educational “modes” for learning geometry concepts
 
-Nothing here is locked in.
+See the open GitHub issues for the active queue. Changes should be delivered
+through pull requests so the runtime, docs, tests, and deployment behavior are
+reviewable together.
 
 ---
 
@@ -141,6 +185,7 @@ Nothing here is locked in.
 npm install
 npm run test:headless
 npm run demo:headless
+npm run test:mcp
 npm run build
 npm start
 ```
@@ -253,3 +298,46 @@ CORS_ORIGINS=https://workbench.dannymcvey.com
 ```
 
 A `systemd --user` service can wrap the production start command and restart it automatically on failure.
+
+## AI provider configuration
+
+The hosted AI routes are:
+
+- `POST /api/ai_structured` for structured JSON responses
+- `POST /api/ai_geojson` for GeoJSON generation
+- `GET /api/providers` for available provider/model metadata
+
+The built-in provider is Ollama. OpenAI is supported directly, and OpenRouter
+provides the unified hosted gateway for model/provider routing. Direct OpenAI
+requests use `OPENAI_API_KEY`; OpenRouter requests use `OPENROUTER_API_KEY`.
+AI request behavior can be tuned with:
+
+```bash
+AI_REQUEST_TIMEOUT_MS=30000
+AI_MAX_RETRIES=2
+# Optional OpenRouter model fallback chain, comma-separated
+OPENROUTER_FALLBACK_MODELS=anthropic/claude-3.5-sonnet,google/gemini-2.0-flash
+# Optional JSON pricing overrides for usage telemetry
+AI_PRICING_JSON='{"openai":{"gpt-4o":{"input":0.0025,"output":0.01}}}'
+```
+
+See [`docs/ai-provider-contract.md`](docs/ai-provider-contract.md) for the
+normalized response, OpenRouter integration, retry/error categories, and
+privacy-safe usage telemetry. OpenRouter-reported usage cost is preferred;
+local pricing is only a fallback for direct providers or missing provider data.
+
+## Development checks
+
+The main verification commands are:
+
+```bash
+npm test                         # full Jest suite
+npm run test:headless            # headless/runtime guardrails
+npm run test:mcp                 # MCP protocol coverage
+npm run spec:check               # detect tool-spec drift
+npm run build                    # browser bundle
+```
+
+The hosted headless API also enforces request size, feature, vertex,
+concurrency, timeout, and rate limits. See
+[`docs/hosted-workload-envelope.md`](docs/hosted-workload-envelope.md).

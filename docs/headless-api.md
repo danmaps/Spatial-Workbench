@@ -2,6 +2,12 @@
 
 Spatial Workbench exposes a server-side execution path for tools that can run from structured params without browser-only UI state.
 
+The hosted implementation is the canonical runtime seam for scripts, agents,
+and the MCP adapter. It accepts request-scoped state, executes one registered
+tool inside the worker-isolated workload envelope, and returns the updated
+state plus an execution receipt. Callers can chain operations by passing the
+returned `state` into the next request.
+
 ## Endpoints
 
 - `GET /api/tools` → returns the full tool spec catalog (all registered tools, including browser-only ones).
@@ -12,6 +18,15 @@ Spatial Workbench exposes a server-side execution path for tools that can run fr
 - `GET /api/datasets/:id` returns metadata and optional materialized GeoJSON (`?includeData=true`).
 - `DELETE /api/datasets/:id` removes a dataset handle.
 - `POST /api/datasets/cleanup` removes expired datasets from local storage.
+
+The AI-specific routes are separate from spatial tool execution:
+
+- `POST /api/ai_structured` returns provider-generated structured JSON.
+- `POST /api/ai_geojson` returns provider-generated GeoJSON.
+- `GET /api/providers` reports configured provider/model metadata.
+
+AI provider normalization, retries, timeouts, and privacy-safe usage telemetry
+are documented in [`ai-provider-contract.md`](ai-provider-contract.md).
 
 The server does not persist workbench state between requests. Callers send the state needed for each run and receive the resulting state back in the response.
 For workflows that outgrow inline payloads, an optional handle mode is available. See `docs/dataset-handle-architecture.md`.
@@ -45,6 +60,11 @@ Not yet supported headlessly:
 
 - `AddDataTool` because it still depends on browser `File` / `FileReader` flow.
 - `GenerateAIFeatures` because it still depends on browser-side settings and localStorage.
+
+The catalog is discoverable at `GET /api/run` and currently includes the
+headless-safe tools listed above. `GET /api/tools` exposes the broader registry,
+including browser-oriented tools, so clients should use `GET /api/run` when
+choosing an executable tool.
 
 ## Layer-State Request
 
@@ -191,6 +211,16 @@ request and which require a restart.
 See `docs/hosted-workload-envelope.md` for defaults, error codes, appropriate
 and inappropriate hosted workloads, and how to raise the limits for a
 self-hosted instance.
+
+## Client choices
+
+- Use `POST /api/run` directly for scripts and deterministic integrations.
+- Use [`scripts/workbench-cli.js`](../scripts/workbench-cli.js) for a small CLI
+  wrapper around the same API.
+- Use the MCP adapter when the caller already speaks MCP; see
+  [`mcp-server.md`](mcp-server.md).
+- Use the browser workbench when visual inspection or manual editing is part
+  of the workflow.
 
 ## Validation Failures
 

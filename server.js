@@ -14,6 +14,7 @@ const {
 } = require('./js/ai-providers');
 const { requestStructuredData } = require('./js/ai/requestStructuredData');
 const { requestProviderResponse, ProviderRequestError } = require('./js/ai/providerClient');
+const { recordUsageTelemetry } = require('./js/ai/usageTelemetry');
 const { getHeadlessToolCatalog, runHeadlessTool } = require('./js/headless-runtime');
 const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
 const { runToolInWorker, getActiveWorkerCount } = require('./js/runtime/workerExecutor');
@@ -51,6 +52,34 @@ function getAiRequestOptions() {
     timeoutMs: getEnvInt('AI_REQUEST_TIMEOUT_MS', DEFAULT_AI_TIMEOUT_MS),
     maxRetries: getEnvInt('AI_MAX_RETRIES', DEFAULT_AI_MAX_RETRIES),
   };
+}
+
+function getProviderApiKey(providerId, requestKey) {
+  if (requestKey) return requestKey;
+  if (providerId === 'openrouter') return process.env.OPENROUTER_API_KEY || '';
+  return process.env.OPENAI_API_KEY || '';
+}
+
+function getOpenRouterFallbackModels() {
+  return String(process.env.OPENROUTER_FALLBACK_MODELS || '')
+    .split(',')
+    .map((modelId) => modelId.trim())
+    .filter(Boolean);
+}
+
+function recordProviderUsage({ normalized, error, provider, model, startedAt }) {
+  return recordUsageTelemetry({
+    provider: normalized?.provider ?? provider,
+    model: normalized?.model ?? model,
+    inputTokens: normalized?.inputTokens,
+    outputTokens: normalized?.outputTokens,
+    reportedCost: normalized?.reportedCost,
+    reportedCostUnit: normalized?.reportedCostUnit,
+    latencyMs: normalized?.latencyMs ?? error?.latencyMs ?? (startedAt ? Date.now() - startedAt : null),
+    success: !error,
+    errorCategory: error?.category,
+    requestId: normalized?.requestId ?? error?.requestId,
+  });
 }
 
 let rateLimit;
@@ -901,8 +930,7 @@ app.post('/api/ai_structured', async (req, res) => {
 
     const authHeader = req.get('Authorization');
     const userKey = authHeader ? authHeader.replace('Bearer ', '').trim() : null;
-    const envKey = process.env.OPENAI_API_KEY;
-    const apiKey = userKey || envKey;
+    const apiKey = getProviderApiKey(providerId, userKey);
 
     if (provider.requiresKey && !apiKey) {
       return res.status(400).json({ ok: false, error: `No API key provided for ${provider.name}.` });
@@ -915,6 +943,7 @@ app.post('/api/ai_structured', async (req, res) => {
 
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const startedAt = Date.now();
 
     const normalized = await requestProviderResponse({
       fetchImpl: fetch,
@@ -929,14 +958,20 @@ app.post('/api/ai_structured', async (req, res) => {
         max_tokens: parsedMaxTokens,
         temperature: parsedTemperature,
         response_format: { type: 'json_object' },
+        ...(providerId === 'openrouter' && getOpenRouterFallbackModels().length > 0
+          ? { models: getOpenRouterFallbackModels(), route: 'fallback' }
+          : {}),
       },
       provider: provider.name,
       model: model || provider.defaultModel,
       ...getAiRequestOptions(),
     });
-    return res.status(200).json(parseModelJson(normalized.content));
+    const parsed = parseModelJson(normalized.content);
+    recordProviderUsage({ normalized, provider: provider.name, model: model || provider.defaultModel, startedAt });
+    return res.status(200).json(parsed);
   } catch (error) {
     console.error('Error fetching structured AI data:', error);
+    recordProviderUsage({ error, provider: provider.name, model: model || provider.defaultModel, startedAt });
     const statusCode = error instanceof ProviderRequestError && error.status >= 400 && error.status < 500 ? error.status : 502;
     return res.status(statusCode).json({
       ok: false,
@@ -998,8 +1033,7 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
   // Resolve API key: prefer per-request key, fall back to env var
   const authHeader = req.get('Authorization');
   const userKey = authHeader ? authHeader.replace('Bearer ', '').trim() : null;
-  const envKey = process.env.OPENAI_API_KEY;
-  const apiKey = userKey || envKey;
+  const apiKey = getProviderApiKey(providerId, userKey);
 
   if (provider.requiresKey && !apiKey) {
     return res.status(400).json({
@@ -1032,7 +1066,16 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
   if (providerId === 'openai' || providerId === 'ollama') {
     body.response_format = { type: 'json_object' };
   }
+  if (providerId === 'openrouter') {
+    body.response_format = { type: 'json_object' };
+    const fallbackModels = getOpenRouterFallbackModels();
+    if (fallbackModels.length > 0) {
+      body.models = fallbackModels;
+      body.route = 'fallback';
+    }
+  }
 
+  const startedAt = Date.now();
   try {
     const normalized = await requestProviderResponse({
       fetchImpl: fetch,
@@ -1044,9 +1087,11 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
       ...getAiRequestOptions(),
     });
     const geoJSON = parseModelJson(normalized.content);
+    recordProviderUsage({ normalized, provider: provider.name, model, startedAt });
     return res.status(200).json(geoJSON);
   } catch (error) {
     console.error(`Error fetching from ${provider.name}:`, error);
+    recordProviderUsage({ error, provider: provider.name, model, startedAt });
     const statusCode = error instanceof ProviderRequestError && error.status >= 400 && error.status < 500 ? error.status : 502;
     return res.status(statusCode).json({
       error: error.message || `Failed to connect to ${provider.name}`,

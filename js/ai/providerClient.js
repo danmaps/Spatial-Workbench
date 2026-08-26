@@ -40,6 +40,8 @@ function normalizeProviderResponse(data, { provider, model, latencyMs } = {}) {
     model: data?.model || model || null,
     inputTokens: Number.isFinite(usage.prompt_tokens) ? usage.prompt_tokens : null,
     outputTokens: Number.isFinite(usage.completion_tokens) ? usage.completion_tokens : null,
+    reportedCost: Number.isFinite(usage.cost) ? usage.cost : null,
+    reportedCostUnit: Number.isFinite(usage.cost) ? 'credits' : null,
     finishReason: choice.finish_reason || null,
     requestId: data?.id || null,
     latencyMs: Number.isFinite(latencyMs) ? latencyMs : null,
@@ -104,6 +106,7 @@ async function requestProviderResponse({
           isAbort ? `${provider} request timed out after ${timeoutMs}ms.` : `${provider} request failed: ${error.message}`,
           { provider, model, category: isAbort ? 'timeout' : 'network', retryable: true, cause: error }
         );
+      normalizedError.latencyMs = Date.now() - startedAt;
 
       if (!normalizedError.retryable || attempt >= attempts) throw normalizedError;
       const backoff = baseDelayMs * (2 ** attempt);

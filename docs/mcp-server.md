@@ -2,6 +2,10 @@
 
 This is the first-pass MCP layer for Spatial Workbench.
 
+It is available locally with `npm run mcp:server` and is also designed to point
+at the deployed runtime with `HEADLESS_API_URL`. It is a transport adapter, not
+a separate spatial engine.
+
 The design is intentionally thin:
 
 - MCP `list_tools` wraps `GET /api/run`
@@ -84,3 +88,15 @@ It does **not** yet try to solve:
 - richer domain-specific prompts or app scaffolds
 
 Those can sit above this layer once the thin adapter is proven useful.
+
+## Verification
+
+The protocol-level tests exercise discovery and the canonical chained flow:
+
+```bash
+npm run test:mcp
+```
+
+The MCP result intentionally preserves the headless API's `state`, `execution`,
+and `spatial` fields so clients can inspect and replay a run without learning a
+second response format.

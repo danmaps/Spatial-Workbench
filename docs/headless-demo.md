@@ -90,7 +90,10 @@ This demo intentionally does not prove:
 - browser upload flows like `AddDataTool`
 - AI-provider-dependent tools
 - persisted sessions or server-side state storage
-- MCP wrapping
 - full internal runtime unification
+
+MCP wrapping is covered separately by `npm run test:mcp` and
+[`docs/mcp-server.md`](mcp-server.md). The demo remains deliberately focused
+on proving the underlying HTTP runtime and artifact path.
 
 It is the smallest repo-native artifact that proves the existing headless seam is already usable from an external caller.

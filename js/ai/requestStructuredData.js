@@ -1,4 +1,5 @@
 const { STORAGE_KEYS, DEFAULT_PROVIDER, AI_PROVIDERS } = require('../ai-providers');
+const { requestProviderResponse } = require('./providerClient');
 
 async function getFetchImpl() {
   if (typeof fetch === 'function') {
@@ -76,13 +77,14 @@ async function requestStructuredData({ systemPrompt, userPrompt, model, temperat
   }
 
   const fetchImpl = await getFetchImpl();
-  const response = await fetchImpl('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
+  const normalized = await requestProviderResponse({
+    fetchImpl,
+    endpoint: 'https://api.openai.com/v1/chat/completions',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${envApiKey}`,
     },
-    body: JSON.stringify({
+    body: {
       model: model || 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -91,16 +93,12 @@ async function requestStructuredData({ systemPrompt, userPrompt, model, temperat
       max_tokens: maxTokens,
       temperature,
       response_format: { type: 'json_object' },
-    }),
+    },
+    provider: 'OpenAI',
+    model: model || 'gpt-4o',
   });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`AI request failed with status ${response.status}${body ? `: ${body}` : ''}`);
-  }
-
-  const data = await response.json();
-  return extractJsonPayload(data);
+  return JSON.parse(normalized.content);
 }
 
 module.exports = {

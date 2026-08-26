@@ -13,12 +13,15 @@ const {
   SYSTEM_PROMPT,
 } = require('./js/ai-providers');
 const { requestStructuredData } = require('./js/ai/requestStructuredData');
+const { requestProviderResponse, ProviderRequestError } = require('./js/ai/providerClient');
 const { getHeadlessToolCatalog, runHeadlessTool } = require('./js/headless-runtime');
 const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
 const { runToolInWorker, getActiveWorkerCount } = require('./js/runtime/workerExecutor');
 const { createSpatialSession, normalizeSpatialRequest, SPATIAL_METADATA } = require('./js/spatial');
 const { createInMemoryDatasetStore, formatDatasetRef, parseDatasetRef } = require('./js/runtime/datasetStore');
 const MAX_AI_TOKENS = 4096;
+const DEFAULT_AI_TIMEOUT_MS = 30000;
+const DEFAULT_AI_MAX_RETRIES = 2;
 const DEFAULT_DATASET_TTL_MS = 15 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
@@ -41,6 +44,13 @@ function getEnvInt(name, defaultValue) {
   if (raw === undefined || raw === '') return defaultValue;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && Number.isInteger(parsed) && parsed >= 0 ? parsed : defaultValue;
+}
+
+function getAiRequestOptions() {
+  return {
+    timeoutMs: getEnvInt('AI_REQUEST_TIMEOUT_MS', DEFAULT_AI_TIMEOUT_MS),
+    maxRetries: getEnvInt('AI_MAX_RETRIES', DEFAULT_AI_MAX_RETRIES),
+  };
 }
 
 let rateLimit;
@@ -906,10 +916,11 @@ app.post('/api/ai_structured', async (req, res) => {
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
+    const normalized = await requestProviderResponse({
+      fetchImpl: fetch,
+      endpoint,
       headers,
-      body: JSON.stringify({
+      body: {
         model: model || provider.defaultModel,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -918,19 +929,22 @@ app.post('/api/ai_structured', async (req, res) => {
         max_tokens: parsedMaxTokens,
         temperature: parsedTemperature,
         response_format: { type: 'json_object' },
-      }),
+      },
+      provider: provider.name,
+      model: model || provider.defaultModel,
+      ...getAiRequestOptions(),
     });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      return res.status(502).json({ ok: false, error: `${provider.name} request failed (${response.status})${body ? `: ${body}` : ''}` });
-    }
-
-    const data = await response.json();
-    return res.status(200).json(parseModelJson(data?.choices?.[0]?.message?.content));
+    return res.status(200).json(parseModelJson(normalized.content));
   } catch (error) {
     console.error('Error fetching structured AI data:', error);
-    return res.status(500).json({ ok: false, error: error.message || 'Failed to connect to AI provider' });
+    const statusCode = error instanceof ProviderRequestError && error.status >= 400 && error.status < 500 ? error.status : 502;
+    return res.status(statusCode).json({
+      ok: false,
+      error: error.message || 'Failed to connect to AI provider',
+      ...(error.category ? { category: error.category } : {}),
+      ...(error.provider ? { provider: error.provider } : {}),
+      ...(error.model ? { model: error.model } : {}),
+    });
   }
 });
 
@@ -1020,25 +1034,26 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
   }
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
+    const normalized = await requestProviderResponse({
+      fetchImpl: fetch,
+      endpoint,
       headers,
-      body: JSON.stringify(body),
+      body,
+      provider: provider.name,
+      model,
+      ...getAiRequestOptions(),
     });
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      console.error(`${provider.name} returned ${response.status}:`, errBody);
-      return res.status(502).json({ error: `${provider.name} request failed (${response.status})` });
-    }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    const geoJSON = parseModelJson(content);
+    const geoJSON = parseModelJson(normalized.content);
     return res.status(200).json(geoJSON);
   } catch (error) {
     console.error(`Error fetching from ${provider.name}:`, error);
-    return res.status(500).json({ error: `Failed to connect to ${provider.name}` });
+    const statusCode = error instanceof ProviderRequestError && error.status >= 400 && error.status < 500 ? error.status : 502;
+    return res.status(statusCode).json({
+      error: error.message || `Failed to connect to ${provider.name}`,
+      ...(error.category ? { category: error.category } : {}),
+      ...(error.provider ? { provider: error.provider } : {}),
+      ...(error.model ? { model: error.model } : {}),
+    });
   }
 });
 
@@ -1078,4 +1093,6 @@ module.exports = {
   DEFAULT_MAX_CONCURRENT_RUNS,
   DEFAULT_MAX_RANDOM_POINTS,
   DEFAULT_MAX_BUFFER_DISTANCE,
+  DEFAULT_AI_TIMEOUT_MS,
+  DEFAULT_AI_MAX_RETRIES,
 };

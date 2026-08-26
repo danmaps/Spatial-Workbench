@@ -14,6 +14,7 @@ const {
 } = require('./js/ai-providers');
 const { requestStructuredData } = require('./js/ai/requestStructuredData');
 const { requestProviderResponse, ProviderRequestError } = require('./js/ai/providerClient');
+const { recordUsageTelemetry } = require('./js/ai/usageTelemetry');
 const { getHeadlessToolCatalog, runHeadlessTool } = require('./js/headless-runtime');
 const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
 const { runToolInWorker, getActiveWorkerCount } = require('./js/runtime/workerExecutor');
@@ -51,6 +52,19 @@ function getAiRequestOptions() {
     timeoutMs: getEnvInt('AI_REQUEST_TIMEOUT_MS', DEFAULT_AI_TIMEOUT_MS),
     maxRetries: getEnvInt('AI_MAX_RETRIES', DEFAULT_AI_MAX_RETRIES),
   };
+}
+
+function recordProviderUsage({ normalized, error, provider, model, startedAt }) {
+  return recordUsageTelemetry({
+    provider: normalized?.provider || provider,
+    model: normalized?.model || model,
+    inputTokens: normalized?.inputTokens,
+    outputTokens: normalized?.outputTokens,
+    latencyMs: normalized?.latencyMs || error?.latencyMs || (startedAt ? Date.now() - startedAt : null),
+    success: Boolean(normalized),
+    errorCategory: error?.category,
+    requestId: normalized?.requestId,
+  });
 }
 
 let rateLimit;
@@ -915,6 +929,7 @@ app.post('/api/ai_structured', async (req, res) => {
 
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const startedAt = Date.now();
 
     const normalized = await requestProviderResponse({
       fetchImpl: fetch,
@@ -934,9 +949,12 @@ app.post('/api/ai_structured', async (req, res) => {
       model: model || provider.defaultModel,
       ...getAiRequestOptions(),
     });
-    return res.status(200).json(parseModelJson(normalized.content));
+    const parsed = parseModelJson(normalized.content);
+    recordProviderUsage({ normalized, provider: provider.name, model: model || provider.defaultModel, startedAt });
+    return res.status(200).json(parsed);
   } catch (error) {
     console.error('Error fetching structured AI data:', error);
+    recordProviderUsage({ error, provider: provider.name, model: model || provider.defaultModel, startedAt });
     const statusCode = error instanceof ProviderRequestError && error.status >= 400 && error.status < 500 ? error.status : 502;
     return res.status(statusCode).json({
       ok: false,
@@ -1033,6 +1051,7 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
     body.response_format = { type: 'json_object' };
   }
 
+  const startedAt = Date.now();
   try {
     const normalized = await requestProviderResponse({
       fetchImpl: fetch,
@@ -1044,9 +1063,11 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
       ...getAiRequestOptions(),
     });
     const geoJSON = parseModelJson(normalized.content);
+    recordProviderUsage({ normalized, provider: provider.name, model, startedAt });
     return res.status(200).json(geoJSON);
   } catch (error) {
     console.error(`Error fetching from ${provider.name}:`, error);
+    recordProviderUsage({ error, provider: provider.name, model, startedAt });
     const statusCode = error instanceof ProviderRequestError && error.status >= 400 && error.status < 500 ? error.status : 502;
     return res.status(statusCode).json({
       error: error.message || `Failed to connect to ${provider.name}`,

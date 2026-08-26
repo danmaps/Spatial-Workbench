@@ -24,3 +24,12 @@ failures use `ProviderRequestError` with a category (`rate_limit`, `transient`,
 Requests use bounded exponential backoff with jitter for retryable failures.
 Defaults are a 30-second timeout and two retries; configure them with
 `AI_REQUEST_TIMEOUT_MS` and `AI_MAX_RETRIES`.
+
+## Usage telemetry
+
+The server emits one structured `[ai-usage]` log event per completed AI
+operation. It contains provider, model, token counts when available, latency,
+success/failure, request ID, and estimated USD cost. Prompts and model content
+are intentionally excluded. The built-in table currently prices OpenAI
+`gpt-4o`; additional pricing can be supplied with `AI_PRICING_JSON`. Unknown
+models and providers report `estimatedCostUsd: null` and do not fail requests.

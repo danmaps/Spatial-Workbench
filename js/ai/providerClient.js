@@ -104,6 +104,7 @@ async function requestProviderResponse({
           isAbort ? `${provider} request timed out after ${timeoutMs}ms.` : `${provider} request failed: ${error.message}`,
           { provider, model, category: isAbort ? 'timeout' : 'network', retryable: true, cause: error }
         );
+      normalizedError.latencyMs = Date.now() - startedAt;
 
       if (!normalizedError.retryable || attempt >= attempts) throw normalizedError;
       const backoff = baseDelayMs * (2 ** attempt);

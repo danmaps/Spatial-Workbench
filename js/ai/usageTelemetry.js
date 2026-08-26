@@ -23,7 +23,8 @@ function estimateCostUsd({ provider, model, inputTokens, outputTokens, pricingTa
   return (inputTokens / 1000) * pricing.input + (outputTokens / 1000) * pricing.output;
 }
 
-function buildUsageTelemetry({ provider, model, inputTokens, outputTokens, latencyMs, success, errorCategory, requestId, pricingTable } = {}) {
+function buildUsageTelemetry({ provider, model, inputTokens, outputTokens, reportedCost, reportedCostUnit, latencyMs, success, errorCategory, requestId, pricingTable } = {}) {
+  const estimatedCostUsd = estimateCostUsd({ provider, model, inputTokens, outputTokens, pricingTable });
   return {
     event: 'ai_usage',
     provider: provider || null,
@@ -31,7 +32,10 @@ function buildUsageTelemetry({ provider, model, inputTokens, outputTokens, laten
     inputTokens: Number.isFinite(inputTokens) ? inputTokens : null,
     outputTokens: Number.isFinite(outputTokens) ? outputTokens : null,
     latencyMs: Number.isFinite(latencyMs) ? latencyMs : null,
-    estimatedCostUsd: estimateCostUsd({ provider, model, inputTokens, outputTokens, pricingTable }),
+    estimatedCostUsd,
+    reportedCost: Number.isFinite(reportedCost) ? reportedCost : null,
+    reportedCostUnit: reportedCostUnit || null,
+    costSource: Number.isFinite(reportedCost) ? 'provider' : (estimatedCostUsd !== null ? 'local_estimate' : 'unknown'),
     success: Boolean(success),
     ...(errorCategory ? { errorCategory } : {}),
     ...(requestId ? { requestId } : {}),

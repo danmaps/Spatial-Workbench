@@ -23,6 +23,14 @@ const AI_PROVIDERS = {
     requiresKey: true,
     description: 'OpenAI API (requires API key)',
   },
+  openrouter: {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+    defaultModel: 'openai/gpt-4o',
+    requiresKey: true,
+    description: 'OpenRouter unified model and provider gateway (requires API key)',
+  },
   ollama: {
     id: 'ollama',
     name: 'Built-in AI',

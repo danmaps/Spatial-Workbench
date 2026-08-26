@@ -17,4 +17,17 @@ describe('usageTelemetry', () => {
     expect(logger.info.mock.calls[0][0]).not.toContain('prompt');
     expect(logger.info.mock.calls[0][0]).not.toContain('response');
   });
+
+  test('preserves authoritative provider-reported cost separately from estimates', () => {
+    const telemetry = recordUsageTelemetry({
+      provider: 'OpenRouter', model: 'openai/gpt-4o', inputTokens: 10, outputTokens: 20,
+      reportedCost: 0.0003, reportedCostUnit: 'credits', success: true,
+    }, { info: jest.fn() });
+    expect(telemetry).toMatchObject({ reportedCost: 0.0003, reportedCostUnit: 'credits', costSource: 'provider' });
+  });
+
+  test('marks unavailable cost as unknown rather than an estimate', () => {
+    const telemetry = recordUsageTelemetry({ provider: 'Ollama', model: 'qwen3:8b', success: true }, { info: jest.fn() });
+    expect(telemetry).toMatchObject({ estimatedCostUsd: null, costSource: 'unknown' });
+  });
 });

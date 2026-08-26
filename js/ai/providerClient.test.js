@@ -11,10 +11,10 @@ describe('providerClient', () => {
     expect(normalizeProviderResponse({
       id: 'req-1', model: 'test-model',
       choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 4, completion_tokens: 6 },
+      usage: { prompt_tokens: 4, completion_tokens: 6, cost: 0.0002 },
     }, { provider: 'test', model: 'requested-model', latencyMs: 12 })).toEqual({
       content: '{"ok":true}', provider: 'test', model: 'test-model', inputTokens: 4,
-      outputTokens: 6, finishReason: 'stop', requestId: 'req-1', latencyMs: 12,
+      outputTokens: 6, reportedCost: 0.0002, reportedCostUnit: 'credits', finishReason: 'stop', requestId: 'req-1', latencyMs: 12,
     });
   });
 

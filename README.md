@@ -307,19 +307,24 @@ The hosted AI routes are:
 - `POST /api/ai_geojson` for GeoJSON generation
 - `GET /api/providers` for available provider/model metadata
 
-The built-in provider is Ollama. OpenAI is also supported when a key is sent in
-the request or configured as `OPENAI_API_KEY`. AI request behavior can be tuned
-with:
+The built-in provider is Ollama. OpenAI is supported directly, and OpenRouter
+provides the unified hosted gateway for model/provider routing. Direct OpenAI
+requests use `OPENAI_API_KEY`; OpenRouter requests use `OPENROUTER_API_KEY`.
+AI request behavior can be tuned with:
 
 ```bash
 AI_REQUEST_TIMEOUT_MS=30000
 AI_MAX_RETRIES=2
+# Optional OpenRouter model fallback chain, comma-separated
+OPENROUTER_FALLBACK_MODELS=anthropic/claude-3.5-sonnet,google/gemini-2.0-flash
 # Optional JSON pricing overrides for usage telemetry
 AI_PRICING_JSON='{"openai":{"gpt-4o":{"input":0.0025,"output":0.01}}}'
 ```
 
 See [`docs/ai-provider-contract.md`](docs/ai-provider-contract.md) for the
-normalized response, retry/error categories, and privacy-safe usage telemetry.
+normalized response, OpenRouter integration, retry/error categories, and
+privacy-safe usage telemetry. OpenRouter-reported usage cost is preferred;
+local pricing is only a fallback for direct providers or missing provider data.
 
 ## Development checks
 

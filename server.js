@@ -54,12 +54,27 @@ function getAiRequestOptions() {
   };
 }
 
+function getProviderApiKey(providerId, requestKey) {
+  if (requestKey) return requestKey;
+  if (providerId === 'openrouter') return process.env.OPENROUTER_API_KEY || '';
+  return process.env.OPENAI_API_KEY || '';
+}
+
+function getOpenRouterFallbackModels() {
+  return String(process.env.OPENROUTER_FALLBACK_MODELS || '')
+    .split(',')
+    .map((modelId) => modelId.trim())
+    .filter(Boolean);
+}
+
 function recordProviderUsage({ normalized, error, provider, model, startedAt }) {
   return recordUsageTelemetry({
     provider: normalized?.provider || provider,
     model: normalized?.model || model,
     inputTokens: normalized?.inputTokens,
     outputTokens: normalized?.outputTokens,
+    reportedCost: normalized?.reportedCost,
+    reportedCostUnit: normalized?.reportedCostUnit,
     latencyMs: normalized?.latencyMs || error?.latencyMs || (startedAt ? Date.now() - startedAt : null),
     success: Boolean(normalized),
     errorCategory: error?.category,
@@ -915,8 +930,7 @@ app.post('/api/ai_structured', async (req, res) => {
 
     const authHeader = req.get('Authorization');
     const userKey = authHeader ? authHeader.replace('Bearer ', '').trim() : null;
-    const envKey = process.env.OPENAI_API_KEY;
-    const apiKey = userKey || envKey;
+    const apiKey = getProviderApiKey(providerId, userKey);
 
     if (provider.requiresKey && !apiKey) {
       return res.status(400).json({ ok: false, error: `No API key provided for ${provider.name}.` });
@@ -944,6 +958,9 @@ app.post('/api/ai_structured', async (req, res) => {
         max_tokens: parsedMaxTokens,
         temperature: parsedTemperature,
         response_format: { type: 'json_object' },
+        ...(providerId === 'openrouter' && getOpenRouterFallbackModels().length > 0
+          ? { models: getOpenRouterFallbackModels(), route: 'fallback' }
+          : {}),
       },
       provider: provider.name,
       model: model || provider.defaultModel,
@@ -1016,8 +1033,7 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
   // Resolve API key: prefer per-request key, fall back to env var
   const authHeader = req.get('Authorization');
   const userKey = authHeader ? authHeader.replace('Bearer ', '').trim() : null;
-  const envKey = process.env.OPENAI_API_KEY;
-  const apiKey = userKey || envKey;
+  const apiKey = getProviderApiKey(providerId, userKey);
 
   if (provider.requiresKey && !apiKey) {
     return res.status(400).json({
@@ -1049,6 +1065,14 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
   // Request structured JSON output from providers that support OpenAI-style response_format.
   if (providerId === 'openai' || providerId === 'ollama') {
     body.response_format = { type: 'json_object' };
+  }
+  if (providerId === 'openrouter') {
+    body.response_format = { type: 'json_object' };
+    const fallbackModels = getOpenRouterFallbackModels();
+    if (fallbackModels.length > 0) {
+      body.models = fallbackModels;
+      body.route = 'fallback';
+    }
   }
 
   const startedAt = Date.now();

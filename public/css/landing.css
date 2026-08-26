@@ -447,6 +447,60 @@ section {
     line-height: 0.98;
 }
 
+.role-flow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.role-card {
+    position: relative;
+    padding: 22px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    box-shadow: 0 22px 50px var(--shadow);
+}
+
+.role-card-engine {
+    border-color: var(--border-strong);
+    background: linear-gradient(180deg, rgba(118, 214, 255, 0.12), rgba(23, 27, 33, 0.95));
+}
+
+.role-label,
+.role-responsibility {
+    margin: 0;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.role-card h3 {
+    margin: 14px 0 10px;
+    font-family: var(--display);
+    font-size: 1.2rem;
+    letter-spacing: -0.03em;
+}
+
+.role-card p:not(.role-label) {
+    margin: 0;
+    color: var(--text-muted);
+    line-height: 1.65;
+}
+
+.role-responsibility {
+    display: block;
+    margin-top: 18px;
+    color: var(--text-soft);
+}
+
+.role-boundary-note {
+    margin: 18px 0 0;
+    color: var(--text-muted);
+    line-height: 1.65;
+}
+
 .contrast-grid,
 .proof-cards,
 .proof-grid,
@@ -640,6 +694,7 @@ section {
 
     .hero,
     .contrast-grid,
+    .role-flow,
     .proof-cards,
     .three-up,
     .principle-grid,

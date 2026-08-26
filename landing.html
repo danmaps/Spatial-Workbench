@@ -96,6 +96,39 @@
             </div>
         </section>
 
+        <section class="role-boundary" aria-labelledby="roleBoundaryHeading">
+            <div class="section-heading">
+                <p class="eyebrow">Clear division of labor</p>
+                <h2 id="roleBoundaryHeading">Agent plans. Engine executes. Tools do the work.</h2>
+                <p>
+                    Spatial Workbench is not another agent or a hidden workflow planner. It is the dependable spatial runtime that a caller can use one explicit step at a time.
+                </p>
+            </div>
+            <div class="role-flow">
+                <article class="role-card">
+                    <p class="role-label">Agent or caller</p>
+                    <h3>Chooses the next move</h3>
+                    <p>Understands the goal, discovers available tools, selects a tool, supplies parameters and state, then interprets the result and decides what happens next.</p>
+                    <span class="role-responsibility">Plans &middot; selects &middot; reasons</span>
+                </article>
+                <article class="role-card role-card-engine">
+                    <p class="role-label">Spatial Workbench</p>
+                    <h3>Runs one declared operation reliably</h3>
+                    <p>Validates the request, enforces limits, executes the selected tool, and returns structured outputs, artifacts, warnings, and an execution receipt.</p>
+                    <span class="role-responsibility">Validates &middot; executes &middot; records</span>
+                </article>
+                <article class="role-card">
+                    <p class="role-label">Spatial tool</p>
+                    <h3>Provides a narrow capability</h3>
+                    <p>Buffers a layer, generates points, exports GeoJSON, or performs another specific spatial operation with clear inputs and outputs.</p>
+                    <span class="role-responsibility">Transforms &middot; returns</span>
+                </article>
+            </div>
+            <p class="role-boundary-note">
+                The browser workbench, HTTP API, CLI, and MCP server are different ways to call the same runtime. They do not each invent their own planning model or hidden workflow state.
+            </p>
+        </section>
+
         <section class="problem">
             <div class="section-heading">
                 <p class="eyebrow">Why this exists</p>

@@ -60,13 +60,15 @@
       </table>
     </section>
 
+    <section class="tool-docs-section"><div class="tool-docs-section-label">Inputs / Outputs / State behavior</div><p><strong>State mode:</strong> layers · <strong>Mutates state:</strong> no · <strong>Produces artifacts:</strong> yes</p><div><strong>Inputs</strong><ul><li><code>Layer</code> → layer · Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon · honors selection</li></ul></div><div><strong>Outputs</strong><ul><li>artifact → create · download</li></ul></div></section>
+
     <section class="tool-docs-section">
       <div class="tool-docs-section-label">Spec JSON</div>
       <pre class="tool-docs-code"><code>{
   &quot;key&quot;: &quot;ExportTool&quot;,
   &quot;name&quot;: &quot;Export&quot;,
   &quot;description&quot;: &quot;Export data&quot;,
-  &quot;headlessSupported&quot;: false,
+  &quot;headlessSupported&quot;: true,
   &quot;parameters&quot;: [
     {
       &quot;name&quot;: &quot;Layer&quot;,
@@ -80,7 +82,35 @@
       &quot;type&quot;: &quot;dropdown&quot;,
       &quot;defaultValue&quot;: &quot;geojson&quot;
     }
-  ]
+  ],
+  &quot;execution&quot;: {
+    &quot;stateMode&quot;: &quot;layers&quot;,
+    &quot;inputs&quot;: [
+      {
+        &quot;parameter&quot;: &quot;Layer&quot;,
+        &quot;kind&quot;: &quot;layer&quot;,
+        &quot;geometryTypes&quot;: [
+          &quot;Point&quot;,
+          &quot;MultiPoint&quot;,
+          &quot;LineString&quot;,
+          &quot;MultiLineString&quot;,
+          &quot;Polygon&quot;,
+          &quot;MultiPolygon&quot;
+        ],
+        &quot;cardinality&quot;: &quot;one&quot;,
+        &quot;selectionAware&quot;: true
+      }
+    ],
+    &quot;outputs&quot;: [
+      {
+        &quot;kind&quot;: &quot;artifact&quot;,
+        &quot;operation&quot;: &quot;create&quot;,
+        &quot;artifactType&quot;: &quot;download&quot;
+      }
+    ],
+    &quot;mutatesState&quot;: false,
+    &quot;producesArtifacts&quot;: true
+  }
 }</code></pre>
     </section>
     </main>

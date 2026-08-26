@@ -1,5 +1,6 @@
 const { normalizeHeadlessState } = require('./headlessState');
 const { getToolByKey } = require('./toolRegistry');
+const { validateExecutionSpec } = require('./executionSpec');
 
 async function runToolHeadlessly({ toolKey, params, state, spatial = null }) {
   const tool = getToolByKey(toolKey);
@@ -23,7 +24,9 @@ async function runToolHeadlessly({ toolKey, params, state, spatial = null }) {
     spatial,
   };
   const toolParams = params || {};
-  const validation = await tool.validate(toolParams, context);
+  const executionValidation = validateExecutionSpec(tool.getSpec(), toolParams, normalizedState);
+  const toolValidation = await tool.validate(toolParams, context);
+  const validation = { ok: executionValidation.ok && toolValidation.ok, errors: [...executionValidation.errors, ...toolValidation.errors] };
   if (!validation.ok) {
     const message = validation.errors[0] || 'Invalid tool parameters.';
     tool.setStatus(2, message);

@@ -23,6 +23,8 @@ class BufferTool extends Tool {
         ]);
 
         this.description = 'Makes a buffer around the input layer';
+        this.headlessSupported = true;
+        this.execution = { stateMode: 'layers', inputs: [{ parameter: 'Input Layer', kind: 'layer', geometryTypes: ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'], cardinality: 'one', selectionAware: true }], outputs: [{ kind: 'layer', operation: 'add', geometryType: 'Polygon' }], mutatesState: true, producesArtifacts: false };
     }
 
     /**

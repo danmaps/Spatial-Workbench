@@ -33,6 +33,8 @@ describe('tool docs renderer', () => {
     const html = renderToolDocPage(specs[0], specs);
     expect(html).toContain('Buffer');
     expect(html).toContain('Parameters');
+    expect(html).toContain('Inputs / Outputs / State behavior');
+    expect(html).toContain('State mode:');
     expect(html).toContain('Spec JSON');
     expect(html).toContain('Distance');
     expect(html).toContain('&quot;key&quot;: &quot;BufferTool&quot;');

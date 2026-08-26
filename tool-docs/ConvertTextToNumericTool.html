@@ -81,6 +81,8 @@
       </table>
     </section>
 
+    <section class="tool-docs-section"><div class="tool-docs-section-label">Inputs / Outputs / State behavior</div><p><strong>State mode:</strong> featureCollection · <strong>Mutates state:</strong> yes · <strong>Produces artifacts:</strong> no</p><div><strong>Inputs</strong><ul><li>featureCollection → featureCollection · Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon · honors selection</li></ul></div><div><strong>Outputs</strong><ul><li>featureCollection → update · preserved</li></ul></div></section>
+
     <section class="tool-docs-section">
       <div class="tool-docs-section-label">Spec JSON</div>
       <pre class="tool-docs-code"><code>{
@@ -119,7 +121,34 @@
       &quot;type&quot;: &quot;boolean&quot;,
       &quot;defaultValue&quot;: true
     }
-  ]
+  ],
+  &quot;execution&quot;: {
+    &quot;stateMode&quot;: &quot;featureCollection&quot;,
+    &quot;inputs&quot;: [
+      {
+        &quot;kind&quot;: &quot;featureCollection&quot;,
+        &quot;geometryTypes&quot;: [
+          &quot;Point&quot;,
+          &quot;MultiPoint&quot;,
+          &quot;LineString&quot;,
+          &quot;MultiLineString&quot;,
+          &quot;Polygon&quot;,
+          &quot;MultiPolygon&quot;
+        ],
+        &quot;cardinality&quot;: &quot;many&quot;,
+        &quot;selectionAware&quot;: true
+      }
+    ],
+    &quot;outputs&quot;: [
+      {
+        &quot;kind&quot;: &quot;featureCollection&quot;,
+        &quot;operation&quot;: &quot;update&quot;,
+        &quot;geometryType&quot;: &quot;preserved&quot;
+      }
+    ],
+    &quot;mutatesState&quot;: true,
+    &quot;producesArtifacts&quot;: false
+  }
 }</code></pre>
     </section>
     </main>

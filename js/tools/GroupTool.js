@@ -56,6 +56,8 @@ class GroupTool extends Tool {
         ]);
 
         this.description = 'Groups nearby features by distance and adds the grouped result as a new layer';
+        this.headlessSupported = true;
+        this.execution = { stateMode: 'layers', inputs: [{ parameter: 'Layer', kind: 'layer', geometryTypes: ['Point', 'MultiPoint'], cardinality: 'one', selectionAware: true }], outputs: [{ kind: 'layer', operation: 'add', geometryType: 'Point' }], mutatesState: true, producesArtifacts: false };
     }
 
     async validate(params, context = {}) {

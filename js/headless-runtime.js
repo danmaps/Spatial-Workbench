@@ -6,6 +6,7 @@ const { RandomPointsTool } = require('./tools/RandomPointsTool');
 const { AddAIGeneratedFieldTool } = require('./tools/AddAIGeneratedFieldTool');
 const { ConvertTextToNumericTool } = require('./tools/ConvertTextToNumericTool');
 const { ensureFeatureId } = require('./spatial');
+const { validateExecutionSpec } = require('./runtime/executionSpec');
 
 function ensureHeadlessGlobals() {
   if (!globalThis.turf) {
@@ -228,8 +229,9 @@ function getHeadlessToolCatalog() {
       name: spec.name,
       description: spec.description,
       parameters: spec.parameters,
-      headless: true,
-      stateMode: 'layers',
+      headless: spec.headlessSupported,
+      stateMode: spec.execution.stateMode,
+      execution: spec.execution,
     };
   });
 
@@ -242,8 +244,9 @@ function getHeadlessToolCatalog() {
         name: spec.name,
         description: spec.description,
         parameters: spec.parameters,
-        headless: true,
-        stateMode: 'featureCollection',
+        headless: spec.headlessSupported,
+        stateMode: spec.execution.stateMode,
+        execution: spec.execution,
       };
     });
 
@@ -272,7 +275,9 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {}, spatial
     spatial,
   };
 
-  const validation = await tool.validate(params, context);
+  const executionValidation = validateExecutionSpec(tool.getSpec(), params, state);
+  const toolValidation = await tool.validate(params, context);
+  const validation = { ok: executionValidation.ok && toolValidation.ok, errors: [...executionValidation.errors, ...toolValidation.errors] };
   if (!validation.ok) {
     const message = validation.errors[0] || 'Invalid tool parameters.';
     tool.setStatus(2, message);

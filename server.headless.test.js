@@ -213,7 +213,7 @@ describe('/api/run', () => {
       expect.arrayContaining(['BufferTool', 'RandomPointsTool', 'ExportTool', 'ConvertTextToNumericTool'])
     );
     expect(data.supportedTools).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: 'BufferTool', stateMode: 'layers' }),
+      expect.objectContaining({ key: 'BufferTool', stateMode: 'layers', execution: expect.objectContaining({ inputs: expect.any(Array), outputs: expect.any(Array) }) }),
       expect.objectContaining({ key: 'ConvertTextToNumericTool', stateMode: 'featureCollection' }),
     ]));
     expect(data.requestShape).toEqual(expect.objectContaining({
@@ -1210,6 +1210,8 @@ describe('/api/run', () => {
         selection: { featureIds: [] },
       }),
     }));
+    expectExecutionReceipt(data.execution);
+    expect(data.execution).toEqual(expect.objectContaining({ inputLayerIds: [], outputLayerIds: [], featureCounts: { input: sourcePointsGeojson.features.length, output: sourcePointsGeojson.features.length } }));
     expect(data.output.state).toBeUndefined();
     expect(normalizeToolOutputGeojson(data.state.featureCollection)).toEqual(expectedConvertedSourcePoints);
   });

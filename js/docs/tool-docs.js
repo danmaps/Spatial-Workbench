@@ -38,6 +38,27 @@ function renderParameterRows(parameters = []) {
   }).join('');
 }
 
+
+function renderExecutionBehavior(execution = {}) {
+  const inputs = Array.isArray(execution.inputs) ? execution.inputs : [];
+  const outputs = Array.isArray(execution.outputs) ? execution.outputs : [];
+  const describeInput = (input) => {
+    const source = input.parameter ? '<code>' + escapeHtml(input.parameter) + '</code>' : escapeHtml(input.kind || 'input');
+    const geometry = Array.isArray(input.geometryTypes) && input.geometryTypes.length ? ' · ' + escapeHtml(input.geometryTypes.join(', ')) : '';
+    const selection = input.selectionAware ? ' · honors selection' : '';
+    return '<li>' + source + ' → ' + escapeHtml(input.kind || 'input') + geometry + selection + '</li>';
+  };
+  const describeOutput = (output) => '<li>' + escapeHtml(output.kind || 'output') + ' → ' + escapeHtml(output.operation || 'produce') + (output.geometryType ? ' · ' + escapeHtml(output.geometryType) : '') + (output.artifactType ? ' · ' + escapeHtml(output.artifactType) : '') + '</li>';
+  return '<section class="tool-docs-section">' +
+    '<div class="tool-docs-section-label">Inputs / Outputs / State behavior</div>' +
+    '<p><strong>State mode:</strong> ' + escapeHtml(execution.stateMode || 'browser') +
+    ' · <strong>Mutates state:</strong> ' + (execution.mutatesState ? 'yes' : 'no') +
+    ' · <strong>Produces artifacts:</strong> ' + (execution.producesArtifacts ? 'yes' : 'no') + '</p>' +
+    '<div><strong>Inputs</strong><ul>' + (inputs.length ? inputs.map(describeInput).join('') : '<li class="tool-docs-muted">None declared.</li>') + '</ul></div>' +
+    '<div><strong>Outputs</strong><ul>' + (outputs.length ? outputs.map(describeOutput).join('') : '<li class="tool-docs-muted">None declared.</li>') + '</ul></div>' +
+    '</section>';
+}
+
 function renderToolNav(specs = [], currentKey = null) {
   return specs.map((spec) => {
     const isCurrent = spec.key === currentKey;
@@ -103,6 +124,8 @@ function renderToolDocPage(spec, specs = []) {
         </tbody>
       </table>
     </section>
+
+    ${renderExecutionBehavior(spec.execution)}
 
     <section class="tool-docs-section">
       <div class="tool-docs-section-label">Spec JSON</div>

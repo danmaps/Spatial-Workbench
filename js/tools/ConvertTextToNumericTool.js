@@ -16,6 +16,7 @@ class ConvertTextToNumericTool extends Tool {
 
     this.description = 'Convert text-like numeric attributes into numeric values';
     this.headlessSupported = true;
+    this.execution = { stateMode: 'featureCollection', inputs: [{ kind: 'featureCollection', geometryTypes: ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'], cardinality: 'many', selectionAware: true }], outputs: [{ kind: 'featureCollection', operation: 'update', geometryType: 'preserved' }], mutatesState: true, producesArtifacts: false };
   }
 
   async validate(params, context = {}) {

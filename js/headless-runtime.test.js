@@ -66,6 +66,9 @@ describe('headless runtime', () => {
       ok: true,
       tool: 'BufferTool',
       status: expect.objectContaining({ code: 0, message: 'Buffered layer added to map.' }),
+      outputs: [expect.objectContaining({ type: 'layer', layerIds: expect.any(Array) })],
+      artifacts: [],
+      logs: [],
       output: expect.objectContaining({ ok: true, added: expect.any(Array), removed: [] }),
       state: expect.objectContaining({
         added: expect.any(Array),

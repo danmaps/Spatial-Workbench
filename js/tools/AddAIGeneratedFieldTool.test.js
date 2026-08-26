@@ -128,7 +128,13 @@ describe('AddAIGeneratedFieldTool', () => {
       }
     );
 
-    expect(result).toBeUndefined();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      status: { code: 2, message: 'No eligible target features found.' },
+      outputs: [],
+      artifacts: [],
+      logs: [],
+    }));
     expect(tool.getStatus().message).toBe('No eligible target features found.');
     expect(mockGenerateFieldValues).not.toHaveBeenCalled();
   });

@@ -174,7 +174,13 @@ describe('GroupTool', () => {
       state: { selection: {} },
     });
 
-    expect(result).toBeUndefined();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      status: { code: 2, message: 'Distance must be greater than 0.' },
+      outputs: [],
+      artifacts: [],
+      logs: [],
+    }));
     expect(mockApplyResult).not.toHaveBeenCalled();
     expect(tool.getStatus()).toEqual(expect.objectContaining({
       code: 2,

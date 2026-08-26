@@ -7,6 +7,7 @@ const { AddAIGeneratedFieldTool } = require('./tools/AddAIGeneratedFieldTool');
 const { ConvertTextToNumericTool } = require('./tools/ConvertTextToNumericTool');
 const { ensureFeatureId } = require('./spatial');
 const { validateExecutionSpec } = require('./runtime/executionSpec');
+const { normalizeToolResult } = require('./runtime/toolResult');
 
 function ensureHeadlessGlobals() {
   if (!globalThis.turf) {
@@ -282,18 +283,16 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {}, spatial
     const message = validation.errors[0] || 'Invalid tool parameters.';
     tool.setStatus(2, message);
     return {
-      ok: false,
+      ...normalizeToolResult(null, tool.getStatus(), { validation, state: runtime.getResponseState() }),
       tool: toolKey,
-      status: tool.getStatus(),
-      validation,
       output: null,
-      state: runtime.getResponseState(),
     };
   }
 
   const output = await tool.run(params, context);
 
   return {
+    ...(output || normalizeToolResult(null, tool.getStatus())),
     ok: tool.getStatus().code === 0,
     tool: toolKey,
     status: tool.getStatus(),

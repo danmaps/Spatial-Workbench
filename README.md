@@ -293,7 +293,9 @@ Recommended environment variables:
 ```bash
 PORT=3003
 CORS_ORIGINS=https://workbench.dannymcvey.com
-# Optional fallback key for server-side AI requests
+# Default hosted provider key for server-side AI requests
+# OPENROUTER_API_KEY=...
+# Optional direct-provider key
 # OPENAI_API_KEY=...
 ```
 
@@ -307,9 +309,10 @@ The hosted AI routes are:
 - `POST /api/ai_geojson` for GeoJSON generation
 - `GET /api/providers` for available provider/model metadata
 
-The built-in provider is Ollama. OpenAI is supported directly, and OpenRouter
-provides the unified hosted gateway for model/provider routing. Direct OpenAI
-requests use `OPENAI_API_KEY`; OpenRouter requests use `OPENROUTER_API_KEY`.
+OpenRouter is the default hosted provider for the GIS experience and provides
+the unified gateway for model/provider routing. Ollama remains available as a
+local/offline option, and OpenAI is supported directly. Direct OpenAI requests
+use `OPENAI_API_KEY`; OpenRouter requests use `OPENROUTER_API_KEY`.
 AI request behavior can be tuned with:
 
 ```bash

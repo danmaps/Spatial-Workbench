@@ -45,6 +45,31 @@ describe('Tool base architecture', () => {
     });
   });
 
+  test('run() returns the canonical ToolResult envelope', async () => {
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo', [], 'demo', null);
+      }
+      async run() {
+        this.setStatus(0, 'done');
+        return {
+          added: ['layer-1'],
+          download: { filename: 'out.geojson', mimeType: 'application/geo+json', data: '{"type":"FeatureCollection","features":[]}' },
+        };
+      }
+    }
+
+    const result = await new DemoTool().run({}, {});
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      status: { code: 0, message: 'done' },
+      outputs: [expect.objectContaining({ type: 'layer', layerIds: ['layer-1'] })],
+      artifacts: [expect.objectContaining({ type: 'download', filename: 'out.geojson' })],
+      logs: [],
+    }));
+  });
+
   test('execute passes params and context into run()', async () => {
     class DemoTool extends Tool {
       constructor() {
@@ -91,7 +116,14 @@ describe('Tool base architecture', () => {
     const result = await tool.execute();
 
     expect(tool.run).not.toHaveBeenCalled();
-    expect(result).toEqual({ ok: false, errors: ['Name is required.'] });
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      errors: ['Name is required.'],
+      status: { code: 2, message: 'Name is required.' },
+      outputs: [],
+      artifacts: [],
+      logs: [],
+    }));
     expect(tool.getStatus()).toEqual({ code: 2, message: 'Name is required.' });
   });
 
@@ -113,11 +145,12 @@ describe('Tool base architecture', () => {
 
     const tool = new DemoTool();
     await tool.handleRunResult({
-      download: {
+      artifacts: [{
+        type: 'download',
         filename: 'out.geojson',
         mimeType: 'application/json',
         data: '{"ok":true}'
-      }
+      }]
     });
 
     expect(global.URL.createObjectURL).toHaveBeenCalled();
@@ -186,7 +219,13 @@ describe('Tool base architecture', () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0].detail.status.message).toBe('done');
-    expect(listener.mock.calls[0][0].detail.result).toEqual({ ok: true });
+    expect(listener.mock.calls[0][0].detail.result).toEqual(expect.objectContaining({
+      ok: true,
+      status: { code: 0, message: 'done' },
+      outputs: [],
+      artifacts: [],
+      logs: [],
+    }));
   });
 
   test('renderUI exposes docs icon for the selected tool', () => {

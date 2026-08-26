@@ -1,5 +1,7 @@
 const stateModule = require('../state');
 
+const { normalizeToolResult } = require('../runtime/toolResult');
+
 class Tool {
     constructor(name, parameters = [], description, map) {
         this.name = name;
@@ -9,6 +11,7 @@ class Tool {
 
         // Wrap the UI execution method in the constructor
         this.execute = this.reRenderOnExecute(this.execute.bind(this));
+        this.run = this.normalizeRun(this.run.bind(this));
 
         // Messages to store status info
         this.statusMessage = `${name} executed successfully.`;
@@ -215,8 +218,9 @@ class Tool {
     }
 
     async handleRunResult(result) {
-        if (!result || !result.download) return;
-        const { filename = 'download.json', mimeType = 'application/json', data = '' } = result.download;
+        const artifact = result?.artifacts?.find((candidate) => candidate?.type === 'download');
+        if (!artifact) return;
+        const { filename = 'download.json', mimeType = 'application/json', data = '' } = artifact;
         const blob = new Blob([typeof data === 'string' ? data : JSON.stringify(data)], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -233,10 +237,7 @@ class Tool {
         if (!validation.ok) {
             const message = validation.errors[0] || 'Invalid tool parameters.';
             this.setStatus(2, message);
-            return {
-                ok: false,
-                errors: validation.errors,
-            };
+            return normalizeToolResult({ errors: validation.errors }, this.getStatus(), { validation });
         }
         const result = await this.run(params, context);
         await this.handleRunResult(result);
@@ -257,6 +258,10 @@ class Tool {
 
     async run(_params, _context) {
         throw new Error(`${this.name} must implement run(params, context)`);
+    }
+
+    normalizeRun(run) {
+        return async (...args) => normalizeToolResult(await run(...args), this.getStatus());
     }
 
     reRenderOnExecute(exec) {

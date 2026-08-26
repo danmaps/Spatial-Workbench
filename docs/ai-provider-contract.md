@@ -37,8 +37,9 @@ currently estimates direct OpenAI `gpt-4o` usage, and additional pricing can be
 supplied with `AI_PRICING_JSON`. Unknown models and providers report
 `estimatedCostUsd: null` and do not fail requests.
 
-OpenRouter is supported as a unified provider gateway. Set
-`OPENROUTER_API_KEY` and select provider `openrouter`; its response usage cost
+OpenRouter is the default hosted provider and is supported as a unified gateway.
+Set `OPENROUTER_API_KEY`; callers may select provider `openrouter` explicitly
+when needed. Its response usage cost
 is recorded as `reportedCost` with unit `credits`. This stays separate from the
 local `estimatedCostUsd` fallback because the gateway may apply routing,
 caching, or provider-specific billing details. Optional comma-separated model

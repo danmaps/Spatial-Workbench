@@ -72,8 +72,12 @@ describe('ai settings helpers', () => {
       ok: true,
       json: async () => ({
         ok: true,
-        default: 'ollama',
+        default: 'openrouter',
         providers: [{
+          id: 'openrouter',
+          defaultModel: 'openai/gpt-4o',
+          requiresKey: true,
+        }, {
           id: 'ollama',
           defaultModel: DEFAULT_OLLAMA_MODEL,
           requiresKey: false,
@@ -94,11 +98,13 @@ describe('ai settings helpers', () => {
     const saveButton = Array.from(root.querySelectorAll('button')).find((button) => button.textContent === 'Save');
     const issuesLink = root.querySelector('.settings-meta-link');
 
-    expect(providerSelect.value).toBe('ollama');
-    expect(modelSelect.value).toBe(DEFAULT_OLLAMA_MODEL);
+    expect(providerSelect.value).toBe('openrouter');
+    expect(modelSelect.style.display).toBe('none');
     expect(issuesLink).not.toBeNull();
     expect(issuesLink.href).toBe('https://github.com/danmaps/Spatial-Workbench/issues');
 
+    providerSelect.value = 'ollama';
+    providerSelect.dispatchEvent(new Event('change'));
     modelSelect.value = 'qwen3:4b';
     modelSelect.dispatchEvent(new Event('change'));
     saveButton.click();

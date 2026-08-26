@@ -43,7 +43,9 @@ const AI_PROVIDERS = {
   },
 };
 
-const DEFAULT_PROVIDER = 'ollama';
+// OpenRouter is the default hosted gateway for the Workbench GIS experience.
+// Ollama remains available as an explicit local/offline option.
+const DEFAULT_PROVIDER = 'openrouter';
 
 const SYSTEM_PROMPT =
   'You are a helpful assistant that always only returns valid GeoJSON in response to user queries. ' +

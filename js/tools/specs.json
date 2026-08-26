@@ -29,13 +29,20 @@
         "type": "boolean",
         "defaultValue": false
       }
-    ]
+    ],
+    "execution": {
+      "stateMode": "browser",
+      "inputs": [],
+      "outputs": [],
+      "mutatesState": false,
+      "producesArtifacts": false
+    }
   },
   {
     "key": "BufferTool",
     "name": "Buffer",
     "description": "Makes a buffer around the input layer",
-    "headlessSupported": false,
+    "headlessSupported": true,
     "parameters": [
       {
         "name": "Input Layer",
@@ -61,13 +68,41 @@
           "degrees"
         ]
       }
-    ]
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Input Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Point",
+            "MultiPoint",
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": true
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "layer",
+          "operation": "add",
+          "geometryType": "Polygon"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
   },
   {
     "key": "ExportTool",
     "name": "Export",
     "description": "Export data",
-    "headlessSupported": false,
+    "headlessSupported": true,
     "parameters": [
       {
         "name": "Layer",
@@ -81,7 +116,35 @@
         "type": "dropdown",
         "defaultValue": "geojson"
       }
-    ]
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Point",
+            "MultiPoint",
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": true
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "artifact",
+          "operation": "create",
+          "artifactType": "download"
+        }
+      ],
+      "mutatesState": false,
+      "producesArtifacts": true
+    }
   },
   {
     "key": "GenerateAIFeatures",
@@ -95,13 +158,20 @@
         "type": "text",
         "defaultValue": ""
       }
-    ]
+    ],
+    "execution": {
+      "stateMode": "browser",
+      "inputs": [],
+      "outputs": [],
+      "mutatesState": false,
+      "producesArtifacts": false
+    }
   },
   {
     "key": "GroupTool",
     "name": "Group",
     "description": "Groups nearby features by distance and adds the grouped result as a new layer",
-    "headlessSupported": false,
+    "headlessSupported": true,
     "parameters": [
       {
         "name": "Layer",
@@ -128,13 +198,37 @@
           "degrees"
         ]
       }
-    ]
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Point",
+            "MultiPoint"
+          ],
+          "cardinality": "one",
+          "selectionAware": true
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "layer",
+          "operation": "add",
+          "geometryType": "Point"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
   },
   {
     "key": "RandomPointsTool",
     "name": "Random Points",
     "description": "Adds random points within selected polygon",
-    "headlessSupported": false,
+    "headlessSupported": true,
     "parameters": [
       {
         "name": "Points Count",
@@ -154,7 +248,35 @@
         "type": "dropdown",
         "defaultValue": ""
       }
-    ]
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Polygon",
+          "kind": "layer",
+          "geometryTypes": [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": false,
+          "when": {
+            "parameter": "Inside Polygon",
+            "equals": true
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "layer",
+          "operation": "add",
+          "geometryType": "Point"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
   },
   {
     "key": "AddAIGeneratedFieldTool",
@@ -203,7 +325,34 @@
         "type": "boolean",
         "defaultValue": false
       }
-    ]
+    ],
+    "execution": {
+      "stateMode": "featureCollection",
+      "inputs": [
+        {
+          "kind": "featureCollection",
+          "geometryTypes": [
+            "Point",
+            "MultiPoint",
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "many",
+          "selectionAware": true
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "featureCollection",
+          "operation": "update",
+          "geometryType": "preserved"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
   },
   {
     "key": "ConvertTextToNumericTool",
@@ -241,6 +390,33 @@
         "type": "boolean",
         "defaultValue": true
       }
-    ]
+    ],
+    "execution": {
+      "stateMode": "featureCollection",
+      "inputs": [
+        {
+          "kind": "featureCollection",
+          "geometryTypes": [
+            "Point",
+            "MultiPoint",
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "many",
+          "selectionAware": true
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "featureCollection",
+          "operation": "update",
+          "geometryType": "preserved"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
   }
 ]

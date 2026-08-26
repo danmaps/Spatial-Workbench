@@ -48,6 +48,8 @@ class RandomPointsTool extends Tool {
         ]);
 
         this.description = 'Adds random points within selected polygon';
+        this.headlessSupported = true;
+        this.execution = { stateMode: 'layers', inputs: [{ parameter: 'Polygon', kind: 'layer', geometryTypes: ['Polygon', 'MultiPolygon'], cardinality: 'one', selectionAware: false, when: { parameter: 'Inside Polygon', equals: true } }], outputs: [{ kind: 'layer', operation: 'add', geometryType: 'Point' }], mutatesState: true, producesArtifacts: false };
     }
 
     /**

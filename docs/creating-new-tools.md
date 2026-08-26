@@ -28,6 +28,15 @@ Important pieces:
 
 If you are designing a tool now, think of `run()` as the real contract.
 
+
+### Execution metadata
+
+Every tool spec includes an execution object. Declare it in the constructor so the browser, HTTP API, CLI, MCP adapter, generated docs, validation, and receipts describe the same operation.
+
+The object declares stateMode (layers, featureCollection, or browser), inputs, outputs, mutatesState, and producesArtifacts. Layer inputs declare their parameter key, kind, accepted geometryTypes, cardinality, and whether they honor selection. Optional inputs may declare a when condition with a parameter and expected value.
+
+Use an artifact output with producesArtifacts true for downloads. Use a featureCollection output with update semantics for in-place feature-collection tools. The runtime uses these declarations to reject incompatible geometry before execution and to derive input/output receipt references without relying on parameter naming conventions.
+
 ---
 
 ## 2. Decide what kind of tool you are building

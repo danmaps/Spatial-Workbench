@@ -20,6 +20,7 @@ const { runToolHeadlessly } = require('./js/runtime/headlessRunner');
 const { runToolInWorker, getActiveWorkerCount } = require('./js/runtime/workerExecutor');
 const { createSpatialSession, normalizeSpatialRequest, SPATIAL_METADATA } = require('./js/spatial');
 const { createInMemoryDatasetStore, formatDatasetRef, parseDatasetRef } = require('./js/runtime/datasetStore');
+const { getInputLayerIds } = require('./js/runtime/executionSpec');
 const MAX_AI_TOKENS = 4096;
 const DEFAULT_AI_TIMEOUT_MS = 30000;
 const DEFAULT_AI_MAX_RETRIES = 2;
@@ -278,24 +279,8 @@ function buildReferenceResponseState({ requestState, responseState, ownerId, dat
   };
 }
 
-function collectInputLayerIds(toolKey, params = {}) {
-  const ids = [];
-
-  if (typeof params['Input Layer'] === 'string' && params['Input Layer']) {
-    ids.push(params['Input Layer']);
-  }
-  if (typeof params.Layer === 'string' && params.Layer) {
-    ids.push(params.Layer);
-  }
-  if (toolKey === 'RandomPointsTool' && params['Inside Polygon'] && typeof params.Polygon === 'string' && params.Polygon) {
-    ids.push(params.Polygon);
-  }
-
-  return [...new Set(ids)];
-}
-
 function buildExecutionReceipt({
-  toolKey,
+  toolSpec,
   params,
   requestState,
   result,
@@ -303,21 +288,27 @@ function buildExecutionReceipt({
   finishedAt,
   datasetHandles = { read: [], produced: [], expired: [] },
 }) {
-  const inputLayerIds = collectInputLayerIds(toolKey, params);
-  const outputLayerIds = Array.isArray(result?.state?.added)
-    ? result.state.added.map((layer) => layer.id).filter(Boolean)
+  const executionSpec = toolSpec?.execution || {};
+  const inputs = Array.isArray(executionSpec.inputs) ? executionSpec.inputs : [];
+  const outputs = Array.isArray(executionSpec.outputs) ? executionSpec.outputs : [];
+  const inputLayerIds = getInputLayerIds(toolSpec, params);
+  const outputLayerIds = outputs.some((output) => output.kind === 'layer' && output.operation === 'add')
+    ? (Array.isArray(result?.state?.added) ? result.state.added.map((layer) => layer.id).filter(Boolean) : [])
     : [];
+  const readsFeatureCollection = inputs.some((input) => input.kind === 'featureCollection');
+  const updatesFeatureCollection = outputs.some((output) => output.kind === 'featureCollection' && output.operation === 'update');
+  const producesArtifact = outputs.some((output) => output.kind === 'artifact');
 
   let inputFeatureCount = inputLayerIds.reduce((sum, layerId) => sum + getLayerFeatureCount(requestState, layerId), 0);
-  if (!inputFeatureCount && requestState?.featureCollection) {
+  if (readsFeatureCollection && requestState?.featureCollection) {
     inputFeatureCount = countGeojsonFeatures(requestState.featureCollection);
   }
 
   let outputFeatureCount = outputLayerIds.reduce((sum, layerId) => sum + getLayerFeatureCount(result?.state, layerId), 0);
-  if (!outputFeatureCount && result?.state?.featureCollection) {
+  if (updatesFeatureCollection && result?.state?.featureCollection) {
     outputFeatureCount = countGeojsonFeatures(result.state.featureCollection);
   }
-  if (!outputFeatureCount && result?.output?.download?.data) {
+  if (producesArtifact && result?.output?.download?.data) {
     try {
       outputFeatureCount = countGeojsonFeatures(JSON.parse(result.output.download.data));
     } catch (_error) {
@@ -331,10 +322,7 @@ function buildExecutionReceipt({
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     inputLayerIds,
     outputLayerIds,
-    featureCounts: {
-      input: inputFeatureCount,
-      output: outputFeatureCount,
-    },
+    featureCounts: { input: inputFeatureCount, output: outputFeatureCount },
     datasetHandles: {
       read: Array.isArray(datasetHandles.read) ? datasetHandles.read : [],
       produced: Array.isArray(datasetHandles.produced) ? datasetHandles.produced : [],
@@ -854,7 +842,8 @@ app.post('/api/run', async (req, res) => {
       ...rawResult,
       state: referenceResponse.state,
     };
-    const toolInputLayerIds = new Set(collectInputLayerIds(body.tool, body.params));
+    const toolSpec = getHeadlessToolCatalog().find((tool) => tool.key === body.tool);
+    const toolInputLayerIds = new Set(getInputLayerIds(toolSpec, body.params));
     const readDatasetHandles = resolvedDatasetInputs
       .filter((entry) => toolInputLayerIds.size === 0 || toolInputLayerIds.has(entry.layerId))
       .map((entry) => entry.datasetRef)
@@ -864,7 +853,7 @@ app.post('/api/run', async (req, res) => {
       ...result,
       spatial: spatial.toJSON(),
       execution: buildExecutionReceipt({
-        toolKey: body.tool,
+        toolSpec,
         params: body.params,
         requestState: spatialRequest.state,
         result: rawResult,

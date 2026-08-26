@@ -11,6 +11,8 @@ class ExportTool extends Tool {
         ]);
 
         this.description = "Export data";
+        this.headlessSupported = true;
+        this.execution = { stateMode: 'layers', inputs: [{ parameter: 'Layer', kind: 'layer', geometryTypes: ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'], cardinality: 'one', selectionAware: true }], outputs: [{ kind: 'artifact', operation: 'create', artifactType: 'download' }], mutatesState: false, producesArtifacts: true };
     }
     async validate(params, context = {}) {
         const inputLayerId = params['Layer'];

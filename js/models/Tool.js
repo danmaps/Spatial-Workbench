@@ -55,6 +55,7 @@ class Tool {
             description: this.description || '',
             headlessSupported: !!this.headlessSupported,
             parameters: params,
+            execution: this.execution || { stateMode: 'browser', inputs: [], outputs: [], mutatesState: false, producesArtifacts: false },
         };
     }
 

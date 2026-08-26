@@ -8,7 +8,12 @@ function getPricingTable(overrides) {
   if (overrides) return overrides;
   if (typeof process !== 'undefined' && process.env?.AI_PRICING_JSON) {
     try {
-      return { ...DEFAULT_PRICING_USD_PER_1K_TOKENS, ...JSON.parse(process.env.AI_PRICING_JSON) };
+      const parsed = JSON.parse(process.env.AI_PRICING_JSON);
+      const merged = { ...DEFAULT_PRICING_USD_PER_1K_TOKENS };
+      for (const provider of Object.keys(parsed)) {
+        merged[provider] = { ...(merged[provider] || {}), ...parsed[provider] };
+      }
+      return merged;
     } catch (_error) {
       // Invalid optional pricing configuration must not break AI requests.
     }

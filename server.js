@@ -69,16 +69,16 @@ function getOpenRouterFallbackModels() {
 
 function recordProviderUsage({ normalized, error, provider, model, startedAt }) {
   return recordUsageTelemetry({
-    provider: normalized?.provider || provider,
-    model: normalized?.model || model,
+    provider: normalized?.provider ?? provider,
+    model: normalized?.model ?? model,
     inputTokens: normalized?.inputTokens,
     outputTokens: normalized?.outputTokens,
     reportedCost: normalized?.reportedCost,
     reportedCostUnit: normalized?.reportedCostUnit,
-    latencyMs: normalized?.latencyMs || error?.latencyMs || (startedAt ? Date.now() - startedAt : null),
-    success: Boolean(normalized),
+    latencyMs: normalized?.latencyMs ?? error?.latencyMs ?? (startedAt ? Date.now() - startedAt : null),
+    success: !error,
     errorCategory: error?.category,
-    requestId: normalized?.requestId,
+    requestId: normalized?.requestId ?? error?.requestId,
   });
 }
 

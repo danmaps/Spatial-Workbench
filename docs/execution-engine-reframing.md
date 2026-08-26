@@ -71,6 +71,8 @@ flowchart LR
 
 The loop belongs to the agent. Spatial Workbench provides a reliable turn of the crank each time around the loop.
 
+![Spatial Workbench execution-engine reframe](assets/execution-engine-reframe.png)
+
 ## What this means for existing headless work
 
 The existing headless API already points in this direction.

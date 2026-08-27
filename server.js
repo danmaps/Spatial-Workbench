@@ -460,6 +460,11 @@ app.get(['/workbench-gis', '/workbench-gis/'], (_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+app.get('/api/runtime-config', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ cartoBasemapKey: process.env.CARTO_BASEMAP_KEY || '' });
+});
+
 app.get('/headless-demo', (_req, res) => {
   res.sendFile(path.join(__dirname, 'headless-demo.html'));
 });

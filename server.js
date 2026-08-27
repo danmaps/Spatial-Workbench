@@ -168,6 +168,24 @@ function countLayersVertices(layers) {
   return (layers || []).reduce((sum, layer) => sum + countGeojsonVertices(layer?.geojson), 0);
 }
 
+function parseStrictNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function invalidParameterResponse(res, param, received, message, limit) {
+  return res.status(422).json({
+    ok: false,
+    error: message,
+    code: 'PARAM_INVALID',
+    param,
+    ...(limit !== undefined ? { limit } : {}),
+    received,
+  });
+}
+
 
 function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -721,11 +739,23 @@ app.post('/api/run', async (req, res) => {
       });
     }
 
-    // Tool-specific parameter bounds — checked before any expensive work
+    // Tool-specific parameter bounds — checked before any expensive work.
+    // Parse strictly here so values such as "10foo", Infinity, and NaN cannot
+    // bypass the limit checks and reach an expensive tool execution.
     const toolKey = body.tool;
     if (toolKey === 'RandomPointsTool') {
       const maxRandomPoints = getEnvInt('MAX_RANDOM_POINTS', DEFAULT_MAX_RANDOM_POINTS);
-      const requestedCount = parseInt(body.params?.['Points Count'], 10);
+      const rawCount = body.params?.['Points Count'];
+      const requestedCount = parseStrictNumber(rawCount);
+      if (rawCount !== undefined && (requestedCount === null || !Number.isInteger(requestedCount) || requestedCount <= 0)) {
+        return invalidParameterResponse(
+          res,
+          'Points Count',
+          rawCount,
+          'RandomPointsTool: "Points Count" must be a finite positive integer.',
+          maxRandomPoints,
+        );
+      }
       if (requestedCount > maxRandomPoints) {
         return res.status(422).json({
           ok: false,
@@ -739,8 +769,18 @@ app.post('/api/run', async (req, res) => {
     }
     if (toolKey === 'BufferTool') {
       const maxBufferDistance = getEnvInt('MAX_BUFFER_DISTANCE', DEFAULT_MAX_BUFFER_DISTANCE);
-      const requestedDistance = parseFloat(body.params?.['Distance']);
-      if (Number.isFinite(requestedDistance) && Math.abs(requestedDistance) > maxBufferDistance) {
+      const rawDistance = body.params?.['Distance'];
+      const requestedDistance = parseStrictNumber(rawDistance);
+      if (rawDistance !== undefined && requestedDistance === null) {
+        return invalidParameterResponse(
+          res,
+          'Distance',
+          rawDistance,
+          'BufferTool: "Distance" must be a finite number.',
+          maxBufferDistance,
+        );
+      }
+      if (Math.abs(requestedDistance) > maxBufferDistance) {
         return res.status(422).json({
           ok: false,
           error: `BufferTool: "Distance" (${requestedDistance}) exceeds the maximum absolute value of ${maxBufferDistance}.`,
@@ -777,35 +817,9 @@ app.post('/api/run', async (req, res) => {
       });
     }
 
-    // Feature and vertex limits are enforced after dataset-reference resolution
-    // so that stored GeoJSON and featureCollection-mode state are both counted.
-    const resolvedLayers = Array.isArray(resolvedState?.layers) ? resolvedState.layers : [];
-    const totalFeatures =
-      resolvedLayers.reduce((sum, l) => sum + countGeojsonFeatures(l?.geojson), 0) +
-      countGeojsonFeatures(resolvedState?.featureCollection);
-    if (totalFeatures > maxFeatures) {
-      return res.status(422).json({
-        ok: false,
-        error: `Request exceeds the maximum allowed feature count of ${maxFeatures}.`,
-        code: 'FEATURE_LIMIT',
-        limit: maxFeatures,
-        received: totalFeatures,
-      });
-    }
-
-    const totalVertices =
-      countLayersVertices(resolvedLayers) +
-      countGeojsonVertices(resolvedState?.featureCollection);
-    if (totalVertices > maxVertices) {
-      return res.status(422).json({
-        ok: false,
-        error: `Request exceeds the maximum allowed vertex/coordinate count of ${maxVertices}.`,
-        code: 'VERTEX_LIMIT',
-        limit: maxVertices,
-        received: totalVertices,
-      });
-    }
-
+    // Normalize and validate before counting so guardrails apply to the actual
+    // execution input. This also keeps featureCollection-mode tools from being
+    // charged for unrelated layer-state data in the same request.
     const spatialRequest = normalizeSpatialRequest({
       toolKey: body.tool,
       state: resolvedState,
@@ -818,6 +832,34 @@ app.post('/api/run', async (req, res) => {
         error: 'Invalid spatial input.',
         validation: spatialRequest.validation,
         spatial: spatial.toJSON(),
+      });
+    }
+
+    const executionState = spatialRequest.state;
+    const resolvedLayers = Array.isArray(executionState?.layers) ? executionState.layers : [];
+    const totalFeatures = executionState?.featureCollection
+      ? countGeojsonFeatures(executionState.featureCollection)
+      : resolvedLayers.reduce((sum, l) => sum + countGeojsonFeatures(l?.geojson), 0);
+    if (totalFeatures > maxFeatures) {
+      return res.status(422).json({
+        ok: false,
+        error: `Request exceeds the maximum allowed feature count of ${maxFeatures}.`,
+        code: 'FEATURE_LIMIT',
+        limit: maxFeatures,
+        received: totalFeatures,
+      });
+    }
+
+    const totalVertices = executionState?.featureCollection
+      ? countGeojsonVertices(executionState.featureCollection)
+      : countLayersVertices(resolvedLayers);
+    if (totalVertices > maxVertices) {
+      return res.status(422).json({
+        ok: false,
+        error: `Request exceeds the maximum allowed vertex/coordinate count of ${maxVertices}.`,
+        code: 'VERTEX_LIMIT',
+        limit: maxVertices,
+        received: totalVertices,
       });
     }
 

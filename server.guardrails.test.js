@@ -749,6 +749,30 @@ describe('API workload guardrails', () => {
     }
   });
 
+  test('POST /api/run rejects non-integer or partially parsed RandomPointsTool counts', async () => {
+    process.env.MAX_RANDOM_POINTS = '10';
+    try {
+      for (const value of ['10foo', -1, 'Infinity']) {
+        const response = await requestJson(baseUrl, '/api/run', {
+          body: {
+            tool: 'RandomPointsTool',
+            params: { 'Points Count': value },
+            state: { layers: [], bbox: [-118.5, 33.5, -117.5, 34.5] },
+          },
+        });
+        const data = response.json();
+
+        expect(response.status).toBe(422);
+        expect(data.code).toBe('PARAM_INVALID');
+        expect(data.param).toBe('Points Count');
+        expect(data.limit).toBe(10);
+        expect(data.received).toBe(value);
+      }
+    } finally {
+      delete process.env.MAX_RANDOM_POINTS;
+    }
+  });
+
   test('POST /api/run returns 422 with PARAM_LIMIT when BufferTool "Distance" exceeds MAX_BUFFER_DISTANCE', async () => {
     process.env.MAX_BUFFER_DISTANCE = '100';
     try {
@@ -772,6 +796,32 @@ describe('API workload guardrails', () => {
       expect(data.code).toBe('PARAM_LIMIT');
       expect(data.param).toBe('Distance');
       expect(data.limit).toBe(100);
+    } finally {
+      delete process.env.MAX_BUFFER_DISTANCE;
+    }
+  });
+
+  test('POST /api/run rejects non-finite or partially parsed BufferTool distances', async () => {
+    process.env.MAX_BUFFER_DISTANCE = '100';
+    try {
+      for (const value of ['10m', 'Infinity']) {
+        const response = await requestJson(baseUrl, '/api/run', {
+          body: {
+            tool: 'BufferTool',
+            params: { Distance: value, Units: 'miles' },
+            state: {
+              layers: [{ id: 'layer-1', name: 'Points', geojson: makeFeatureCollection(1) }],
+            },
+          },
+        });
+        const data = response.json();
+
+        expect(response.status).toBe(422);
+        expect(data.code).toBe('PARAM_INVALID');
+        expect(data.param).toBe('Distance');
+        expect(data.limit).toBe(100);
+        expect(data.received).toBe(value);
+      }
     } finally {
       delete process.env.MAX_BUFFER_DISTANCE;
     }

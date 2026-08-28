@@ -418,5 +418,86 @@
       "mutatesState": true,
       "producesArtifacts": false
     }
+  },
+  {
+    "key": "SelectByAttributeTool",
+    "name": "Select by Attribute",
+    "description": "Selects features using an attribute condition",
+    "headlessSupported": true,
+    "parameters": [
+      {
+        "name": "Layer",
+        "description": "Layer to query",
+        "type": "dropdown",
+        "defaultValue": ""
+      },
+      {
+        "name": "Field",
+        "description": "Attribute field to query",
+        "type": "text",
+        "defaultValue": ""
+      },
+      {
+        "name": "Operator",
+        "description": "Attribute comparison",
+        "type": "dropdown",
+        "defaultValue": "equals",
+        "options": [
+          "equals",
+          "not equals",
+          "contains",
+          "starts with",
+          "ends with",
+          "greater than",
+          "less than",
+          "is empty",
+          "is not empty"
+        ]
+      },
+      {
+        "name": "Value",
+        "description": "Value to compare",
+        "type": "text",
+        "defaultValue": ""
+      },
+      {
+        "name": "Selection Mode",
+        "description": "How to apply matching features",
+        "type": "dropdown",
+        "defaultValue": "replace",
+        "options": [
+          "replace",
+          "add",
+          "remove"
+        ]
+      }
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Point",
+            "MultiPoint",
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": false
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "selection",
+          "operation": "update"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
   }
 ]

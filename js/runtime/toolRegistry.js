@@ -7,6 +7,7 @@ const toolDescriptors = [
   { exportName: 'RandomPointsTool', load: () => require('../tools/RandomPointsTool').RandomPointsTool },
   { exportName: 'AddAIGeneratedFieldTool', load: () => require('../tools/AddAIGeneratedFieldTool').AddAIGeneratedFieldTool },
   { exportName: 'ConvertTextToNumericTool', load: () => require('../tools/ConvertTextToNumericTool').ConvertTextToNumericTool },
+  { exportName: 'SelectByAttributeTool', load: () => require('../tools/SelectByAttributeTool').SelectByAttributeTool },
 ];
 
 function loadToolClass(descriptor) {

@@ -6,6 +6,8 @@ const { RandomPointsTool } = require('./tools/RandomPointsTool');
 const { AddAIGeneratedFieldTool } = require('./tools/AddAIGeneratedFieldTool');
 const { ConvertTextToNumericTool } = require('./tools/ConvertTextToNumericTool');
 const { SelectByAttributeTool } = require('./tools/SelectByAttributeTool');
+const { ClipTool } = require('./tools/ClipTool');
+const { EraseTool } = require('./tools/EraseTool');
 const { ensureFeatureId } = require('./spatial');
 const { validateExecutionSpec } = require('./runtime/executionSpec');
 const { normalizeToolResult } = require('./runtime/toolResult');
@@ -227,6 +229,8 @@ const HEADLESS_TOOLS = {
   GroupTool,
   RandomPointsTool,
   SelectByAttributeTool,
+  ClipTool,
+  EraseTool,
 };
 
 const FEATURE_COLLECTION_TOOLS = {

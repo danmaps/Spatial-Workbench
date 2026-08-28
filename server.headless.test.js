@@ -485,10 +485,23 @@ describe('/api/run', () => {
       download: expect.objectContaining({
         filename: 'source-layer.geojson',
         mimeType: 'application/json',
-        data: JSON.stringify(expectedExportSourcePoints),
+        data: expect.any(String),
       }),
     }));
-    expect(JSON.parse(data.output.download.data)).toEqual(expectedExportSourcePoints);
+    const exportedGeojson = JSON.parse(data.output.download.data);
+    expect(normalizeToolOutputGeojson(exportedGeojson)).toEqual(expectedExportSourcePoints);
+    expect(exportedGeojson.toolMetadata).toEqual(expect.objectContaining({
+      name: 'Export',
+      parentLayerId: 'source-layer',
+      params: expect.objectContaining({ Layer: 'source-layer', Format: 'GeoJSON' }),
+      target: expect.objectContaining({
+        mode: 'layer',
+        selectedFeatureIds: [],
+        selectedFeatureCount: 0,
+        totalFeatureCount: sourcePointsGeojson.features.length,
+      }),
+      timestamp: expect.any(String),
+    }));
     expect(data.state).toEqual(expect.objectContaining({
       added: [],
       removed: [],
@@ -622,6 +635,11 @@ describe('/api/run', () => {
     const exportedGeojson = JSON.parse(exportData.output.download.data);
     expect(exportedGeojson.type).toBe('FeatureCollection');
     expect(exportedGeojson.features).toHaveLength(sourcePointsGeojson.features.length);
+    expect(exportedGeojson.toolMetadata.target).toEqual(expect.objectContaining({
+      mode: 'layer',
+      selectedFeatureCount: 0,
+      totalFeatureCount: sourcePointsGeojson.features.length,
+    }));
   });
 
   test('dataset handles fail clearly for missing, unauthorized, and expired references', async () => {
@@ -786,6 +804,11 @@ describe('/api/run', () => {
     const exportedGeojson = JSON.parse(exportData.output.download.data);
     expect(turf.getType(exportedGeojson)).toBe('FeatureCollection');
     expect(exportedGeojson.features).toHaveLength(bufferedLayer.geojson.features.length);
+    expect(exportedGeojson.toolMetadata.target).toEqual(expect.objectContaining({
+      mode: 'layer',
+      selectedFeatureCount: 0,
+      totalFeatureCount: bufferedLayer.geojson.features.length,
+    }));
   });
 
   test('POST /api/run reports tool validation failures without crashing the API', async () => {

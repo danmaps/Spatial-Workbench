@@ -1,4 +1,4 @@
-const { resolveTargetLayerData } = require('./targeting');
+const { buildTargetMetadata, resolveTargetLayerData } = require('./targeting');
 
 describe('resolveTargetLayerData', () => {
   test('uses selected features when they belong to the target layer', () => {
@@ -92,5 +92,19 @@ describe('resolveTargetLayerData', () => {
       totalFeatureCount: 2,
       targetGeoJSON: sourceGeoJSON,
     }));
+  });
+
+  test('buildTargetMetadata returns the stable selection-aware target shape', () => {
+    expect(buildTargetMetadata({
+      mode: 'selection',
+      selectedFeatureIds: ['feature-2'],
+      selectedFeatureCount: 1,
+      totalFeatureCount: 2,
+    })).toEqual({
+      mode: 'selection',
+      selectedFeatureIds: ['feature-2'],
+      selectedFeatureCount: 1,
+      totalFeatureCount: 2,
+    });
   });
 });

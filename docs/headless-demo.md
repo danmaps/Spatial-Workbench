@@ -83,6 +83,8 @@ The chained flow is:
 
 The caller should not guess generated layer ids or rebuild state by hand. The response `state` is the authoritative serialized handoff between steps.
 
+The exported GeoJSON is also the durable receipt for the workflow. Its top-level `toolHistory` records the ordered lineage (`Random Points -> Buffer -> Export`), and `toolMetadata.target` records whether the final export targeted the full layer or a selected feature subset.
+
 ## What This Defers
 
 This demo intentionally does not prove:

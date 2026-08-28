@@ -435,6 +435,13 @@ describe('headless runtime', () => {
         }),
         timestamp: expect.any(String),
       }),
+      toolHistory: [
+        expect.objectContaining({
+          name: 'Export',
+          parentLayerId: 'export-me',
+          target: expect.objectContaining({ mode: 'layer' }),
+        }),
+      ],
     });
     expect(result.state.layers).toEqual([
       expect.objectContaining({
@@ -516,6 +523,13 @@ describe('headless runtime', () => {
         }),
         timestamp: expect.any(String),
       }),
+      toolHistory: [
+        expect.objectContaining({
+          name: 'Export',
+          parentLayerId: 'export-me',
+          target: expect.objectContaining({ mode: 'selection' }),
+        }),
+      ],
     });
     expect(result.state.layers[0].geojson).not.toHaveProperty('toolMetadata');
   });

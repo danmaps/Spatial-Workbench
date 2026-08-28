@@ -325,7 +325,7 @@ Reusable sample GeoJSON and known-good outputs live in `test/fixtures/headless-a
 - `source-points.geojson` is the shared input layer.
 - `boundary-polygon.geojson` is used for polygon-scoped random point requests.
 - `expected-buffer-summary.json` is compared against stable `BufferTool` output fields.
-- `expected-export-source-points.geojson` is compared exactly against `ExportTool` output.
+- `expected-export-source-points.geojson` is compared against `ExportTool` feature output after removing dynamic tool metadata.
 - `expected-convert-text-to-numeric.geojson` is compared against `ConvertTextToNumericTool` output after removing dynamic tool metadata.
 - `expected-grouped-points.geojson` is compared against `GroupTool` output after removing dynamic tool metadata.
 - `turf-derived/` contains a small MIT-licensed subset of Turf.js fixtures for polygon holes, buffer edge cases, and DBSCAN property preservation. See `test/fixtures/headless-api/README.md` for exact upstream paths and license notes.

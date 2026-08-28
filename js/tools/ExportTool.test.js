@@ -65,6 +65,13 @@ describe('ExportTool', () => {
         }),
         timestamp: expect.any(String),
       }),
+      toolHistory: [
+        expect.objectContaining({
+          name: 'Export',
+          parentLayerId: 'input-1',
+          target: expect.objectContaining({ mode: 'selection' }),
+        }),
+      ],
     });
     expect(result.download.filename).toBe('input-1-selection.geojson');
     expect(tool.getStatus()).toEqual(expect.objectContaining({
@@ -79,6 +86,9 @@ describe('ExportTool', () => {
       features: [
         { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'feature-1' } },
         { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __id: 'feature-2' } },
+      ],
+      toolHistory: [
+        { name: 'Import', timestamp: '2026-08-28T01:00:00.000Z' },
       ],
     };
 
@@ -111,6 +121,17 @@ describe('ExportTool', () => {
         }),
         timestamp: expect.any(String),
       }),
+      toolHistory: [
+        expect.objectContaining({
+          name: 'Import',
+          timestamp: '2026-08-28T01:00:00.000Z',
+        }),
+        expect.objectContaining({
+          name: 'Export',
+          parentLayerId: 'input-1',
+          target: expect.objectContaining({ mode: 'layer' }),
+        }),
+      ],
     });
     expect(result.download.filename).toBe('input-1.geojson');
     expect(tool.getStatus()).toEqual(expect.objectContaining({

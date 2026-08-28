@@ -91,6 +91,7 @@ Use `geometry.type` and `geometry.featureCount` instead of recomputing from raw 
 
 `source.metadata` / `provenance.metadata` are sanitized copies of the latest tool metadata.
 `provenance.history` is the ordered, de-duplicated lineage chain recorded by `ensureToolHistory()`.
+Exported GeoJSON preserves the same idea with top-level `toolMetadata` for the export action and top-level `toolHistory` for the ordered workflow lineage.
 
 ### UI hooks
 

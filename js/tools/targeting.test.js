@@ -1,4 +1,4 @@
-const { buildTargetMetadata, resolveTargetLayerData } = require('./targeting');
+const { buildTargetMetadata, buildToolHistory, getTargetToolHistory, resolveTargetLayerData } = require('./targeting');
 
 describe('resolveTargetLayerData', () => {
   test('uses selected features when they belong to the target layer', () => {
@@ -106,5 +106,27 @@ describe('resolveTargetLayerData', () => {
       selectedFeatureCount: 1,
       totalFeatureCount: 2,
     });
+  });
+
+  test('buildToolHistory appends current metadata to inherited lineage', () => {
+    const parentHistory = [
+      { name: 'Random Points', timestamp: '2026-08-28T01:00:00.000Z' },
+      { name: 'Buffer', parentLayerId: 'result-1', timestamp: '2026-08-28T01:01:00.000Z' },
+    ];
+    const exportMetadata = { name: 'Export', parentLayerId: 'result-2', timestamp: '2026-08-28T01:02:00.000Z' };
+    const target = {
+      sourceGeoJSON: {
+        type: 'FeatureCollection',
+        features: [],
+        toolHistory: parentHistory,
+      },
+    };
+
+    expect(getTargetToolHistory(target)).toEqual(parentHistory);
+    expect(buildToolHistory(target, exportMetadata)).toEqual([
+      parentHistory[0],
+      parentHistory[1],
+      exportMetadata,
+    ]);
   });
 });

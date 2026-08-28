@@ -11,6 +11,7 @@ const { EraseTool } = require('./tools/EraseTool');
 const { ensureFeatureId } = require('./spatial');
 const { validateExecutionSpec } = require('./runtime/executionSpec');
 const { normalizeToolResult } = require('./runtime/toolResult');
+const { buildToolHistory } = require('./tools/targeting');
 
 function ensureHeadlessGlobals() {
   if (!globalThis.turf) {
@@ -78,6 +79,14 @@ function createLayerRecord(rawLayer, fallbackIndex = 0) {
       return deepClone(geojson);
     },
   };
+  if (geojson.toolMetadata) {
+    layer.feature.toolMetadata = deepClone(geojson.toolMetadata);
+    layer.feature.properties.toolMetadata = deepClone(geojson.toolMetadata);
+  }
+  if (Array.isArray(geojson.toolHistory)) {
+    layer.feature.toolHistory = deepClone(geojson.toolHistory);
+    layer.feature.properties.toolHistory = deepClone(geojson.toolHistory);
+  }
 
   if ((geometryType === 'Polygon' || geometryType === 'MultiPolygon') && globalThis.L?.Polygon?.prototype) {
     Object.setPrototypeOf(layer, globalThis.L.Polygon.prototype);
@@ -177,6 +186,15 @@ function createHeadlessRuntime(input = {}) {
       : (toolResult.addGeojson ? [toolResult.addGeojson] : []);
 
     additions.forEach((geojson, index) => {
+      const parentRecord = geojson?.toolMetadata?.parentLayerId
+        ? registry.get(geojson.toolMetadata.parentLayerId)
+        : null;
+      if (geojson?.toolMetadata) {
+        geojson.toolHistory = buildToolHistory({
+          layer: parentRecord?.layer || null,
+          sourceGeoJSON: parentRecord?.geojson || null,
+        }, geojson.toolMetadata);
+      }
       const preferredId = geojson?.feature?.properties?.__id
         || geojson?.properties?.__id
         || geojson?.toolMetadata?.layerId

@@ -1,7 +1,7 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { listLayers, getActiveLayerId } = require('../state');
-const { buildTargetMetadata, resolveTargetLayerData } = require('./targeting');
+const { buildTargetMetadata, buildToolHistory, resolveTargetLayerData } = require('./targeting');
 
 function deepClone(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -11,7 +11,7 @@ function addExportMetadata(geojson, target, params, toolName) {
     const exportedGeoJSON = deepClone(geojson);
     if (!exportedGeoJSON || typeof exportedGeoJSON !== 'object') return exportedGeoJSON;
 
-    exportedGeoJSON.toolMetadata = {
+    const toolMetadata = {
         ...(exportedGeoJSON.toolMetadata || {}),
         name: toolName,
         params,
@@ -19,6 +19,8 @@ function addExportMetadata(geojson, target, params, toolName) {
         target: buildTargetMetadata(target),
         timestamp: new Date().toISOString(),
     };
+    exportedGeoJSON.toolMetadata = toolMetadata;
+    exportedGeoJSON.toolHistory = buildToolHistory(target, toolMetadata);
 
     return exportedGeoJSON;
 }

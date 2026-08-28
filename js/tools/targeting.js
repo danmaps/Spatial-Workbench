@@ -117,6 +117,16 @@ function resolveTargetLayerData(inputLayerId, context = {}) {
   };
 }
 
+function buildTargetMetadata(target) {
+  return {
+    mode: target.mode,
+    selectedFeatureIds: target.selectedFeatureIds,
+    selectedFeatureCount: target.selectedFeatureCount,
+    totalFeatureCount: target.totalFeatureCount,
+  };
+}
+
 module.exports = {
+  buildTargetMetadata,
   resolveTargetLayerData,
 };

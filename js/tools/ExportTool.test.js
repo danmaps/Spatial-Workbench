@@ -47,11 +47,24 @@ describe('ExportTool', () => {
       },
     });
 
-    expect(JSON.parse(result.download.data)).toEqual({
+    const exportedGeoJSON = JSON.parse(result.download.data);
+    expect(exportedGeoJSON).toEqual({
       type: 'FeatureCollection',
       features: [
         expect.objectContaining({ properties: expect.objectContaining({ __id: 'feature-2' }) }),
       ],
+      toolMetadata: expect.objectContaining({
+        name: 'Export',
+        parentLayerId: 'input-1',
+        params: expect.objectContaining({ Layer: 'input-1', Format: 'GeoJSON' }),
+        target: expect.objectContaining({
+          mode: 'selection',
+          selectedFeatureIds: ['feature-2'],
+          selectedFeatureCount: 1,
+          totalFeatureCount: 2,
+        }),
+        timestamp: expect.any(String),
+      }),
     });
     expect(result.download.filename).toBe('input-1-selection.geojson');
     expect(tool.getStatus()).toEqual(expect.objectContaining({
@@ -84,11 +97,26 @@ describe('ExportTool', () => {
       },
     });
 
-    expect(JSON.parse(result.download.data)).toEqual(sourceGeoJSON);
+    expect(JSON.parse(result.download.data)).toEqual({
+      ...sourceGeoJSON,
+      toolMetadata: expect.objectContaining({
+        name: 'Export',
+        parentLayerId: 'input-1',
+        params: expect.objectContaining({ Layer: 'input-1', Format: 'GeoJSON' }),
+        target: expect.objectContaining({
+          mode: 'layer',
+          selectedFeatureIds: [],
+          selectedFeatureCount: 0,
+          totalFeatureCount: 2,
+        }),
+        timestamp: expect.any(String),
+      }),
+    });
     expect(result.download.filename).toBe('input-1.geojson');
     expect(tool.getStatus()).toEqual(expect.objectContaining({
       code: 0,
       message: 'Prepared GeoJSON export.',
     }));
+    expect(sourceGeoJSON).not.toHaveProperty('toolMetadata');
   });
 });

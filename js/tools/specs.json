@@ -499,5 +499,113 @@
       "mutatesState": true,
       "producesArtifacts": false
     }
+  },
+  {
+    "key": "ClipTool",
+    "name": "Clip",
+    "description": "Clips polygon features by a boundary layer",
+    "headlessSupported": true,
+    "parameters": [
+      {
+        "name": "Input Layer",
+        "description": "Layer to clip",
+        "type": "dropdown",
+        "defaultValue": ""
+      },
+      {
+        "name": "Clip Layer",
+        "description": "Polygon layer used as the boundary",
+        "type": "dropdown",
+        "defaultValue": ""
+      }
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Input Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": true
+        },
+        {
+          "parameter": "Clip Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": false
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "layer",
+          "operation": "add",
+          "geometryType": "Polygon"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
+  },
+  {
+    "key": "EraseTool",
+    "name": "Erase",
+    "description": "Erases polygon features using a boundary layer",
+    "headlessSupported": true,
+    "parameters": [
+      {
+        "name": "Input Layer",
+        "description": "Layer to erase from",
+        "type": "dropdown",
+        "defaultValue": ""
+      },
+      {
+        "name": "Erase Layer",
+        "description": "Polygon layer used to erase",
+        "type": "dropdown",
+        "defaultValue": ""
+      }
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Input Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": true
+        },
+        {
+          "parameter": "Erase Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": false
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "layer",
+          "operation": "add",
+          "geometryType": "Polygon"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
   }
 ]

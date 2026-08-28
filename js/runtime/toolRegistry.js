@@ -8,6 +8,8 @@ const toolDescriptors = [
   { exportName: 'AddAIGeneratedFieldTool', load: () => require('../tools/AddAIGeneratedFieldTool').AddAIGeneratedFieldTool },
   { exportName: 'ConvertTextToNumericTool', load: () => require('../tools/ConvertTextToNumericTool').ConvertTextToNumericTool },
   { exportName: 'SelectByAttributeTool', load: () => require('../tools/SelectByAttributeTool').SelectByAttributeTool },
+  { exportName: 'ClipTool', load: () => require('../tools/ClipTool').ClipTool },
+  { exportName: 'EraseTool', load: () => require('../tools/EraseTool').EraseTool },
 ];
 
 function loadToolClass(descriptor) {

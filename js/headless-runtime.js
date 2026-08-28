@@ -5,6 +5,7 @@ const { GroupTool } = require('./tools/GroupTool');
 const { RandomPointsTool } = require('./tools/RandomPointsTool');
 const { AddAIGeneratedFieldTool } = require('./tools/AddAIGeneratedFieldTool');
 const { ConvertTextToNumericTool } = require('./tools/ConvertTextToNumericTool');
+const { SelectByAttributeTool } = require('./tools/SelectByAttributeTool');
 const { ensureFeatureId } = require('./spatial');
 const { validateExecutionSpec } = require('./runtime/executionSpec');
 const { normalizeToolResult } = require('./runtime/toolResult');
@@ -147,6 +148,16 @@ function createHeadlessRuntime(input = {}) {
     }));
   }
 
+  function setSelectedFeatureIds(layerId, featureIds) {
+    if (!registry.has(layerId)) return [];
+    const ids = Array.isArray(featureIds) ? [...new Set(featureIds.filter(Boolean))] : [];
+    if (ids.length) selection.selectedFeaturesByLayerId[layerId] = ids;
+    else delete selection.selectedFeaturesByLayerId[layerId];
+    selection.activeLayerId = selection.activeLayerId || layerId;
+    if (!selection.selectedLayerIds.includes(layerId)) selection.selectedLayerIds.push(layerId);
+    return ids;
+  }
+
   function applyResult(toolResult) {
     const result = { ok: true, added: [], removed: [], errors: [] };
     if (!toolResult || typeof toolResult !== 'object') return result;
@@ -183,6 +194,7 @@ function createHeadlessRuntime(input = {}) {
     bounds,
     getLayer,
     listLayers,
+    setSelectedFeatureIds,
     applyResult,
     getState() {
       return {
@@ -214,6 +226,7 @@ const HEADLESS_TOOLS = {
   ExportTool,
   GroupTool,
   RandomPointsTool,
+  SelectByAttributeTool,
 };
 
 const FEATURE_COLLECTION_TOOLS = {
@@ -267,12 +280,14 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {}, spatial
   const runtime = createHeadlessRuntime(state);
   const tool = new ToolClass();
   const context = {
+    headless: true,
     map: state.map || null,
     state: runtime.getState(),
     tool,
     getLayer: runtime.getLayer,
     listLayers: runtime.listLayers,
     applyResult: runtime.applyResult,
+    setSelectedFeatureIds: runtime.setSelectedFeatureIds,
     spatial,
   };
 

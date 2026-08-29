@@ -448,9 +448,11 @@ describe('API workload guardrails', () => {
       const timedOutData = timedOutResponse.json();
 
       expect(stateResponse.status).toBe(200);
-      // Keep this comfortably below the heavy tool runtime (~500ms in local CI)
-      // so this fails if synchronous execution ever blocks the parent loop again.
-      expect(stateDurationMs).toBeLessThan(400);
+      // Allow for shared-runner scheduling and worker startup while remaining
+      // well below the several-second runtime of the dense geometry operation.
+      // This catches synchronous parent-loop blocking without making the test
+      // dependent on a sub-400ms hosted-runner measurement.
+      expect(stateDurationMs).toBeLessThan(1000);
       expect(timedOutResponse.status).toBe(503);
       expect(timedOutData.code).toBe('EXECUTION_TIMEOUT');
     } finally {

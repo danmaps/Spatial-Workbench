@@ -32,7 +32,8 @@ class ExportTool extends Tool {
     }
 
     async run(params, context = {}) {
-        console.log("Exporting data...");
+        // Keep headless JSON receipts machine-readable; progress belongs on stderr.
+        console.error("Exporting data...");
         const inputLayerId = params['Layer'];
         const format = params['Format'] || 'GeoJSON';
         if (String(format).toLowerCase() === 'geojson') {

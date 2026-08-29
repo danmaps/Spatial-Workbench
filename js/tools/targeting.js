@@ -2,6 +2,48 @@ function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+function cloneMetadata(metadata) {
+  return metadata && typeof metadata === 'object' ? deepClone(metadata) : null;
+}
+
+function firstMetadataList(candidates) {
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate.map(cloneMetadata).filter(Boolean);
+  }
+  return [];
+}
+
+function getTargetToolHistory(target = {}) {
+  const layerFeature = target.layer?.feature || {};
+  const properties = layerFeature.properties || {};
+  const sourceGeoJSON = target.sourceGeoJSON || target.targetGeoJSON || {};
+
+  return firstMetadataList([
+    properties.toolHistory,
+    layerFeature.toolHistory,
+    sourceGeoJSON.toolHistory,
+    sourceGeoJSON.properties?.toolHistory,
+  ]);
+}
+
+function buildToolHistory(target, metadata) {
+  const seenKeys = new Set();
+  const history = [];
+
+  function pushUnique(entry) {
+    const cloned = cloneMetadata(entry);
+    if (!cloned) return;
+    const key = JSON.stringify(cloned);
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    history.push(cloned);
+  }
+
+  getTargetToolHistory(target).forEach(pushUnique);
+  pushUnique(metadata);
+  return history;
+}
+
 function normalizeFeatureId(feature, fallbackId = null) {
   if (!feature || feature.type !== 'Feature') return fallbackId;
   if (!feature.properties || typeof feature.properties !== 'object') feature.properties = {};
@@ -117,6 +159,18 @@ function resolveTargetLayerData(inputLayerId, context = {}) {
   };
 }
 
+function buildTargetMetadata(target) {
+  return {
+    mode: target.mode,
+    selectedFeatureIds: target.selectedFeatureIds,
+    selectedFeatureCount: target.selectedFeatureCount,
+    totalFeatureCount: target.totalFeatureCount,
+  };
+}
+
 module.exports = {
+  buildToolHistory,
+  buildTargetMetadata,
+  getTargetToolHistory,
   resolveTargetLayerData,
 };

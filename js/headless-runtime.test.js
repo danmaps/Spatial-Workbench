@@ -423,6 +423,25 @@ describe('headless runtime', () => {
           id: 'export-me-1',
         }),
       ],
+      toolMetadata: expect.objectContaining({
+        name: 'Export',
+        parentLayerId: 'export-me',
+        params: expect.objectContaining({ Layer: 'export-me', Format: 'GeoJSON' }),
+        target: expect.objectContaining({
+          mode: 'layer',
+          selectedFeatureIds: [],
+          selectedFeatureCount: 0,
+          totalFeatureCount: 1,
+        }),
+        timestamp: expect.any(String),
+      }),
+      toolHistory: [
+        expect.objectContaining({
+          name: 'Export',
+          parentLayerId: 'export-me',
+          target: expect.objectContaining({ mode: 'layer' }),
+        }),
+      ],
     });
     expect(result.state.layers).toEqual([
       expect.objectContaining({
@@ -439,6 +458,7 @@ describe('headless runtime', () => {
         }),
       }),
     ]);
+    expect(result.state.layers[0].geojson).not.toHaveProperty('toolMetadata');
   });
 
   test('runHeadlessTool exports selected features when present', async () => {
@@ -491,7 +511,27 @@ describe('headless runtime', () => {
           id: 'feature-2',
         }),
       ],
+      toolMetadata: expect.objectContaining({
+        name: 'Export',
+        parentLayerId: 'export-me',
+        params: expect.objectContaining({ Layer: 'export-me', Format: 'GeoJSON' }),
+        target: expect.objectContaining({
+          mode: 'selection',
+          selectedFeatureIds: ['feature-2'],
+          selectedFeatureCount: 1,
+          totalFeatureCount: 2,
+        }),
+        timestamp: expect.any(String),
+      }),
+      toolHistory: [
+        expect.objectContaining({
+          name: 'Export',
+          parentLayerId: 'export-me',
+          target: expect.objectContaining({ mode: 'selection' }),
+        }),
+      ],
     });
+    expect(result.state.layers[0].geojson).not.toHaveProperty('toolMetadata');
   });
 
   test('runHeadlessTool keeps request state isolated between runs', async () => {

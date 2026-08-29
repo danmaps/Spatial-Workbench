@@ -35,4 +35,17 @@ if (parsed.features.length < 1) {
   fail('Headless demo artifact must contain at least one feature.');
 }
 
+const expectedHistory = ['Random Points', 'Buffer', 'Export'];
+const actualHistory = Array.isArray(parsed.toolHistory)
+  ? parsed.toolHistory.map((entry) => entry && entry.name)
+  : [];
+
+if (expectedHistory.some((name, index) => actualHistory[index] !== name)) {
+  fail(`Headless demo artifact must preserve toolHistory ${expectedHistory.join(' -> ')}. Received: ${actualHistory.join(' -> ') || 'none'}`);
+}
+
+if (!parsed.toolMetadata || parsed.toolMetadata.name !== 'Export' || !parsed.toolMetadata.target) {
+  fail('Headless demo artifact must include Export toolMetadata with target details.');
+}
+
 console.log(`Validated headless demo artifact: ${artifactPath} (${parsed.features.length} feature(s))`);

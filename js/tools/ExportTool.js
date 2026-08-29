@@ -1,7 +1,29 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { listLayers, getActiveLayerId } = require('../state');
-const { resolveTargetLayerData } = require('./targeting');
+const { buildTargetMetadata, buildToolHistory, resolveTargetLayerData } = require('./targeting');
+
+function deepClone(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function addExportMetadata(geojson, target, params, toolName) {
+    const exportedGeoJSON = deepClone(geojson);
+    if (!exportedGeoJSON || typeof exportedGeoJSON !== 'object') return exportedGeoJSON;
+
+    const toolMetadata = {
+        ...(exportedGeoJSON.toolMetadata || {}),
+        name: toolName,
+        params,
+        parentLayerId: target.layerId,
+        target: buildTargetMetadata(target),
+        timestamp: new Date().toISOString(),
+    };
+    exportedGeoJSON.toolMetadata = toolMetadata;
+    exportedGeoJSON.toolHistory = buildToolHistory(target, toolMetadata);
+
+    return exportedGeoJSON;
+}
 
 class ExportTool extends Tool {
     constructor() {
@@ -45,6 +67,7 @@ class ExportTool extends Tool {
             }
 
             const filenameSuffix = target.mode === 'selection' ? '-selection' : '';
+            const exportedGeoJSON = addExportMetadata(target.targetGeoJSON, target, params, this.name);
             this.setStatus(0, target.mode === 'selection'
                 ? `Prepared GeoJSON export for ${target.selectedFeatureCount} selected feature(s).`
                 : 'Prepared GeoJSON export.');
@@ -52,7 +75,7 @@ class ExportTool extends Tool {
                 download: {
                     filename: `${target.layerId}${filenameSuffix}.${format.toLowerCase()}`,
                     mimeType: 'application/json',
-                    data: JSON.stringify(target.targetGeoJSON)
+                    data: JSON.stringify(exportedGeoJSON)
                 }
             };
         }
@@ -94,4 +117,4 @@ class ExportTool extends Tool {
 
 }
 
-module.exports = { ExportTool };
+module.exports = { ExportTool, addExportMetadata };

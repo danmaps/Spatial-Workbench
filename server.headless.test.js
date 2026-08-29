@@ -89,6 +89,7 @@ function waitMs(ms) {
 function normalizeToolOutputGeojson(geojson) {
   const normalized = clone(geojson);
   delete normalized.toolMetadata;
+  delete normalized.toolHistory;
   if (Array.isArray(normalized.features)) {
     normalized.features = normalized.features.map((feature) => {
       const nextFeature = { ...feature };
@@ -485,10 +486,30 @@ describe('/api/run', () => {
       download: expect.objectContaining({
         filename: 'source-layer.geojson',
         mimeType: 'application/json',
-        data: JSON.stringify(expectedExportSourcePoints),
+        data: expect.any(String),
       }),
     }));
-    expect(JSON.parse(data.output.download.data)).toEqual(expectedExportSourcePoints);
+    const exportedGeojson = JSON.parse(data.output.download.data);
+    expect(normalizeToolOutputGeojson(exportedGeojson)).toEqual(expectedExportSourcePoints);
+    expect(exportedGeojson.toolMetadata).toEqual(expect.objectContaining({
+      name: 'Export',
+      parentLayerId: 'source-layer',
+      params: expect.objectContaining({ Layer: 'source-layer', Format: 'GeoJSON' }),
+      target: expect.objectContaining({
+        mode: 'layer',
+        selectedFeatureIds: [],
+        selectedFeatureCount: 0,
+        totalFeatureCount: sourcePointsGeojson.features.length,
+      }),
+      timestamp: expect.any(String),
+    }));
+    expect(exportedGeojson.toolHistory).toEqual([
+      expect.objectContaining({
+        name: 'Export',
+        parentLayerId: 'source-layer',
+        target: expect.objectContaining({ mode: 'layer' }),
+      }),
+    ]);
     expect(data.state).toEqual(expect.objectContaining({
       added: [],
       removed: [],
@@ -622,6 +643,15 @@ describe('/api/run', () => {
     const exportedGeojson = JSON.parse(exportData.output.download.data);
     expect(exportedGeojson.type).toBe('FeatureCollection');
     expect(exportedGeojson.features).toHaveLength(sourcePointsGeojson.features.length);
+    expect(exportedGeojson.toolMetadata.target).toEqual(expect.objectContaining({
+      mode: 'layer',
+      selectedFeatureCount: 0,
+      totalFeatureCount: sourcePointsGeojson.features.length,
+    }));
+    expect(exportedGeojson.toolHistory.map((entry) => entry.name)).toEqual([
+      'Buffer',
+      'Export',
+    ]);
   });
 
   test('dataset handles fail clearly for missing, unauthorized, and expired references', async () => {
@@ -760,6 +790,10 @@ describe('/api/run', () => {
     const bufferedLayerId = bufferData.state.added[0].id;
     const bufferedLayer = bufferData.state.layers.find((layer) => layer.id === bufferedLayerId);
     expect(bufferedLayer.geojson.toolMetadata.parentLayerId).toBe(randomPointsLayerId);
+    expect(bufferedLayer.geojson.toolHistory.map((entry) => entry.name)).toEqual([
+      'Random Points',
+      'Buffer',
+    ]);
     expect(bufferedLayer.geojson.features).toHaveLength(4);
 
     const exportResponse = await requestJson(baseUrl, '/api/run', {
@@ -786,6 +820,32 @@ describe('/api/run', () => {
     const exportedGeojson = JSON.parse(exportData.output.download.data);
     expect(turf.getType(exportedGeojson)).toBe('FeatureCollection');
     expect(exportedGeojson.features).toHaveLength(bufferedLayer.geojson.features.length);
+    expect(exportedGeojson.toolMetadata.target).toEqual(expect.objectContaining({
+      mode: 'layer',
+      selectedFeatureCount: 0,
+      totalFeatureCount: bufferedLayer.geojson.features.length,
+    }));
+    expect(exportedGeojson.toolHistory).toEqual([
+      expect.objectContaining({
+        name: 'Random Points',
+        params: expect.objectContaining({ 'Points Count': 4, 'Inside Polygon': false }),
+      }),
+      expect.objectContaining({
+        name: 'Buffer',
+        parentLayerId: randomPointsLayerId,
+        params: expect.objectContaining({ 'Input Layer': randomPointsLayerId, Distance: 0.5, Units: 'kilometers' }),
+      }),
+      expect.objectContaining({
+        name: 'Export',
+        parentLayerId: bufferedLayerId,
+        params: expect.objectContaining({ Layer: bufferedLayerId, Format: 'GeoJSON' }),
+        target: expect.objectContaining({
+          mode: 'layer',
+          selectedFeatureCount: 0,
+          totalFeatureCount: 4,
+        }),
+      }),
+    ]);
   });
 
   test('POST /api/run reports tool validation failures without crashing the API', async () => {

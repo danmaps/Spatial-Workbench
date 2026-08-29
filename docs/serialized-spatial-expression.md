@@ -23,3 +23,13 @@ References are resolved only against completed steps. Missing, forward, or ambig
 The runner enforces a maximum of 20 steps and 256 KiB per expression by default. It validates the advertised headless tool catalog before making tool calls.
 
 This is deliberately not a workflow language: no loops, conditionals, parallelism, dynamic discovery, arbitrary code, or agent reasoning traces. MCP can expose this capability later as a thin transport adapter.
+
+## Background
+
+For context on the motivation and design decisions behind this feature, see the original concept document:
+
+- [`execution-engine-reframing.md`](execution-engine-reframing.md)
+- [`headless-api.md`](headless-api.md)
+- [`dataset-handle-architecture.md`](dataset-handle-architecture.md)
+
+**Agent plans. Expression records. Engine executes. Tools do the work.**

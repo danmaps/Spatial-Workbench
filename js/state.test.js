@@ -125,6 +125,19 @@ describe('state provenance helpers', () => {
     expect(state.getSelectedFeaturesByLayerId()).toEqual({});
   });
 
+  test('layer visibility can be toggled without unregistering the layer', () => {
+    const layer = makeLayer('visible-layer');
+    state.registerLayer(layer, 'visible-layer');
+
+    expect(state.setLayerVisibility(layer, false)).toBe(false);
+    expect(state.isLayerVisible(layer)).toBe(false);
+    expect(state.getLayer('visible-layer')).toBe(layer);
+
+    expect(state.setLayerVisibility(layer, true)).toBe(true);
+    expect(state.isLayerVisible(layer)).toBe(true);
+    expect(state.getLayer('visible-layer')).toBe(layer);
+  });
+
   test('getLayerInfo exposes layer selection flags in ui metadata', () => {
     const layer = makeLayer('layer-selected');
     state.registerLayer(layer, 'layer-selected');

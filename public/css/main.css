@@ -687,6 +687,28 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
     text-overflow: ellipsis;
 }
 
+.layer-visibility-toggle {
+    flex: 0 0 auto;
+    align-self: center;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 8px;
+    min-width: 36px;
+    min-height: 36px;
+    border-radius: 6px;
+}
+
+.layer-visibility-toggle:hover,
+.layer-visibility-toggle:focus-visible {
+    color: var(--text-primary);
+    background: var(--hover-bg);
+}
+
+.layer-visibility-toggle[aria-pressed="false"] {
+    opacity: 0.55;
+}
+
 .layer-message.is-active .layer-title {
     color: #e8f7ff;
 }

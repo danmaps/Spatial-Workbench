@@ -20,7 +20,28 @@ function polygonFeatures(layer) {
 
 function dissolvePolygons(features, turfLib) {
   if (!features.length) return null;
-  return features.slice(1).reduce((mask, feature) => turfLib.union(mask, feature) || mask, features[0]);
+  return features.slice(1).reduce((mask, feature) => unionPolygons(mask, feature, turfLib) || mask, features[0]);
+}
+
+// Turf 6 accepts two polygon arguments; Turf 7 accepts a FeatureCollection.
+// Keep the tool usable with either browser CDN/runtime without swallowing the
+// API mismatch as a misleading "no intersecting features" result.
+function unionPolygons(first, second, turfLib) {
+  try {
+    return turfLib.union(first, second);
+  } catch (error) {
+    if (typeof turfLib.featureCollection !== 'function') throw error;
+    return turfLib.union(turfLib.featureCollection([first, second]));
+  }
+}
+
+function intersectPolygons(first, second, turfLib) {
+  try {
+    return turfLib.intersect(first, second);
+  } catch (error) {
+    if (typeof turfLib.featureCollection !== 'function') throw error;
+    return turfLib.intersect(turfLib.featureCollection([first, second]));
+  }
 }
 
 function targetFeatures(targetGeoJSON) {
@@ -29,4 +50,4 @@ function targetFeatures(targetGeoJSON) {
   ));
 }
 
-module.exports = { featuresFromGeoJSON, featureId, polygonFeatures, dissolvePolygons, targetFeatures };
+module.exports = { featuresFromGeoJSON, featureId, polygonFeatures, dissolvePolygons, intersectPolygons, targetFeatures, unionPolygons };

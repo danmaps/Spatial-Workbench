@@ -172,16 +172,14 @@ function removeLayerWithGuard(layer) {
     const childIds = state.getChildLayerIds(stableId);
 
     const confirmed = childIds.length
-        ? window.confirm(`Remove \"${label}\" and its ${childIds.length} derived layer${childIds.length === 1 ? '' : 's'}?`)
+        ? window.confirm(`Remove \"${label}\"? Its ${childIds.length} derived layer${childIds.length === 1 ? '' : 's'} will be kept.`)
         : window.confirm(`Remove \"${label}\"?`);
 
     if (!confirmed) return;
 
-    if (childIds.length) {
-        state.removeLayerTree(stableId);
-    } else {
-        state.removeLayer(stableId);
-    }
+    // Derived layers are durable outputs/snapshots. Removing their source
+    // should not silently destroy work the user may have exported or refined.
+    state.removeLayer(stableId);
 
     updateDataContent();
 }

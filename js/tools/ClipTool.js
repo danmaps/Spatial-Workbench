@@ -2,7 +2,7 @@ const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
 const { listLayers, getActiveLayerId, applyResult } = require('../state');
 const { resolveTargetLayerData } = require('./targeting');
-const { polygonFeatures, dissolvePolygons, targetFeatures } = require('./overlay');
+const { polygonFeatures, dissolvePolygons, intersectPolygons, targetFeatures } = require('./overlay');
 
 class ClipTool extends Tool {
   constructor() {
@@ -39,7 +39,7 @@ class ClipTool extends Tool {
     const mask = dissolvePolygons(polygonFeatures(clipLayer), turfLib);
     const features = targetFeatures(target.targetGeoJSON);
     const output = [];
-    features.forEach((feature) => { try { const clipped = turfLib.intersect(feature, mask); if (clipped) output.push(clipped); } catch (_) {} });
+    features.forEach((feature) => { try { const clipped = intersectPolygons(feature, mask, turfLib); if (clipped) output.push(clipped); } catch (_) {} });
     if (!output.length) { this.setStatus(0, 'Clip produced no intersecting features.'); return { clippedCount: 0 }; }
     const resultGeoJSON = { type: 'FeatureCollection', features: output, toolMetadata: { name: this.name, params, parentLayerId: target.layerId, overlayLayerId: params['Clip Layer'], target: { mode: target.mode, selectedFeatureIds: target.selectedFeatureIds, selectedFeatureCount: target.selectedFeatureCount, totalFeatureCount: target.totalFeatureCount }, timestamp: new Date().toISOString() } };
     const result = (context.applyResult || applyResult)({ addGeojson: resultGeoJSON });

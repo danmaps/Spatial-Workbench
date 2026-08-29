@@ -1030,6 +1030,20 @@ function renderToc() {
         left.appendChild(textWrap);
 
         const menuWrap = document.createElement('div');
+        const visibilityButton = document.createElement('button');
+        visibilityButton.type = 'button';
+        visibilityButton.className = 'layer-visibility-toggle';
+        const isVisible = state.isLayerVisible(layer);
+        visibilityButton.setAttribute('aria-label', `${isVisible ? 'Hide' : 'Show'} ${getLayerLabel(layer, info?.label)}`);
+        visibilityButton.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
+        visibilityButton.title = isVisible ? 'Hide layer' : 'Show layer';
+        visibilityButton.innerHTML = `<i class="fas fa-eye${isVisible ? '' : '-slash'}"></i>`;
+        visibilityButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            state.setLayerVisibility(layer, !state.isLayerVisible(layer));
+            refreshSidebarState();
+        });
+
         menuWrap.className = 'layer-menu-wrap';
         menuWrap.addEventListener('click', (event) => event.stopPropagation());
 
@@ -1084,6 +1098,7 @@ function renderToc() {
         menuWrap.appendChild(menu);
 
         row.appendChild(left);
+        row.appendChild(visibilityButton);
         row.appendChild(menuWrap);
         item.appendChild(row);
 

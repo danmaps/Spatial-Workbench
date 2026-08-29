@@ -77,6 +77,10 @@ function ensureLayerRemoveListener() {
     const layer = e && e.layer;
     if (!layer || !layer.__id) return;
 
+    // A visibility toggle intentionally removes a layer from Leaflet while
+    // keeping it in the registry/TOC. Deletion still unregisters normally.
+    if (layer.__isVisible === false) return;
+
     const { map: currentMap, drawnItems: currentDrawnItems } = getAppRefs();
 
     // If the layer is still present on the map or in drawnItems, do not unregister it.
@@ -483,6 +487,42 @@ function getChildLayerIds(parentId) {
   return ids;
 }
 
+function isLayerVisible(layerOrId) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return false;
+  if (typeof layer.__isVisible === 'boolean') return layer.__isVisible;
+  const { map, drawnItems } = getAppRefs();
+  return !!(
+    (map && typeof map.hasLayer === 'function' && map.hasLayer(layer)) ||
+    (drawnItems && typeof drawnItems.hasLayer === 'function' && drawnItems.hasLayer(layer))
+  );
+}
+
+function setLayerVisibility(layerOrId, visible) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return false;
+  const { map, drawnItems } = getAppRefs();
+  const nextVisible = Boolean(visible);
+  // Set the marker before Leaflet emits layerremove, otherwise the cleanup
+  // listener can mistake a visibility change for a real deletion.
+  layer.__isVisible = nextVisible;
+
+  try {
+    if (nextVisible) {
+      if (map && typeof map.addLayer === 'function' && !map.hasLayer?.(layer)) map.addLayer(layer);
+      if (drawnItems && typeof drawnItems.addLayer === 'function' && !drawnItems.hasLayer?.(layer)) drawnItems.addLayer(layer);
+    } else {
+      if (drawnItems && typeof drawnItems.removeLayer === 'function' && drawnItems.hasLayer?.(layer)) drawnItems.removeLayer(layer);
+      if (map && typeof map.removeLayer === 'function' && map.hasLayer?.(layer)) map.removeLayer(layer);
+    }
+  } catch (_) {
+    layer.__isVisible = !nextVisible;
+    return false;
+  }
+
+  return nextVisible;
+}
+
 function removeLayerTree(id) {
   const descendants = [];
   const queue = [...getChildLayerIds(id)];
@@ -871,6 +911,8 @@ module.exports = {
   getLayerName,
   setLayerName,
   getChildLayerIds,
+  isLayerVisible,
+  setLayerVisibility,
   removeLayerTree,
   getMap,
   listLayers,

@@ -451,7 +451,7 @@ describe('API workload guardrails', () => {
       // Allow for shared-runner scheduling and worker startup while remaining
       // well below the several-second runtime of the dense geometry operation.
       // This catches synchronous parent-loop blocking without making the test
-      // dependent on a sub-400ms hosted-runner measurement.
+      // dependent on a sub-400ms GitHub-hosted runner measurement.
       expect(stateDurationMs).toBeLessThan(1000);
       expect(timedOutResponse.status).toBe(503);
       expect(timedOutData.code).toBe('EXECUTION_TIMEOUT');

@@ -2,25 +2,22 @@
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Z4L326AT14)
 
-Spatial Workbench is a work-in-progress platform for designing and implementing spatial tools as agent-first services.
+Spatial Workbench is a platform for designing and implementing spatial tools as agent-first services.
 
-The long-term intent is to make spatial operations easy for agents, scripts, and humans to call through clear schemas, inspectable inputs, and GeoJSON outputs. The browser workbench remains useful as an interactive surface for drawing, testing, and inspecting geometry, but it is not the center of the architecture.
+Spatial operations are exposed through clear schemas, inspectable inputs, and GeoJSON outputs. The browser workbench provides an interactive surface for drawing, testing, and inspecting geometry alongside the headless service API.
 
-This project is intentionally simple, inspectable, and extensible while the service model evolves.
+## Platform overview
 
-## Current state
-
-The agent-first runtime is now a working, deployed surface rather than only a
-design direction:
+Spatial Workbench provides a deployed agent-first runtime with:
 
 - **Landing page:** [`workbench.dannymcvey.com`](https://workbench.dannymcvey.com)
-  explains the callable-runtime model and runs a live API proof.
+  explains the callable-runtime model and provides a live API demonstration.
 - **Interactive GIS:** [`/workbench-gis`](https://workbench.dannymcvey.com/workbench-gis)
-  remains the browser surface for drawing, importing, inspecting, and editing.
-- **Headless proof:** [`/headless-demo`](https://workbench.dannymcvey.com/headless-demo)
-  runs `RandomPointsTool -> BufferTool -> ExportTool` against the deployed API.
+  supports drawing, importing, inspecting, and editing.
+- **Headless API:** [`/headless-demo`](https://workbench.dannymcvey.com/headless-demo)
+  demonstrates `RandomPointsTool -> BufferTool -> ExportTool` against the deployed API.
 - **Agent transport:** the thin MCP adapter exposes tool discovery and execution
-  without creating a second runtime or state model.
+  through the same headless runtime and state model.
 - **AI boundary:** provider responses are normalized, transient failures have
   bounded retries/timeouts, and operational usage telemetry records provider,
   model, tokens, latency, and estimated cost without recording prompts or
@@ -47,7 +44,7 @@ general-purpose GIS processing cluster or a survey-grade measurement service.
 
 ## What is this?
 
-Spatial Workbench is becoming a small spatial tool runtime built around:
+Spatial Workbench is a small spatial tool runtime built around:
 - Agent-callable tool definitions
 - Structured parameters and execution receipts
 - Server-side service endpoints for headless runs
@@ -57,7 +54,7 @@ Spatial Workbench is becoming a small spatial tool runtime built around:
 Current spatial assumption:
 - GeoJSON coordinates are interpreted as `EPSG:4326` `longitude,latitude`
 - results are intended for lightweight web/runtime analysis, not engineering, cadastral, or survey-grade measurement
-- when coordinates or geometry look suspicious, the headless API now returns machine-readable spatial warnings instead of silently pretending everything is fine
+- when coordinates or geometry look suspicious, the headless API returns machine-readable spatial warnings instead of silently pretending everything is fine
 
 Everything revolves around geometry as state and tools as first-class services.
 
@@ -65,7 +62,7 @@ Agents should be able to discover a tool, understand its input schema, run it, i
 
 ---
 
-## What can you do right now?
+## What you can do
 
 - Draw points, lines, and polygons
 - View live GeoJSON for everything on the map
@@ -95,14 +92,14 @@ Most GIS tools are either:
 - Extremely powerful but heavy and opaque
 - Or lightweight demos that are difficult for agents and automation to operate
 
-Spatial Workbench is trying to sit in the middle. The goals are:
+Spatial Workbench sits in the middle. Its goals are:
 - Make spatial tools easy for agents to call correctly
 - Keep schemas, parameters, outputs, and provenance visible
 - Support human + agent workflows without magic
 - Make geometry tangible and explorable when visual context helps
 - Keep spatial logic visible and debuggable
 
-This is a place to build spatial capabilities that can be used by people, agents, and services.
+It provides spatial capabilities that can be used by people, agents, and services.
 
 ---
 
@@ -122,7 +119,7 @@ Tools are defined declaratively using a small model:
 
 This borrows from desktop GIS geoprocessing tools, but the direction is smaller, service-oriented, and agent-friendly.
 
-If you want to add a new spatial operation, you add a tool that can eventually run as a service, not only as a UI interaction.
+If you want to add a new spatial operation, add a tool that can run as a service as well as through the UI.
 
 ---
 
@@ -151,21 +148,20 @@ You do not need ArcGIS, QGIS, or credentials to use this.
 
 ---
 
-## Status
+## Scope
 
-This is an experimental but usable work-in-progress project. The core path is
-now: discover a headless tool, submit request-scoped GeoJSON state, execute in
-a bounded worker, inspect the execution receipt and spatial warnings, and pass
-the returned state to the next call. The UI, APIs, and tool contracts will
-continue to evolve.
-
-Expect rough edges. That’s intentional.
+Spatial Workbench supports a clear execution path: discover a headless tool,
+submit request-scoped GeoJSON state, execute in a bounded worker, inspect the
+execution receipt and spatial warnings, and pass the returned state to the next
+call. The hosted API is designed for lightweight spatial analysis and bounded
+service workloads; it is not a general-purpose GIS processing cluster or a
+survey-grade measurement service.
 
 ---
 
-## Next on the roadmap
+## Planned capabilities
 
-The next platform work is focused on making the runtime repeatable for agents:
+Planned capabilities focus on making the runtime repeatable for agents:
 
 - Provider fallback after the normalized AI/retry/telemetry foundation
 - Replayable multi-step workflows with execution receipts and artifact links

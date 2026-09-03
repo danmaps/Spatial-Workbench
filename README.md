@@ -207,14 +207,18 @@ Spatial Workbench also includes a thin MCP server that wraps the existing headle
 npm run mcp:server
 ```
 
-By default it starts a local ephemeral Workbench API and exposes two MCP tools:
+By default it starts a local ephemeral Workbench API and exposes four MCP tools:
 
 - `list_tools` -> wraps `GET /api/run`
+- `get_runtime_info` -> wraps `GET /api/state`
+- `inspect_state` -> summarizes caller-provided serialized state without persisting it
 - `run_tool` -> wraps `POST /api/run`
 
 What those tools are for:
 
 - `list_tools` returns the current Workbench headless tool catalog, notes, and request shape
+- `get_runtime_info` returns runtime capabilities, limits, spatial assumptions, and the request-scoped session model
+- `inspect_state` returns layer and selection summaries for the supplied state, keeping state ownership with the caller
 - `run_tool` executes one supported tool against request-scoped serialized `state`
 
 Typical MCP flow:

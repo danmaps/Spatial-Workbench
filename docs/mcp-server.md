@@ -9,6 +9,8 @@ a separate spatial engine.
 The design is intentionally thin:
 
 - MCP `list_tools` wraps `GET /api/run`
+- MCP `get_runtime_info` wraps `GET /api/state`
+- MCP `inspect_state` summarizes caller-owned serialized state without mutating it
 - MCP `run_tool` wraps `POST /api/run`
 - returned `state` stays opaque and serializable
 - returned `execution` stays the agent-readable audit trail
@@ -71,13 +73,27 @@ Returns the raw tool result shape from `POST /api/run`, including:
 - `execution`
 - `error` / `details` for HTTP failures
 
+### `get_runtime_info`
+
+Returns runtime metadata from `GET /api/state`, including supported tool keys,
+spatial assumptions, workload limits, and the explicit `request-scoped` session
+model. Agents can use this to understand the execution boundary before a run.
+
+### `inspect_state`
+
+Accepts a serialized `state` and returns it unchanged with a compact summary of
+layers, per-layer feature counts, and selected feature ids. It does not create a
+server-side session, persist data, or reinterpret the state's geometry.
+
 ## Current Scope
 
 This first pass is deliberately narrow. It proves that MCP clients can:
 
 1. discover supported headless Workbench tools
-2. run the canonical `RandomPointsTool -> BufferTool -> ExportTool` chain
-3. feed returned `state` verbatim into the next call
+2. inspect the runtime contract, limits, and request-scoped session model
+3. inspect returned layer/selection state between operations
+4. run the canonical `RandomPointsTool -> BufferTool -> ExportTool` chain
+5. feed returned `state` verbatim into the next call
 
 It does **not** yet try to solve:
 

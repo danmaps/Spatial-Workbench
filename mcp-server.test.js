@@ -52,7 +52,47 @@ describe('Spatial Workbench MCP server', () => {
       ListToolsResultSchema
     );
 
-    expect(result.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['list_tools', 'run_tool']));
+    expect(result.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
+      'list_tools',
+      'get_runtime_info',
+      'inspect_state',
+      'run_tool',
+    ]));
+  });
+
+  test('reports runtime limits and summarizes caller-owned state without creating a session', async () => {
+    const runtimeResult = await client.request(
+      { method: 'tools/call', params: { name: 'get_runtime_info', arguments: {} } },
+      CallToolResultSchema
+    );
+
+    expect(runtimeResult.structuredContent).toEqual(expect.objectContaining({
+      ok: true,
+      sessionModel: 'request-scoped',
+      headless: expect.objectContaining({ supportedToolKeys: expect.arrayContaining(['BufferTool']) }),
+    }));
+
+    const state = {
+      layers: [{
+        id: 'source-layer',
+        name: 'Source Layer',
+        geojson: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: null }] },
+      }],
+      selection: { featureIds: ['source-layer:0'] },
+    };
+    const inspectionResult = await client.request(
+      { method: 'tools/call', params: { name: 'inspect_state', arguments: { state } } },
+      CallToolResultSchema
+    );
+
+    expect(inspectionResult.structuredContent).toEqual(expect.objectContaining({
+      state,
+      summary: expect.objectContaining({
+        layerCount: 1,
+        layers: [expect.objectContaining({ id: 'source-layer', featureCount: 1 })],
+        selection: { featureIds: ['source-layer:0'], featureCount: 1 },
+      }),
+    }));
   });
 
   test('discovers headless tools and runs the canonical chain through MCP', async () => {

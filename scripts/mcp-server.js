@@ -29,6 +29,46 @@ async function getDiscoveryPayload() {
   return payload;
 }
 
+async function getRuntimeInfoPayload() {
+  const runtime = await runtimeManager.getRuntime();
+  const response = await requestJson(runtime.baseUrl, '/api/state');
+  const payload = {
+    apiUrl: runtime.baseUrl,
+    status: response.status,
+    ...response.data,
+  };
+
+  if (!response.ok) {
+    const error = new Error(payload.error || `Runtime inspection failed with HTTP ${response.status}.`);
+    error.payload = payload;
+    throw error;
+  }
+
+  return payload;
+}
+
+function inspectState(state = {}) {
+  const layers = Array.isArray(state.layers) ? state.layers : [];
+  const selection = state.selection && typeof state.selection === 'object' ? state.selection : {};
+  const selectedFeatureIds = Array.isArray(selection.featureIds) ? selection.featureIds : [];
+
+  return {
+    state,
+    summary: {
+      layerCount: layers.length,
+      layers: layers.map((layer) => ({
+        id: layer.id,
+        name: layer.name,
+        featureCount: Array.isArray(layer.geojson?.features) ? layer.geojson.features.length : null,
+      })),
+      selection: {
+        featureIds: selectedFeatureIds,
+        featureCount: selectedFeatureIds.length,
+      },
+    },
+  };
+}
+
 async function runToolPayload(args) {
   const runtime = await runtimeManager.getRuntime();
   const response = await requestJson(runtime.baseUrl, '/api/run', {
@@ -101,6 +141,52 @@ server.registerTool(
       return createTextResult(payload, { isError: true });
     }
   }
+);
+
+server.registerTool(
+  'get_runtime_info',
+  {
+    title: 'Get Runtime Information',
+    description: 'Wrap GET /api/state and return headless runtime capabilities, limits, and request-scoped session semantics.',
+    outputSchema: {
+      apiUrl: z.string().optional(),
+      status: z.number().optional(),
+      ok: z.boolean(),
+      sessionModel: z.string().optional(),
+      headless: z.any().optional(),
+      spatial: z.any().optional(),
+      workloadLimits: z.any().optional(),
+      notes: z.array(z.string()).optional(),
+      error: z.string().optional(),
+    },
+  },
+  async () => {
+    try {
+      return createTextResult(await getRuntimeInfoPayload());
+    } catch (error) {
+      return createTextResult(error.payload || { ok: false, error: error.message || 'Failed to inspect the headless runtime.' }, { isError: true });
+    }
+  }
+);
+
+server.registerTool(
+  'inspect_state',
+  {
+    title: 'Inspect Request State',
+    description: 'Summarize the caller-provided serialized Workbench state, including layers and feature selection. Does not persist or mutate state.',
+    inputSchema: {
+      state: z.any().default({}).describe('Serialized Workbench state returned from run_tool or assembled by the caller.'),
+    },
+    outputSchema: {
+      state: z.any(),
+      summary: z.object({
+        layerCount: z.number(),
+        layers: z.array(z.object({ id: z.any(), name: z.any(), featureCount: z.number().nullable() })),
+        selection: z.object({ featureIds: z.array(z.any()), featureCount: z.number() }),
+      }),
+    },
+  },
+  async ({ state }) => createTextResult(inspectState(state))
 );
 
 server.registerTool(

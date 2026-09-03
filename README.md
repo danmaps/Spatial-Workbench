@@ -207,14 +207,18 @@ Spatial Workbench also includes a thin MCP server that wraps the existing headle
 npm run mcp:server
 ```
 
-By default it starts a local ephemeral Workbench API and exposes two MCP tools:
+By default it starts a local ephemeral Workbench API and exposes four MCP tools:
 
 - `list_tools` -> wraps `GET /api/run`
+- `get_runtime_info` -> wraps `GET /api/state`
+- `inspect_state` -> summarizes caller-provided serialized state without persisting it
 - `run_tool` -> wraps `POST /api/run`
 
 What those tools are for:
 
 - `list_tools` returns the current Workbench headless tool catalog, notes, and request shape
+- `get_runtime_info` returns runtime capabilities, limits, spatial assumptions, and the request-scoped session model
+- `inspect_state` returns layer and selection summaries for the supplied state, keeping state ownership with the caller
 - `run_tool` executes one supported tool against request-scoped serialized `state`
 
 Typical MCP flow:
@@ -269,6 +273,37 @@ To point it at a live deployment instead:
 ```bash
 HEADLESS_API_URL=https://workbench.dannymcvey.com npm run mcp:server
 ```
+
+### Use with Codex
+
+Codex runs MCP servers locally. The Spatial Workbench MCP process therefore
+stays on the same machine as Codex, while it sends bounded spatial-execution
+requests to the hosted Workbench API.
+
+1. Clone this repository and install its dependencies:
+
+   ```bash
+   git clone https://github.com/danmaps/Spatial-Workbench.git
+   cd Spatial-Workbench
+   npm install
+   ```
+
+2. Add this server to Codex's MCP configuration, replacing
+   `/absolute/path/to/Spatial-Workbench` with the path to your clone:
+
+   ```toml
+   [mcp_servers.spatial_workbench]
+   command = "npm"
+   args = ["run", "mcp:server"]
+   cwd = "/absolute/path/to/Spatial-Workbench"
+   env = { HEADLESS_API_URL = "https://workbench.dannymcvey.com" }
+   ```
+
+3. Restart Codex so it starts the server. Ask Codex to call `get_runtime_info`
+   or `list_tools` to confirm the connection.
+
+The MCP server does not expose a separate public endpoint. It is a local
+adapter for Codex; the hosted service is the guarded Workbench execution API.
 
 To verify the MCP layer locally:
 

@@ -27,22 +27,11 @@
 
         <section class="hero">
             <div class="hero-copy">
-                <p class="eyebrow">Callable spatial runtime</p>
                 <h1>Spatial tools built for agents, scripts, and humans</h1>
-                <p class="hero-subtitle">
-                    Discover spatial operations, run them through a simple API, pass GeoJSON between steps, and inspect exactly what happened.
-                </p>
                 <div class="hero-actions">
-                    <button id="heroRunButton" class="button button-primary" type="button">Run the live demo</button>
+                    <a class="button button-primary" href="/headless-demo">Open the headless demo</a>
                     <a class="button button-secondary" href="/api/run" target="_blank" rel="noopener noreferrer">Explore the API</a>
                     <a class="button button-tertiary" href="https://github.com/danmaps/Spatial-Workbench" target="_blank" rel="noopener noreferrer">View the source</a>
-                </div>
-                <p class="hero-proof">Explicit inputs, inspectable results, portable GeoJSON.</p>
-                <div class="proof-strip" aria-label="Product proof points">
-                    <span>Tool discovery</span>
-                    <span>Request-scoped state</span>
-                    <span>GeoJSON outputs</span>
-                    <span>Execution receipts</span>
                 </div>
             </div>
 
@@ -162,93 +151,7 @@
             <div class="section-heading">
                 <p class="eyebrow">Live proof</p>
                 <h2>See a spatial workflow execute live</h2>
-                <p>
-                    This is the product claim in one workflow: discover tools, generate five points, buffer them, and export a real GeoJSON artifact.
-                </p>
-            </div>
-
-            <div class="proof-toolbar">
-                <button id="proofRunButton" class="button button-primary" type="button">Run workflow</button>
-                <a class="button button-secondary" href="/headless-demo">Open full demo</a>
-                <div id="proofStatus" class="status-pill">Ready</div>
-            </div>
-
-            <div class="proof-cards">
-                <article class="proof-step-card" id="proofStepPoints">
-                    <span class="step-index">1</span>
-                    <h3><code>RandomPointsTool</code></h3>
-                    <p id="proofStepPointsSummary">Creates five sample features inside a request-scoped bbox.</p>
-                    <dl>
-                        <div><dt>Output</dt><dd id="proofPointsOutput">pending</dd></div>
-                        <div><dt>Features</dt><dd id="proofPointsFeatures">5 planned</dd></div>
-                    </dl>
-                </article>
-                <article class="proof-step-card" id="proofStepBuffer">
-                    <span class="step-index">2</span>
-                    <h3><code>BufferTool</code></h3>
-                    <p id="proofStepBufferSummary">Buffers the returned layer id from step one.</p>
-                    <dl>
-                        <div><dt>Input</dt><dd id="proofBufferInput">pending</dd></div>
-                        <div><dt>Output</dt><dd id="proofBufferOutput">pending</dd></div>
-                    </dl>
-                </article>
-                <article class="proof-step-card" id="proofStepExport">
-                    <span class="step-index">3</span>
-                    <h3><code>ExportTool</code></h3>
-                    <p id="proofStepExportSummary">Exports the buffered layer as portable GeoJSON.</p>
-                    <dl>
-                        <div><dt>Artifact</dt><dd id="proofExportArtifact">pending</dd></div>
-                        <div><dt>Features</dt><dd id="proofExportFeatures">pending</dd></div>
-                    </dl>
-                </article>
-            </div>
-
-            <div class="proof-grid">
-                <article class="proof-panel">
-                    <div class="panel-header">
-                        <h3>Workflow map</h3>
-                        <span class="panel-badge">live states</span>
-                    </div>
-                    <svg viewBox="0 0 420 280" id="proofMap" class="proof-map" aria-label="Workflow map preview">
-                        <defs>
-                            <pattern id="proofGrid" width="28" height="28" patternUnits="userSpaceOnUse">
-                                <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(118, 214, 255, 0.12)" stroke-width="1"></path>
-                            </pattern>
-                        </defs>
-                        <rect width="420" height="280" rx="26" fill="url(#proofGrid)"></rect>
-                        <path class="proof-boundary" d="M72,214 C96,118 156,59 235,54 C295,51 347,90 364,147 C380,203 354,235 286,244 C205,255 102,249 72,214 Z"></path>
-                        <g id="proofBuffers" class="proof-buffers">
-                            <circle cx="131" cy="185" r="28"></circle>
-                            <circle cx="177" cy="134" r="28"></circle>
-                            <circle cx="221" cy="196" r="28"></circle>
-                            <circle cx="277" cy="157" r="28"></circle>
-                            <circle cx="313" cy="212" r="28"></circle>
-                        </g>
-                        <g id="proofPoints" class="proof-points">
-                            <circle cx="131" cy="185" r="5"></circle>
-                            <circle cx="177" cy="134" r="5"></circle>
-                            <circle cx="221" cy="196" r="5"></circle>
-                            <circle cx="277" cy="157" r="5"></circle>
-                            <circle cx="313" cy="212" r="5"></circle>
-                        </g>
-                    </svg>
-                </article>
-
-                <article class="proof-panel">
-                    <div class="panel-header">
-                        <h3>Execution receipt</h3>
-                        <span class="panel-badge">audit trail</span>
-                    </div>
-                    <pre id="proofReceiptPreview" class="code-block">Run the workflow to populate a real receipt.</pre>
-                </article>
-
-                <article class="proof-panel">
-                    <div class="panel-header">
-                        <h3>GeoJSON preview</h3>
-                        <a id="proofDownloadLink" class="inline-link is-disabled" href="#" download="headless-demo.geojson" aria-disabled="true">Download artifact</a>
-                    </div>
-                    <pre id="proofGeojsonPreview" class="code-block">Waiting for export...</pre>
-                </article>
+                <a class="button button-primary" href="/headless-demo">Open the headless demo</a>
             </div>
         </section>
 

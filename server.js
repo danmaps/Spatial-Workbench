@@ -1,3 +1,5 @@
+const { assertNodeRuntime, REQUIRED_NODE } = require('./scripts/check-node-runtime');
+assertNodeRuntime();
 const express = require('express');
 const cors = require('cors');
 const fetch = globalThis.fetch
@@ -498,8 +500,10 @@ app.get('/api/tools', (_req, res) => {
 
 app.get('/api/state', (_req, res) => {
   const catalog = getHeadlessToolCatalog();
+  res.set('Cache-Control', 'no-store');
   res.json({
     ok: true,
+    runtime: { node: process.versions.node, openssl: process.versions.openssl, requiredNode: REQUIRED_NODE },
     sessionModel: 'request-scoped',
     headless: {
       supportedToolCount: catalog.length,

@@ -17,8 +17,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
+
+      - name: Verify patched runtime
+        run: npm run check:runtime
 
       - name: Install
         run: npm ci

@@ -179,6 +179,12 @@ reviewable together.
 
 ## Running locally
 
+Use Node 24.22.1 or a later patch on the Node 24 line. `.nvmrc` and
+`.node-version` select the tested release; npm and server startup reject older
+or unsupported runtimes. Run `nvm install && nvm use` if using nvm.
+See [runtime upgrade and deployment verification](docs/node-runtime-upgrade.md)
+before updating a hosted service.
+
 ```bash
 npm install
 npm run test:headless

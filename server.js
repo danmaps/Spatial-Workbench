@@ -473,11 +473,11 @@ if (allowedOrigins.length > 0) {
 }
 
 app.get('/', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'landing.html'));
+  res.sendFile('landing.html', { root: __dirname });
 });
 
 app.get(['/workbench-gis', '/workbench-gis/'], (_req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile('index.html', { root: __dirname });
 });
 
 app.get('/api/runtime-config', (_req, res) => {
@@ -486,7 +486,23 @@ app.get('/api/runtime-config', (_req, res) => {
 });
 
 app.get('/headless-demo', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'headless-demo.html'));
+  res.sendFile('headless-demo.html', { root: __dirname });
+});
+
+// Block backend source files, scripts, and hidden files from static serving
+app.use((req, res, next) => {
+  const reqPath = (req.path || '').toLowerCase();
+  if (
+    reqPath === '/server.js' ||
+    reqPath === '/package.json' ||
+    reqPath === '/package-lock.json' ||
+    reqPath.startsWith('/scripts/') ||
+    reqPath.startsWith('/tests/') ||
+    reqPath.startsWith('/.')
+  ) {
+    return res.status(404).end();
+  }
+  return next();
 });
 
 // Serve the project root so the HTML shells and /public assets are both reachable.
@@ -929,14 +945,20 @@ app.post('/api/run', async (req, res) => {
   }
 });
 
-app.post('/api/ai_structured', async (req, res) => {
+// Rate-limit the AI endpoints
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: 'Too many requests — try again in a minute.' },
+});
+
+app.post('/api/ai_structured', aiLimiter, async (req, res) => {
   try {
     const {
       systemPrompt,
       userPrompt,
       model = 'gpt-4o',
       provider: requestedProvider,
-      ollamaUrl: requestedOllamaUrl,
       temperature = 0.2,
       maxTokens = 1200,
     } = req.body || {};
@@ -978,7 +1000,7 @@ app.post('/api/ai_structured', async (req, res) => {
 
     let endpoint = provider.endpoint;
     if (providerId === 'ollama') {
-      endpoint = `${normalizeOllamaUrl(requestedOllamaUrl || getConfiguredOllamaUrl())}/v1/chat/completions`;
+      endpoint = `${normalizeOllamaUrl(getConfiguredOllamaUrl())}/v1/chat/completions`;
     }
 
     const headers = { 'Content-Type': 'application/json' };
@@ -1053,13 +1075,6 @@ app.get('/api/providers', async (_req, res) => {
   res.json({ ok: true, providers, default: DEFAULT_PROVIDER });
 });
 
-// Rate-limit the AI endpoint
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  message: { error: 'Too many requests — try again in a minute.' },
-});
-
 app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
   const { prompt, provider: requestedProvider, model: requestedModel } = req.body;
 
@@ -1081,10 +1096,10 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
     });
   }
 
-  // Resolve endpoint — for Ollama, allow user to override the URL
+  // Resolve endpoint — use configured server Ollama URL only (prevent SSRF)
   let endpoint = provider.endpoint;
   if (providerId === 'ollama') {
-    endpoint = `${normalizeOllamaUrl(req.body.ollamaUrl || getConfiguredOllamaUrl())}/v1/chat/completions`;
+    endpoint = `${normalizeOllamaUrl(getConfiguredOllamaUrl())}/v1/chat/completions`;
   }
 
   const model = requestedModel || provider.defaultModel;
@@ -1143,6 +1158,7 @@ app.post('/api/ai_geojson', aiLimiter, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '127.0.0.1';
 
 // Handle payload-too-large errors from express.json with a structured response
 // eslint-disable-next-line no-unused-vars
@@ -1159,8 +1175,8 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
   });
 }
 

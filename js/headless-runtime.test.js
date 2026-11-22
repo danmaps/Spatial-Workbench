@@ -585,4 +585,93 @@ describe('headless runtime', () => {
       layers: [],
     }));
   });
+
+  test('runHeadlessTool supports meters units and explicit targetScope enforcement', async () => {
+    const { runHeadlessTool } = require('./headless-runtime');
+
+    turf.buffer.mockReturnValue({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: {} }],
+    });
+
+    const sourceState = {
+      layers: [
+        {
+          id: 'study-sites',
+          name: 'Study Sites',
+          geojson: {
+            type: 'FeatureCollection',
+            features: [
+              { type: 'Feature', geometry: { type: 'Point', coordinates: [-118.25, 34.05] }, properties: { __id: 'site-1' } },
+              { type: 'Feature', geometry: { type: 'Point', coordinates: [-118.24, 34.06] }, properties: { __id: 'site-2' } },
+            ],
+          },
+        },
+      ],
+    };
+
+    const emptySelectionFailure = await runHeadlessTool({
+      tool: 'BufferTool',
+      params: {
+        'Input Layer': 'study-sites',
+        Distance: 500,
+        Units: 'meters',
+        targetScope: 'selection',
+      },
+      state: sourceState,
+    });
+
+    expect(emptySelectionFailure.ok).toBe(false);
+    expect(emptySelectionFailure.status).toEqual({
+      code: 2,
+      message: 'No selected features in the chosen layer.',
+    });
+    expect(emptySelectionFailure.target).toEqual({
+      layerId: 'study-sites',
+      mode: 'selection-empty',
+      selectedFeatureIds: [],
+      selectedFeatureCount: 0,
+      totalFeatureCount: 2,
+    });
+    expect(turf.buffer).not.toHaveBeenCalled();
+
+    const meterRun = await runHeadlessTool({
+      tool: 'BufferTool',
+      params: {
+        'Input Layer': 'study-sites',
+        Distance: 500,
+        Units: 'meters',
+        targetScope: 'selection',
+      },
+      state: {
+        ...sourceState,
+        selection: {
+          activeLayerId: 'study-sites',
+          selectedLayerIds: ['study-sites'],
+          selectedFeaturesByLayerId: {
+            'study-sites': ['site-1'],
+          },
+        },
+      },
+    });
+
+    expect(meterRun.ok).toBe(true);
+    expect(turf.buffer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'FeatureCollection',
+        features: [
+          expect.objectContaining({ properties: expect.objectContaining({ __id: 'site-1' }) }),
+        ],
+      }),
+      500,
+      { units: 'meters' }
+    );
+    expect(meterRun.target).toEqual({
+      layerId: 'study-sites',
+      mode: 'selection',
+      selectedFeatureIds: ['site-1'],
+      selectedFeatureCount: 1,
+      totalFeatureCount: 2,
+    });
+  });
 });

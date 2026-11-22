@@ -6,17 +6,17 @@ const { polygonFeatures, dissolvePolygons, targetFeatures, featureId } = require
 
 class EraseTool extends Tool {
   constructor() {
-    super('Erase', [new Parameter('Input Layer', 'Layer to erase from', 'dropdown', ''), new Parameter('Erase Layer', 'Polygon layer used to erase', 'dropdown', '')]);
+    super('Erase', [new Parameter('Input Layer', 'Layer to erase from', 'dropdown', '', null, null, null, true), new Parameter('Erase Layer', 'Polygon layer used to erase', 'dropdown', '', null, null, null, true)]);
     this.description = 'Erases polygon features using a boundary layer';
     this.headlessSupported = true;
     this.execution = { stateMode: 'layers', inputs: [{ parameter: 'Input Layer', kind: 'layer', geometryTypes: ['Polygon', 'MultiPolygon'], cardinality: 'one', selectionAware: true }, { parameter: 'Erase Layer', kind: 'layer', geometryTypes: ['Polygon', 'MultiPolygon'], cardinality: 'one', selectionAware: false }], outputs: [{ kind: 'layer', operation: 'add', geometryType: 'Polygon' }], mutatesState: true, producesArtifacts: false };
   }
 
   async validate(params, context = {}) {
-    const target = resolveTargetLayerData(params['Input Layer'], context);
+    const target = resolveTargetLayerData(params['Input Layer'], context, { targetScope: params?.targetScope });
     const eraseLayer = context.getLayer ? context.getLayer(params['Erase Layer']) : null;
     const errors = [];
-    if (!target.ok || !target.targetGeoJSON) errors.push('No input layer selected.');
+    if (!target.ok || !target.targetGeoJSON) errors.push(target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No input layer selected.');
     if (!eraseLayer) errors.push('No erase layer selected.');
     else if (!polygonFeatures(eraseLayer).length) errors.push('Erase layer has no polygon features.');
     if (target.ok && !targetFeatures(target.targetGeoJSON).length) errors.push('Input layer has no polygon features.');
@@ -24,7 +24,7 @@ class EraseTool extends Tool {
   }
 
   async run(params, context = {}) {
-    const target = resolveTargetLayerData(params['Input Layer'], context);
+    const target = resolveTargetLayerData(params['Input Layer'], context, { targetScope: params?.targetScope });
     const eraseLayer = context.getLayer ? context.getLayer(params['Erase Layer']) : null;
     const turfLib = globalThis.turf;
     if (!target.ok || !eraseLayer || !turfLib?.difference) { this.setStatus(2, 'Input and erase layers are required.'); return; }

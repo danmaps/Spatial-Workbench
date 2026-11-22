@@ -343,6 +343,7 @@ function buildExecutionReceipt({
     inputLayerIds,
     outputLayerIds,
     featureCounts: { input: inputFeatureCount, output: outputFeatureCount },
+    ...(result?.target ? { target: result.target } : {}),
     datasetHandles: {
       read: Array.isArray(datasetHandles.read) ? datasetHandles.read : [],
       produced: Array.isArray(datasetHandles.produced) ? datasetHandles.produced : [],

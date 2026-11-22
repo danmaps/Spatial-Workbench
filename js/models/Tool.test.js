@@ -1,4 +1,5 @@
 const { Tool } = require('./Tool');
+const { Parameter } = require('./Parameter');
 
 jest.mock('../state', () => ({
   getState: jest.fn(() => ({ layers: ['a', 'b'] })),
@@ -242,5 +243,104 @@ describe('Tool base architecture', () => {
     expect(docsLink.classList.contains('hidden')).toBe(false);
     expect(docsLink.getAttribute('href')).toBe('/tool-docs/DemoTool.html');
     expect(docsLink.getAttribute('aria-label')).toBe('Demo Tool documentation');
+  });
+
+  test('Parameter and getSpec serialize required and unit metadata', () => {
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo Tool', [
+          new Parameter('Distance', 'Buffer distance', 'float', 500, null, 0, 10000, true, 'meters'),
+          new Parameter('Units', 'Distance units', 'dropdown', 'meters', ['meters', 'kilometers'], null, null, true),
+          new Parameter('Note', 'Optional note', 'text', ''),
+        ], 'demo', null);
+      }
+    }
+
+    const spec = new DemoTool().getSpec();
+    expect(spec.parameters).toEqual([
+      {
+        name: 'Distance',
+        description: 'Buffer distance',
+        type: 'float',
+        defaultValue: 500,
+        options: undefined,
+        min: 0,
+        max: 10000,
+        required: true,
+        unit: 'meters',
+      },
+      {
+        name: 'Units',
+        description: 'Distance units',
+        type: 'dropdown',
+        defaultValue: 'meters',
+        options: ['meters', 'kilometers'],
+        min: undefined,
+        max: undefined,
+        required: true,
+      },
+      {
+        name: 'Note',
+        description: 'Optional note',
+        type: 'text',
+        defaultValue: '',
+        options: undefined,
+        min: undefined,
+        max: undefined,
+      },
+    ]);
+  });
+
+  test('validateParameters enforces required, min/max, and options', async () => {
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo Tool', [
+          new Parameter('Name', 'Required label', 'text', '', null, null, null, true),
+          new Parameter('Count', 'Bounded count', 'int', 5, null, 1, 10, true),
+          new Parameter('Units', 'Allowed units', 'dropdown', 'meters', ['meters', 'kilometers'], null, null, true),
+        ], 'demo', null);
+        this.run = jest.fn();
+      }
+    }
+
+    const tool = new DemoTool();
+    expect(tool.validateParameters({ Name: '', Count: 0, Units: 'parsecs' })).toEqual({
+      ok: false,
+      errors: [
+        'Name is required.',
+        'Count must be at least 1.',
+        'Units must be one of: meters, kilometers.',
+      ],
+    });
+    expect(tool.validateParameters({ Name: 'Site A', Count: 5, Units: 'meters' })).toEqual({
+      ok: true,
+      errors: [],
+    });
+  });
+
+  test('renderUI disables Execute button while required parameters are invalid', () => {
+    class DemoTool extends Tool {
+      constructor() {
+        super('Demo Tool', [
+          new Parameter('Prompt', 'Required prompt', 'text', '', null, null, null, true),
+        ], 'demo', null);
+      }
+    }
+
+    const tool = new DemoTool();
+    tool.renderUI();
+
+    const input = document.getElementById('param-Prompt');
+    const executeButton = document.getElementById('toolExecuteButton');
+    expect(input.required).toBe(true);
+    expect(input.getAttribute('aria-required')).toBe('true');
+    expect(executeButton.disabled).toBe(true);
+    expect(executeButton.getAttribute('aria-disabled')).toBe('true');
+
+    input.value = 'Buffer study parcels by 500 meters';
+    input.dispatchEvent(new Event('input'));
+
+    expect(executeButton.disabled).toBe(false);
+    expect(executeButton.getAttribute('aria-disabled')).toBe('false');
   });
 });

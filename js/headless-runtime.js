@@ -11,7 +11,7 @@ const { EraseTool } = require('./tools/EraseTool');
 const { ensureFeatureId } = require('./spatial');
 const { validateExecutionSpec } = require('./runtime/executionSpec');
 const { normalizeToolResult } = require('./runtime/toolResult');
-const { buildToolHistory } = require('./tools/targeting');
+const { buildTargetMetadata, buildToolHistory, normalizeTargetScope, resolveTargetLayerData } = require('./tools/targeting');
 
 function ensureHeadlessGlobals() {
   if (!globalThis.turf) {
@@ -133,6 +133,7 @@ function createHeadlessRuntime(input = {}) {
   const removed = [];
   const bounds = createBoundsFromBbox(input.bbox || input.bounds || null);
   const inputSelection = input.selection || {};
+  const targetScope = normalizeTargetScope(inputSelection.targetScope);
   const selection = {
     activeLayerId: typeof inputSelection.activeLayerId === 'string' ? inputSelection.activeLayerId : null,
     selectedLayerIds: Array.isArray(inputSelection.selectedLayerIds) ? [...new Set(inputSelection.selectedLayerIds.filter((id) => registry.has(id)))] : [],
@@ -141,6 +142,7 @@ function createHeadlessRuntime(input = {}) {
       acc[layerId] = [...new Set(featureIds.filter(Boolean))];
       return acc;
     }, {}),
+    ...(targetScope ? { targetScope } : {}),
   };
 
   function getLayer(id) {
@@ -301,6 +303,8 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {}, spatial
 
   const runtime = createHeadlessRuntime(state);
   const tool = new ToolClass();
+  const spec = tool.getSpec();
+  const targetScope = normalizeTargetScope(params?.targetScope ?? state?.selection?.targetScope ?? null);
   const context = {
     headless: true,
     map: state.map || null,
@@ -311,9 +315,21 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {}, spatial
     applyResult: runtime.applyResult,
     setSelectedFeatureIds: runtime.setSelectedFeatureIds,
     spatial,
+    ...(targetScope ? { targetScope } : {}),
   };
 
-  const executionValidation = validateExecutionSpec(tool.getSpec(), params, state);
+  const selectionAwareInput = (spec.execution?.inputs || []).find((input) => input.kind === 'layer' && input.selectionAware && input.parameter);
+  const resolvedTarget = selectionAwareInput
+    ? resolveTargetLayerData(params?.[selectionAwareInput.parameter], context, { targetScope })
+    : null;
+  const targetSummary = resolvedTarget
+    ? {
+        layerId: resolvedTarget.layerId || null,
+        ...buildTargetMetadata(resolvedTarget),
+      }
+    : null;
+
+  const executionValidation = validateExecutionSpec(spec, params, state);
   const toolValidation = await tool.validate(params, context);
   const validation = { ok: executionValidation.ok && toolValidation.ok, errors: [...executionValidation.errors, ...toolValidation.errors] };
   if (!validation.ok) {
@@ -323,6 +339,7 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {}, spatial
       ...normalizeToolResult(null, tool.getStatus(), { validation, state: runtime.getResponseState() }),
       tool: toolKey,
       output: null,
+      ...(targetSummary ? { target: targetSummary } : {}),
     };
   }
 
@@ -335,6 +352,7 @@ async function runHeadlessTool({ tool: toolKey, params = {}, state = {}, spatial
     status: tool.getStatus(),
     output: output || null,
     state: runtime.getResponseState(),
+    ...(targetSummary ? { target: targetSummary } : {}),
   };
 }
 

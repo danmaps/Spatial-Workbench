@@ -7,8 +7,8 @@ const { polygonFeatures, dissolvePolygons, intersectPolygons, targetFeatures } =
 class ClipTool extends Tool {
   constructor() {
     super('Clip', [
-      new Parameter('Input Layer', 'Layer to clip', 'dropdown', ''),
-      new Parameter('Clip Layer', 'Polygon layer used as the boundary', 'dropdown', ''),
+      new Parameter('Input Layer', 'Layer to clip', 'dropdown', '', null, null, null, true),
+      new Parameter('Clip Layer', 'Polygon layer used as the boundary', 'dropdown', '', null, null, null, true),
     ]);
     this.description = 'Clips polygon features by a boundary layer';
     this.headlessSupported = true;
@@ -20,10 +20,10 @@ class ClipTool extends Tool {
 
   async validate(params, context = {}) {
     const resolveLayer = context.getLayer;
-    const target = resolveTargetLayerData(params['Input Layer'], context);
+    const target = resolveTargetLayerData(params['Input Layer'], context, { targetScope: params?.targetScope });
     const clipLayer = resolveLayer ? resolveLayer(params['Clip Layer']) : null;
     const errors = [];
-    if (!target.ok || !target.targetGeoJSON) errors.push('No input layer selected.');
+    if (!target.ok || !target.targetGeoJSON) errors.push(target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No input layer selected.');
     if (!clipLayer) errors.push('No clip layer selected.');
     else if (!polygonFeatures(clipLayer).length) errors.push('Clip layer has no polygon features.');
     if (target.ok && !targetFeatures(target.targetGeoJSON).length) errors.push('Input layer has no polygon features.');
@@ -32,7 +32,7 @@ class ClipTool extends Tool {
 
   async run(params, context = {}) {
     const resolveLayer = context.getLayer;
-    const target = resolveTargetLayerData(params['Input Layer'], context);
+    const target = resolveTargetLayerData(params['Input Layer'], context, { targetScope: params?.targetScope });
     const clipLayer = resolveLayer ? resolveLayer(params['Clip Layer']) : null;
     const turfLib = globalThis.turf;
     if (!target.ok || !clipLayer || !turfLib?.intersect) { this.setStatus(2, 'Input and clip layers are required.'); return; }

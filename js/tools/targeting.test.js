@@ -94,6 +94,71 @@ describe('resolveTargetLayerData', () => {
     }));
   });
 
+  test('fails with selection-empty when explicit targetScope is selection and no features are selected', () => {
+    const sourceGeoJSON = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'feature-1' } },
+      ],
+    };
+
+    const result = resolveTargetLayerData('input-1', {
+      getLayer: () => ({
+        toGeoJSON: () => sourceGeoJSON,
+      }),
+      state: {
+        selection: {
+          activeLayerId: 'input-1',
+          selectedLayerIds: ['input-1'],
+          selectedFeaturesByLayerId: {},
+        },
+      },
+    }, { targetScope: 'selection' });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      layerId: 'input-1',
+      mode: 'selection-empty',
+      targetGeoJSON: null,
+      selectedFeatureIds: [],
+      selectedFeatureCount: 0,
+      totalFeatureCount: 1,
+    }));
+  });
+
+  test('forces whole-layer mode when explicit targetScope is layer even if features are selected', () => {
+    const sourceGeoJSON = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'feature-1' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __id: 'feature-2' } },
+      ],
+    };
+
+    const result = resolveTargetLayerData('input-1', {
+      getLayer: () => ({
+        toGeoJSON: () => sourceGeoJSON,
+      }),
+      state: {
+        selection: {
+          activeLayerId: 'input-1',
+          selectedLayerIds: ['input-1'],
+          selectedFeaturesByLayerId: { 'input-1': ['feature-2'] },
+        },
+      },
+    }, { targetScope: 'layer' });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      layerId: 'input-1',
+      mode: 'layer',
+      targetGeoJSON: sourceGeoJSON,
+      selectedFeatureIds: [],
+      selectedFeatureCount: 0,
+      totalFeatureCount: 2,
+    }));
+  });
+
   test('buildTargetMetadata returns the stable selection-aware target shape', () => {
     expect(buildTargetMetadata({
       mode: 'selection',

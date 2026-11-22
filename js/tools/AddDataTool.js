@@ -66,7 +66,7 @@ const BUNDLED_SAMPLE_DATASETS = [
 class AddDataTool extends Tool {
     constructor() {
         super("Add Data", [
-            new Parameter("Input", "data to add", "file", ""),
+            new Parameter("Input", "data to add", "file", "", null, null, null, true),
             new Parameter("Lat Column", "latitude column name", "dropdown", ""),
             new Parameter("Long Column", "longitude column name", "dropdown", ""),
             new Parameter("Override Columns", "manually specify columns", "boolean", false)

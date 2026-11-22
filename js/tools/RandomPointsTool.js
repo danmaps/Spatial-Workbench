@@ -42,7 +42,7 @@ class RandomPointsTool extends Tool {
      */
     constructor() {    
         super("Random Points", [
-            new Parameter("Points Count", "Number of random points to generate.", "int", 10),
+            new Parameter("Points Count", "Number of random points to generate.", "int", 10, null, 1, null, true),
             new Parameter("Inside Polygon",  "Generate points inside polygon", "boolean", false),
             new Parameter("Polygon",  "Polygon to add random points within.", "dropdown", "")
         ]);

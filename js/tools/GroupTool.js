@@ -50,9 +50,9 @@ function buildGroupingSummary(features) {
 class GroupTool extends Tool {
     constructor() {
         super('Group', [
-            new Parameter('Layer', 'layer to group', 'dropdown', ''),
-            new Parameter('Distance', 'distance threshold', 'float', 10, null, 0),
-            new Parameter('Units', 'The units for the distance', 'dropdown', 'kilometers', ['feet', 'miles', 'kilometers', 'degrees']),
+            new Parameter('Layer', 'layer to group', 'dropdown', '', null, null, null, true),
+            new Parameter('Distance', 'distance threshold', 'float', 10, null, 0, null, true),
+            new Parameter('Units', 'The units for the distance', 'dropdown', 'kilometers', ['feet', 'meters', 'miles', 'kilometers', 'degrees'], null, null, true),
         ]);
 
         this.description = 'Groups nearby features by distance and adds the grouped result as a new layer';
@@ -63,7 +63,9 @@ class GroupTool extends Tool {
     async validate(params, context = {}) {
         const inputLayerId = params.Layer;
         const distance = parseFloat(params.Distance);
-        const target = resolveTargetLayerData(inputLayerId, context);
+        const units = params.Units;
+        const allowedUnits = this.parameters.find((p) => p.name === 'Units')?.options || [];
+        const target = resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope });
         const errors = [];
 
         if (!target.ok || !target.targetGeoJSON) {
@@ -72,6 +74,10 @@ class GroupTool extends Tool {
 
         if (!Number.isFinite(distance) || distance <= 0) {
             errors.push('Distance must be greater than 0.');
+        }
+
+        if (units !== undefined && units !== null && String(units).trim() !== '' && !allowedUnits.includes(String(units).toLowerCase())) {
+            errors.push(`Unsupported distance units: ${units}.`);
         }
 
         if (target.ok && target.targetGeoJSON && getFeatureCollection(target.targetGeoJSON).length === 0) {
@@ -87,7 +93,7 @@ class GroupTool extends Tool {
         const units = params.Units || 'kilometers';
         const applyToolResult = context.applyResult || applyResult;
         const spatial = context.spatial || null;
-        const target = resolveTargetLayerData(inputLayerId, context);
+        const target = resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope });
 
         if (!target.ok || !target.targetGeoJSON) {
             this.setStatus(2, target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');

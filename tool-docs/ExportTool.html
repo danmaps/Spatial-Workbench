@@ -54,7 +54,7 @@
         <td>dropdown</td>
         <td>format to export</td>
         <td>geojson</td>
-        <td><span class="tool-docs-muted">—</span></td>
+        <td>geojson</td>
       </tr>
         </tbody>
       </table>
@@ -74,13 +74,18 @@
       &quot;name&quot;: &quot;Layer&quot;,
       &quot;description&quot;: &quot;layer to export&quot;,
       &quot;type&quot;: &quot;dropdown&quot;,
-      &quot;defaultValue&quot;: &quot;&quot;
+      &quot;defaultValue&quot;: &quot;&quot;,
+      &quot;required&quot;: true
     },
     {
       &quot;name&quot;: &quot;Format&quot;,
       &quot;description&quot;: &quot;format to export&quot;,
       &quot;type&quot;: &quot;dropdown&quot;,
-      &quot;defaultValue&quot;: &quot;geojson&quot;
+      &quot;defaultValue&quot;: &quot;geojson&quot;,
+      &quot;options&quot;: [
+        &quot;geojson&quot;
+      ],
+      &quot;required&quot;: true
     }
   ],
   &quot;execution&quot;: {

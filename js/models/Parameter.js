@@ -1,5 +1,6 @@
 class Parameter {
-    constructor(name, description, type, defaultValue, options = null, min = null, max = null) {
+    constructor(name, description, type, defaultValue, options = null, min = null, max = null, required = false, unit = null) {
+        const config = typeof required === 'object' && required !== null ? required : { required, unit };
         this.name = name;
         this.description = description;
         this.type = type;
@@ -7,6 +8,8 @@ class Parameter {
         this.options = options;
         this.min = min;
         this.max = max;
+        this.required = Boolean(config.required);
+        this.unit = config.unit || null;
     }
 }
 

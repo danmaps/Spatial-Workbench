@@ -73,11 +73,11 @@ function applyMode(existingIds, matchedIds, mode) {
 class SelectByAttributeTool extends Tool {
   constructor() {
     super('Select by Attribute', [
-      new Parameter('Layer', 'Layer to query', 'dropdown', ''),
-      new Parameter('Field', 'Attribute field to query', 'text', ''),
-      new Parameter('Operator', 'Attribute comparison', 'dropdown', 'equals', OPERATORS),
+      new Parameter('Layer', 'Layer to query', 'dropdown', '', null, null, null, true),
+      new Parameter('Field', 'Attribute field to query', 'text', '', null, null, null, true),
+      new Parameter('Operator', 'Attribute comparison', 'dropdown', 'equals', OPERATORS, null, null, true),
       new Parameter('Value', 'Value to compare', 'text', ''),
-      new Parameter('Selection Mode', 'How to apply matching features', 'dropdown', 'replace', MODES),
+      new Parameter('Selection Mode', 'How to apply matching features', 'dropdown', 'replace', MODES, null, null, true),
     ]);
     this.description = 'Selects features using an attribute condition';
     this.headlessSupported = true;

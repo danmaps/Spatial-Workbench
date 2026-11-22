@@ -9,7 +9,8 @@
         "name": "Input",
         "description": "data to add",
         "type": "file",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Lat Column",
@@ -48,13 +49,15 @@
         "name": "Input Layer",
         "description": "The input layer to buffer",
         "type": "dropdown",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Distance",
         "description": "The distance",
         "type": "float",
-        "defaultValue": 10
+        "defaultValue": 10,
+        "required": true
       },
       {
         "name": "Units",
@@ -63,10 +66,12 @@
         "defaultValue": "miles",
         "options": [
           "feet",
+          "meters",
           "miles",
           "kilometers",
           "degrees"
-        ]
+        ],
+        "required": true
       }
     ],
     "execution": {
@@ -108,13 +113,18 @@
         "name": "Layer",
         "description": "layer to export",
         "type": "dropdown",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Format",
         "description": "format to export",
         "type": "dropdown",
-        "defaultValue": "geojson"
+        "defaultValue": "geojson",
+        "options": [
+          "geojson"
+        ],
+        "required": true
       }
     ],
     "execution": {
@@ -156,7 +166,8 @@
         "name": "Prompt",
         "description": "The prompt to generate AI features",
         "type": "text",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       }
     ],
     "execution": {
@@ -177,14 +188,16 @@
         "name": "Layer",
         "description": "layer to group",
         "type": "dropdown",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Distance",
         "description": "distance threshold",
         "type": "float",
         "defaultValue": 10,
-        "min": 0
+        "min": 0,
+        "required": true
       },
       {
         "name": "Units",
@@ -193,10 +206,12 @@
         "defaultValue": "kilometers",
         "options": [
           "feet",
+          "meters",
           "miles",
           "kilometers",
           "degrees"
-        ]
+        ],
+        "required": true
       }
     ],
     "execution": {
@@ -234,7 +249,9 @@
         "name": "Points Count",
         "description": "Number of random points to generate.",
         "type": "int",
-        "defaultValue": 10
+        "defaultValue": 10,
+        "min": 1,
+        "required": true
       },
       {
         "name": "Inside Polygon",
@@ -300,13 +317,15 @@
         "name": "Instruction",
         "description": "The instruction used to generate the new field",
         "type": "text",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Output Field Name",
         "description": "The field to write",
         "type": "text",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Output Type",
@@ -317,7 +336,8 @@
           "text",
           "number",
           "boolean"
-        ]
+        ],
+        "required": true
       },
       {
         "name": "Overwrite Existing Field",
@@ -370,13 +390,15 @@
         "name": "Input Field Name",
         "description": "The text field to parse",
         "type": "text",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Output Field Name",
         "description": "The numeric field to write",
         "type": "text",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Overwrite Existing Field",
@@ -429,13 +451,15 @@
         "name": "Layer",
         "description": "Layer to query",
         "type": "dropdown",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Field",
         "description": "Attribute field to query",
         "type": "text",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Operator",
@@ -452,7 +476,8 @@
           "less than",
           "is empty",
           "is not empty"
-        ]
+        ],
+        "required": true
       },
       {
         "name": "Value",
@@ -469,7 +494,8 @@
           "replace",
           "add",
           "remove"
-        ]
+        ],
+        "required": true
       }
     ],
     "execution": {
@@ -510,13 +536,15 @@
         "name": "Input Layer",
         "description": "Layer to clip",
         "type": "dropdown",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Clip Layer",
         "description": "Polygon layer used as the boundary",
         "type": "dropdown",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       }
     ],
     "execution": {
@@ -564,13 +592,15 @@
         "name": "Input Layer",
         "description": "Layer to erase from",
         "type": "dropdown",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       },
       {
         "name": "Erase Layer",
         "description": "Polygon layer used to erase",
         "type": "dropdown",
-        "defaultValue": ""
+        "defaultValue": "",
+        "required": true
       }
     ],
     "execution": {

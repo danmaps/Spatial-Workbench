@@ -8,8 +8,8 @@ class ConvertTextToNumericTool extends Tool {
   constructor() {
     super('Convert Text to Numeric', [
       new Parameter('Input Layer', 'The input layer to convert', 'dropdown', ''),
-      new Parameter('Input Field Name', 'The text field to parse', 'text', ''),
-      new Parameter('Output Field Name', 'The numeric field to write', 'text', ''),
+      new Parameter('Input Field Name', 'The text field to parse', 'text', '', null, null, null, true),
+      new Parameter('Output Field Name', 'The numeric field to write', 'text', '', null, null, null, true),
       new Parameter('Overwrite Existing Field', 'Overwrite existing values in the output field', 'boolean', false),
       new Parameter('Use AI Fallback', 'Use AI when rules-based parsing fails', 'boolean', true),
     ]);

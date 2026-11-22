@@ -83,7 +83,14 @@ function pickLayerId(inputLayerId, contextState) {
   return selectedLayerIds[0] || null;
 }
 
-function resolveTargetLayerData(inputLayerId, context = {}) {
+function normalizeTargetScope(rawScope) {
+  if (typeof rawScope !== 'string') return null;
+  const normalized = rawScope.trim().toLowerCase();
+  if (normalized === 'layer' || normalized === 'selection') return normalized;
+  return null;
+}
+
+function resolveTargetLayerData(inputLayerId, context = {}, options = {}) {
   const state = context.state || {};
   const layerId = pickLayerId(inputLayerId, state);
   const resolveLayer = context.getLayer;
@@ -105,6 +112,9 @@ function resolveTargetLayerData(inputLayerId, context = {}) {
   }
 
   const selection = state.selection || {};
+  const targetScope = normalizeTargetScope(
+    options?.targetScope ?? context?.targetScope ?? selection.targetScope ?? null
+  );
   const selectedFeatureIds = Array.isArray(selection.selectedFeaturesByLayerId?.[layerId])
     ? Array.from(new Set(selection.selectedFeaturesByLayerId[layerId].filter(Boolean)))
     : [];
@@ -112,7 +122,35 @@ function resolveTargetLayerData(inputLayerId, context = {}) {
   const allFeatures = getFeatureCollectionFeatures(sourceGeoJSON, layerId);
   const totalFeatureCount = allFeatures.length;
 
+  if (targetScope === 'layer') {
+    return {
+      ok: true,
+      layerId,
+      layer,
+      sourceGeoJSON,
+      targetGeoJSON: sourceGeoJSON,
+      mode: 'layer',
+      selectedFeatureIds: [],
+      selectedFeatureCount: 0,
+      totalFeatureCount,
+    };
+  }
+
   if (!selectedFeatureIds.length) {
+    if (targetScope === 'selection') {
+      return {
+        ok: false,
+        layerId,
+        layer,
+        sourceGeoJSON,
+        targetGeoJSON: null,
+        mode: 'selection-empty',
+        selectedFeatureIds: [],
+        selectedFeatureCount: 0,
+        totalFeatureCount,
+      };
+    }
+
     return {
       ok: true,
       layerId,
@@ -130,6 +168,20 @@ function resolveTargetLayerData(inputLayerId, context = {}) {
   const selectedFeatures = allFeatures.filter((feature) => selectedSet.has(normalizeFeatureId(feature)));
 
   if (!selectedFeatures.length) {
+    if (targetScope === 'selection') {
+      return {
+        ok: false,
+        layerId,
+        layer,
+        sourceGeoJSON,
+        targetGeoJSON: null,
+        mode: 'selection-empty',
+        selectedFeatureIds: [],
+        selectedFeatureCount: 0,
+        totalFeatureCount,
+      };
+    }
+
     return {
       ok: true,
       layerId,
@@ -143,6 +195,10 @@ function resolveTargetLayerData(inputLayerId, context = {}) {
     };
   }
 
+  const matchedFeatureIds = selectedFeatures
+    .map((feature) => normalizeFeatureId(feature))
+    .filter(Boolean);
+
   return {
     ok: true,
     layerId,
@@ -153,7 +209,7 @@ function resolveTargetLayerData(inputLayerId, context = {}) {
       features: selectedFeatures,
     },
     mode: 'selection',
-    selectedFeatureIds,
+    selectedFeatureIds: matchedFeatureIds.length ? matchedFeatureIds : selectedFeatureIds,
     selectedFeatureCount: selectedFeatures.length,
     totalFeatureCount,
   };
@@ -172,5 +228,6 @@ module.exports = {
   buildToolHistory,
   buildTargetMetadata,
   getTargetToolHistory,
+  normalizeTargetScope,
   resolveTargetLayerData,
 };

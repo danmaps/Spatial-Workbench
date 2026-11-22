@@ -28,8 +28,8 @@ function addExportMetadata(geojson, target, params, toolName) {
 class ExportTool extends Tool {
     constructor() {
         super("Export", [
-            new Parameter("Layer","layer to export","dropdown",""),
-            new Parameter("Format","format to export","dropdown","geojson")  
+            new Parameter("Layer","layer to export","dropdown","", null, null, null, true),
+            new Parameter("Format","format to export","dropdown","geojson", ["geojson"], null, null, true)  
         ]);
 
         this.description = "Export data";
@@ -45,7 +45,7 @@ class ExportTool extends Tool {
             errors.push('Unsupported export format.');
         }
 
-        const target = resolveTargetLayerData(inputLayerId, context);
+        const target = resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope });
         if (!target.ok || !target.targetGeoJSON) {
             errors.push(target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');
         }
@@ -59,7 +59,7 @@ class ExportTool extends Tool {
         const inputLayerId = params['Layer'];
         const format = params['Format'] || 'GeoJSON';
         if (String(format).toLowerCase() === 'geojson') {
-            const target = resolveTargetLayerData(inputLayerId, context);
+            const target = resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope });
 
             if (!target.ok || !target.targetGeoJSON) {
                 this.setStatus(2, target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');

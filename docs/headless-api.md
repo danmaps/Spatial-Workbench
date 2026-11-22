@@ -181,6 +181,13 @@ All successful tool calls and tool-level validation failures use the same envelo
       "input": 3,
       "output": 3
     },
+    "target": {
+      "layerId": "source-layer",
+      "mode": "layer",
+      "selectedFeatureIds": [],
+      "selectedFeatureCount": 0,
+      "totalFeatureCount": 3
+    },
     "datasetHandles": {
       "read": ["dataset://abc123"],
       "produced": [
@@ -191,6 +198,8 @@ All successful tool calls and tool-level validation failures use the same envelo
   }
 }
 ```
+
+For selection-aware layer tools (`BufferTool`, `ExportTool`, `GroupTool`, `ClipTool`, `EraseTool`), callers may also pass `targetScope: "layer" | "selection"` in `params` or `state.selection.targetScope`. When `targetScope` is `"selection"` and no features are selected in the target layer, validation fails with `"No selected features in the chosen layer."` and `execution.target.mode: "selection-empty"`.
 
 For feature-collection tools, the updated FeatureCollection is returned in top-level `state`. The `output` object contains operation details such as counts and updated ids, not a nested state copy.
 `execution` is the API-level receipt used by the demo client and tests. It keeps the runtime inspectable without forcing every tool to share the same internal output shape.

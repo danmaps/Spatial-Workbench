@@ -51,6 +51,8 @@ class Tool {
             options: p.options || undefined,
             min: p.min ?? undefined,
             max: p.max ?? undefined,
+            ...(p.required ? { required: true } : {}),
+            ...(p.unit ? { unit: p.unit } : {}),
         }));
         return {
             key: this.constructor?.name || this.name,
@@ -130,11 +132,18 @@ class Tool {
                 // Link slider and input
                 paramInput.addEventListener('input', (e) => {
                     paramSlider.value = e.target.value;
+                    this.syncExecuteButtonState();
                 });
                 
                 paramSlider.addEventListener('input', (e) => {
                     paramInput.value = e.target.value;
+                    this.syncExecuteButtonState();
                 });
+
+                if (param.required) {
+                    paramInput.required = true;
+                    paramInput.setAttribute?.('aria-required', 'true');
+                }
 
                 numberContainer.appendChild(paramInput);
                 numberContainer.appendChild(paramSlider);
@@ -162,12 +171,18 @@ class Tool {
             
             // Common setup for non-number inputs
             if (paramInput) {
+                if (param.required) {
+                    paramInput.required = true;
+                    paramInput.setAttribute?.('aria-required', 'true');
+                }
                 toolContent.appendChild(paramLabel);
                 toolContent.appendChild(paramInput);
                 toolContent.appendChild(document.createElement('br'));
 
+                paramInput.addEventListener('input', () => this.syncExecuteButtonState());
+                paramInput.addEventListener('change', () => this.syncExecuteButtonState());
                 paramInput.addEventListener('keydown', function(event) {
-                    if (event.key === "Enter") {
+                    if (event.key === "Enter" && !executeButton.disabled) {
                         event.preventDefault();
                         executeButton.click();
                     }
@@ -177,10 +192,26 @@ class Tool {
 
         // Create and append the Execute button after adding all parameters
         const executeButton = document.createElement('button');
+        executeButton.id = 'toolExecuteButton';
         executeButton.textContent = 'Execute';
         executeButton.addEventListener('click', () => this.execute());
         toolContent.appendChild(executeButton);
 
+        this.syncExecuteButtonState();
+        if (typeof Promise !== 'undefined') {
+            Promise.resolve().then(() => this.syncExecuteButtonState());
+        }
+
+    }
+
+    syncExecuteButtonState() {
+        if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+        const executeButton = document.getElementById('toolExecuteButton');
+        if (!executeButton) return;
+        const params = this.collectParamsFromDOM();
+        const validation = this.validateParameters(params, this.getExecutionContext());
+        executeButton.disabled = !validation.ok;
+        executeButton.setAttribute?.('aria-disabled', validation.ok ? 'false' : 'true');
     }
 
     collectParamsFromDOM() {
@@ -192,11 +223,13 @@ class Tool {
             if (param.type === 'boolean') {
                 params[param.name] = !!el.checked;
             } else if (param.type === 'int') {
-                const value = parseInt(el.value, 10);
-                params[param.name] = Number.isNaN(value) ? param.defaultValue : value;
+                const raw = typeof el.value === 'string' ? el.value.trim() : String(el.value ?? '');
+                const value = raw === '' ? NaN : parseInt(raw, 10);
+                params[param.name] = Number.isNaN(value) ? (param.required ? NaN : param.defaultValue) : value;
             } else if (param.type === 'float') {
-                const value = parseFloat(el.value);
-                params[param.name] = Number.isNaN(value) ? param.defaultValue : value;
+                const raw = typeof el.value === 'string' ? el.value.trim() : String(el.value ?? '');
+                const value = raw === '' ? NaN : parseFloat(raw);
+                params[param.name] = Number.isNaN(value) ? (param.required ? NaN : param.defaultValue) : value;
             } else if (param.type === 'file') {
                 params[param.name] = el.files && el.files.length ? el.files[0] : null;
             } else {
@@ -230,6 +263,51 @@ class Tool {
         URL.revokeObjectURL(url);
     }
 
+    validateParameters(params = {}, _context = {}) {
+        const errors = [];
+        (this.parameters || []).forEach((param) => {
+            const hasExplicitValue = Object.prototype.hasOwnProperty.call(params || {}, param.name);
+            const value = hasExplicitValue ? params[param.name] : param.defaultValue;
+
+            const isMissing = value === undefined
+                || value === null
+                || (typeof value === 'string' && value.trim() === '')
+                || ((param.type === 'int' || param.type === 'float') && !Number.isFinite(Number(value)));
+
+            if (param.required && isMissing) {
+                errors.push(`${param.name} is required.`);
+                return;
+            }
+
+            if (isMissing) return;
+
+            if (param.type === 'int' || param.type === 'float') {
+                const numericValue = Number(value);
+                if (!Number.isFinite(numericValue)) {
+                    errors.push(`${param.name} must be a valid number.`);
+                    return;
+                }
+                if (param.min !== null && param.min !== undefined && numericValue < param.min) {
+                    errors.push(`${param.name} must be at least ${param.min}.`);
+                }
+                if (param.max !== null && param.max !== undefined && numericValue > param.max) {
+                    errors.push(`${param.name} must be at most ${param.max}.`);
+                }
+            }
+
+            if (Array.isArray(param.options) && param.options.length > 0) {
+                const matched = param.options.some(
+                    (option) => String(option).toLowerCase() === String(value).toLowerCase()
+                );
+                if (!matched) {
+                    errors.push(`${param.name} must be one of: ${param.options.join(', ')}.`);
+                }
+            }
+        });
+
+        return this.validationFailure(errors);
+    }
+
     async execute() {
         const params = this.collectParamsFromDOM();
         const context = this.getExecutionContext();
@@ -244,8 +322,8 @@ class Tool {
         return result;
     }
 
-    async validate(_params, _context) {
-        return { ok: true, errors: [] };
+    async validate(params, context) {
+        return this.validateParameters(params, context);
     }
 
     validationFailure(errors) {

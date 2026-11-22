@@ -12,7 +12,7 @@ class GenerateAIFeatures extends Tool {
 
     constructor() {    
         super("Generate AI Features", [
-            new Parameter("Prompt","The prompt to generate AI features","text","")  
+            new Parameter("Prompt","The prompt to generate AI features","text","", null, null, null, true)  
         ]);
     }
 

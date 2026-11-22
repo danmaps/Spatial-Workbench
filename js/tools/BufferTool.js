@@ -17,9 +17,9 @@ class BufferTool extends Tool {
      */
     constructor() {    
         super("Buffer", [
-            new Parameter("Input Layer","The input layer to buffer","dropdown",""),
-            new Parameter("Distance", "The distance", "float", 10),
-            new Parameter("Units","The units for the distance", "dropdown","miles", ["feet","miles","kilometers","degrees"])    
+            new Parameter("Input Layer","The input layer to buffer","dropdown","", null, null, null, true),
+            new Parameter("Distance", "The distance", "float", 10, null, null, null, true),
+            new Parameter("Units","The units for the distance", "dropdown","miles", ["feet","meters","miles","kilometers","degrees"], null, null, true)    
         ]);
 
         this.description = 'Makes a buffer around the input layer';
@@ -33,7 +33,9 @@ class BufferTool extends Tool {
     async validate(params, context = {}) {
         const inputLayerId = params['Input Layer'];
         const distance = parseFloat(params['Distance']);
-        const target = resolveTargetLayerData(inputLayerId, context);
+        const units = params['Units'];
+        const allowedUnits = this.parameters.find((p) => p.name === 'Units')?.options || [];
+        const target = resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope });
         const errors = [];
 
         if (!target.ok || !target.targetGeoJSON) {
@@ -44,6 +46,10 @@ class BufferTool extends Tool {
             errors.push('No distance selected.');
         }
 
+        if (units !== undefined && units !== null && String(units).trim() !== '' && !allowedUnits.includes(String(units).toLowerCase())) {
+            errors.push(`Unsupported distance units: ${units}.`);
+        }
+
         return this.validationFailure(errors);
     }
 
@@ -52,7 +58,7 @@ class BufferTool extends Tool {
         const distance = parseFloat(params['Distance']);
         const applyToolResult = context.applyResult || applyResult;
         const spatial = context.spatial || null;
-        const target = resolveTargetLayerData(inputLayerId, context);
+        const target = resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope });
     
         if (!target.ok || !target.targetGeoJSON) {
             this.setStatus(2, target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');

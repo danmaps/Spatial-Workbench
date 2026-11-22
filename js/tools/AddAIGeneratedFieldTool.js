@@ -34,9 +34,9 @@ class AddAIGeneratedFieldTool extends Tool {
     super('Add AI-Generated Field', [
       new Parameter('Input Layer', 'The input layer to enrich', 'dropdown', ''),
       new Parameter('Source Fields', 'Comma-separated source fields to send to AI', 'text', ''),
-      new Parameter('Instruction', 'The instruction used to generate the new field', 'text', ''),
-      new Parameter('Output Field Name', 'The field to write', 'text', ''),
-      new Parameter('Output Type', 'The output field type', 'dropdown', 'text', ['text', 'number', 'boolean']),
+      new Parameter('Instruction', 'The instruction used to generate the new field', 'text', '', null, null, null, true),
+      new Parameter('Output Field Name', 'The field to write', 'text', '', null, null, null, true),
+      new Parameter('Output Type', 'The output field type', 'dropdown', 'text', ['text', 'number', 'boolean'], null, null, true),
       new Parameter('Overwrite Existing Field', 'Overwrite existing values in the output field', 'boolean', false),
     ]);
 

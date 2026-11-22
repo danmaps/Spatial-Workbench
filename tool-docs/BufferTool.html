@@ -61,7 +61,7 @@
         <td>dropdown</td>
         <td>The units for the distance</td>
         <td>miles</td>
-        <td>feet, miles, kilometers, degrees</td>
+        <td>feet, meters, miles, kilometers, degrees</td>
       </tr>
         </tbody>
       </table>
@@ -81,13 +81,15 @@
       &quot;name&quot;: &quot;Input Layer&quot;,
       &quot;description&quot;: &quot;The input layer to buffer&quot;,
       &quot;type&quot;: &quot;dropdown&quot;,
-      &quot;defaultValue&quot;: &quot;&quot;
+      &quot;defaultValue&quot;: &quot;&quot;,
+      &quot;required&quot;: true
     },
     {
       &quot;name&quot;: &quot;Distance&quot;,
       &quot;description&quot;: &quot;The distance&quot;,
       &quot;type&quot;: &quot;float&quot;,
-      &quot;defaultValue&quot;: 10
+      &quot;defaultValue&quot;: 10,
+      &quot;required&quot;: true
     },
     {
       &quot;name&quot;: &quot;Units&quot;,
@@ -96,10 +98,12 @@
       &quot;defaultValue&quot;: &quot;miles&quot;,
       &quot;options&quot;: [
         &quot;feet&quot;,
+        &quot;meters&quot;,
         &quot;miles&quot;,
         &quot;kilometers&quot;,
         &quot;degrees&quot;
-      ]
+      ],
+      &quot;required&quot;: true
     }
   ],
   &quot;execution&quot;: {

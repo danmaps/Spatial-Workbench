@@ -116,6 +116,7 @@ Tools are defined declaratively using a small model:
 - TOC row behavior and per-layer actions follow a minimal row + ellipsis-menu model (see `docs/toc-action-model.md`)
 - New tool work should follow the in-repo implementation guide (see `docs/creating-new-tools.md`)
 - The hosted `POST /api/run` endpoint runs inside a bounded, worker-isolated workload envelope (see `docs/hosted-workload-envelope.md`)
+- Opinionated GIS component contracts (`swb.ui.v0`) for agent-generated interfaces are specified in `docs/agent-ui-components-plan.md`
 
 This borrows from desktop GIS geoprocessing tools, but the direction is smaller, service-oriented, and agent-friendly.
 

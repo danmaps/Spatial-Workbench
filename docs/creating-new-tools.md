@@ -22,7 +22,8 @@ A typical tool has:
 - an optional result handled through the common result pipeline
 
 Important pieces:
-- `Tool.getSpec()` → machine-readable tool metadata
+- `Tool.getSpec()` → machine-readable tool metadata (including `required`, `min`, `max`, `options`, and `unit` on each `Parameter`)
+- `Tool.validateParameters(params, context)` → schema-level parameter validation (`required`, `min`, `max`, `options`), which also gates the browser `Execute` button (`#toolExecuteButton`)
 - `Tool.run(params, context)` → core execution path
 - `Tool.execute()` → UI wrapper that collects DOM params and calls `run()`
 
@@ -90,10 +91,14 @@ For tools that act on layers or features, the default rule is:
 
 This is now the intended product behavior.
 
+Callers (such as agent-composed UI components) can also supply an explicit `targetScope` (`"layer"` or `"selection"`) in `params.targetScope` or `state.selection.targetScope`:
+- `targetScope: "layer"` forces whole-layer execution even when features are selected.
+- `targetScope: "selection"` requires at least one selected feature on the target layer and fails validation with `mode: "selection-empty"` (`"No selected features in the chosen layer."`) instead of silently falling back to the whole layer.
+
 Do **not** make selection handling a weird special case unless the tool truly requires it.
 
 Useful existing reference:
-- `js/tools/targeting.js`
+- `js/tools/targeting.js` (`resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope })`)
 
 That helper is the first place to look before inventing your own targeting logic.
 

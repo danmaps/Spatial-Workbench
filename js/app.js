@@ -5,7 +5,7 @@ const toolNames = toolSpecs
     .map((spec) => spec && spec.key)
     .filter((toolKey, index, list) => typeof toolKey === 'string' && toolKey && list.indexOf(toolKey) === index);
 const state = require('./state');
-const { renderAISettings } = require('./ui/ai-settings');
+const { getWorkspacePreferences, renderAISettings } = require('./ui/ai-settings');
 const { getAttributeModel, parseEditedValue } = require('./ui/attribute-view');
 const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-drawer');
 const {
@@ -21,13 +21,30 @@ const {
 } = require('./ui/selection-style');
 const { instantiateTools } = require('./runtime/toolRegistry');
 
-// Initialize the map
-const map = L.map('map').setView([34, -117], 7);
-const CARTO_TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+// Initialize the map using persisted workspace defaults (#63)
+const initialPreferences = getWorkspacePreferences();
+const map = L.map('map').setView(
+    [initialPreferences.defaultLat, initialPreferences.defaultLng],
+    initialPreferences.defaultZoom
+);
+const BASEMAP_URLS = {
+    dark_all: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    light_all: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+};
+let activeBasemapTileLayer = null;
+let runtimeCartoKey = '';
 
-function addCartoBasemap(cartoBasemapKey = '') {
-    const keySuffix = cartoBasemapKey ? `?key=${encodeURIComponent(cartoBasemapKey)}` : '';
-    L.tileLayer(`${CARTO_TILE_URL}${keySuffix}`, {
+function addCartoBasemap(cartoBasemapKey = '', basemapStyle = getWorkspacePreferences().basemap) {
+    runtimeCartoKey = cartoBasemapKey || runtimeCartoKey;
+    const baseUrl = BASEMAP_URLS[basemapStyle] || BASEMAP_URLS.dark_all;
+    const keySuffix = runtimeCartoKey && basemapStyle !== 'osm'
+        ? `?key=${encodeURIComponent(runtimeCartoKey)}`
+        : '';
+    if (activeBasemapTileLayer && typeof map.removeLayer === 'function') {
+        map.removeLayer(activeBasemapTileLayer);
+    }
+    activeBasemapTileLayer = L.tileLayer(`${baseUrl}${keySuffix}`, {
         maxZoom: 18,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
     }).addTo(map);
@@ -962,9 +979,26 @@ function renderToc() {
     if (!tocContent) return;
     tocContent.innerHTML = '';
 
-    tocLayers.forEach((layer) => {
-        const stableId = state.ensureStableId(layer);
-        const info = state.getLayerInfo(layer);
+    const prefs = getWorkspacePreferences();
+    const useHierarchy = prefs.groupTocLayers !== false && typeof state.getTocLayerHierarchy === 'function';
+    const tocEntries = useHierarchy
+        ? state.getTocLayerHierarchy()
+        : tocLayers.map((layer) => ({
+            id: state.ensureStableId(layer),
+            layer,
+            info: state.getLayerInfo(layer),
+            parentLayerId: null,
+            depth: 0,
+            childIds: [],
+            hasChildren: false,
+            collapsed: false,
+            hiddenByCollapsedAncestor: false,
+        }));
+
+    tocEntries.forEach((entry) => {
+        const layer = entry.layer;
+        const stableId = entry.id || state.ensureStableId(layer);
+        const info = entry.info || state.getLayerInfo(layer);
         const history = getLayerHistorySummary(layer);
         const sourceBadge = getLayerSourceBadge(layer);
         const menuOpen = openLayerMenuId === stableId;
@@ -976,10 +1010,27 @@ function renderToc() {
             totalFeatureCount: info?.geometry?.featureCount || 0,
         });
 
+        const itemClasses = [
+            'layer-message',
+            ...visualState.tocClasses,
+            menuOpen ? 'menu-open' : '',
+            entry.depth > 0 ? 'layer-message-child' : '',
+            entry.hasChildren ? 'layer-message-parent' : '',
+            entry.hiddenByCollapsedAncestor ? 'hidden' : '',
+        ].filter(Boolean).join(' ');
+
         const item = document.createElement('div');
-        item.className = `layer-message ${visualState.tocClasses.join(' ')} ${menuOpen ? 'menu-open' : ''}`.trim();
+        item.className = itemClasses;
         item.id = `message-${stableId}`;
         item.dataset.layerId = stableId;
+        if (entry.parentLayerId) {
+            item.dataset.parentLayerId = entry.parentLayerId;
+        }
+        if (entry.depth > 0) {
+            item.dataset.depth = String(entry.depth);
+            item.style.marginLeft = `${Math.min(entry.depth, 3) * 14}px`;
+            item.style.borderLeft = '2px solid rgba(56, 189, 248, 0.35)';
+        }
         item.tabIndex = 0;
         item.setAttribute('aria-label', `Layer ${getLayerLabel(layer, info?.label)}`);
 
@@ -988,6 +1039,25 @@ function renderToc() {
 
         const left = document.createElement('div');
         left.className = 'layer-row-main';
+
+        if (entry.hasChildren) {
+            const groupToggle = document.createElement('button');
+            groupToggle.type = 'button';
+            groupToggle.className = 'layer-group-toggle';
+            groupToggle.setAttribute(
+                'aria-label',
+                `${entry.collapsed ? 'Expand' : 'Collapse'} derived layers for ${getLayerLabel(layer, info?.label)}`
+            );
+            groupToggle.setAttribute('aria-expanded', entry.collapsed ? 'false' : 'true');
+            groupToggle.title = entry.collapsed ? 'Show derived layers' : 'Hide derived layers';
+            groupToggle.innerHTML = `<i class="fas fa-chevron-${entry.collapsed ? 'right' : 'down'}"></i>`;
+            groupToggle.addEventListener('click', (event) => {
+                event.stopPropagation();
+                state.toggleLayerGroupCollapsed(stableId);
+                renderToc();
+            });
+            left.appendChild(groupToggle);
+        }
 
         const textWrap = document.createElement('div');
         textWrap.className = 'layer-text';
@@ -1023,6 +1093,13 @@ function renderToc() {
 
         badges.appendChild(sourceEl);
         badges.appendChild(typeEl);
+
+        if (entry.hasChildren) {
+            const groupBadge = document.createElement('span');
+            groupBadge.className = 'layer-badge layer-badge-group';
+            groupBadge.textContent = `${entry.childIds.length} derived`;
+            badges.appendChild(groupBadge);
+        }
 
         textWrap.appendChild(title);
         textWrap.appendChild(meta);
@@ -1192,6 +1269,15 @@ document.addEventListener('spatial-workbench:tool-complete', function () {
     updateDataContent();
 });
 
+document.addEventListener('spatial-workbench:settings-updated', function (event) {
+    const prefs = event?.detail || getWorkspacePreferences();
+    addCartoBasemap(runtimeCartoKey, prefs.basemap);
+    if (map && typeof map.setView === 'function' && Number.isFinite(prefs.defaultLat) && Number.isFinite(prefs.defaultLng)) {
+        map.setView([prefs.defaultLat, prefs.defaultLng], prefs.defaultZoom || 7);
+    }
+    refreshSidebarState();
+});
+
 // Event listeners remain the same...
 map.on(L.Draw.Event.CREATED, function (e) {
     let type = e.layerType,
@@ -1230,16 +1316,7 @@ map.on('draw:edited', function (e) {
 });
 
 map.on('draw:deleted', function (e) {
-    var layers = e.layers;
-    layers.eachLayer(function (layer) {
-        if (layer && layer.__id) {
-            // Let state.removeLayer handle removal from drawnItems for tracked layers
-            state.removeLayer(layer.__id);
-        } else {
-            // Fall back to direct removal for untracked layers
-            drawnItems.removeLayer(layer);
-        }
-    });
+    state.handleDrawDeleted(e.layers);
     updateDataContent();
 });
 
@@ -1355,10 +1432,10 @@ function renderToolList(tools) {
         toolContainer.appendChild(toolDiv);
     });
 
-    // Add AI Settings entry at the bottom
+    // Add consolidated Settings entry at the bottom (#63)
     const settingsDiv = document.createElement('div');
     settingsDiv.className = 'tool ai-settings-trigger';
-    settingsDiv.innerHTML = '<i class="fas fa-robot me-2"></i>AI Settings';
+    settingsDiv.innerHTML = '<i class="fas fa-sliders me-2"></i>Settings';
     settingsDiv.addEventListener('click', () => {
         document.getElementById('toolSelection').style.display = 'none';
         document.getElementById('aiSettingsPanel').classList.remove('hidden');

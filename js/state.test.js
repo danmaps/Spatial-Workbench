@@ -415,4 +415,95 @@ describe('state provenance helpers', () => {
     expect(state.getLayer('child-2')).toBeNull();
     expect(tocLayers).toHaveLength(0);
   });
+
+  test('handleDrawDeleted removes manual sketches and derived tool result group layers on Clear All (#13)', () => {
+    const manualLayer = makeLayer('manual-1', 'Polygon');
+    state.registerLayer(manualLayer, 'manual-1');
+    tocLayers.push(manualLayer);
+
+    const applied = state.applyResult({
+      addGeojson: {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'buf-1' } },
+          { type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'buf-2' } },
+        ],
+        toolMetadata: { name: 'Buffer', parentLayerId: 'manual-1' },
+      },
+    });
+    expect(applied.ok).toBe(true);
+    expect(tocLayers).toHaveLength(2);
+
+    mockDrawnItems.getLayers = jest.fn(() => []);
+    mockDrawnItems.clearLayers = jest.fn();
+
+    const deletedGroup = {
+      eachLayer(cb) {
+        cb(manualLayer);
+      },
+    };
+
+    const removedIds = state.handleDrawDeleted(deletedGroup);
+    expect(removedIds).toEqual(expect.arrayContaining(['manual-1', ...applied.added]));
+    expect(tocLayers).toHaveLength(0);
+    expect(state.listLayers()).toEqual([]);
+  });
+
+  test('getTocLayerHierarchy organizes derived outputs beneath their parent layer and supports group collapse (#62)', () => {
+    const rootA = {
+      __id: 'root-a',
+      feature: { properties: { __id: 'root-a', name: 'Study Parcels' }, toolMetadata: { name: 'Draw' } },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'root-a', name: 'Study Parcels' } })),
+    };
+    const rootB = {
+      __id: 'root-b',
+      feature: { properties: { __id: 'root-b', name: 'Other Layer' }, toolMetadata: { name: 'Draw' } },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'root-b', name: 'Other Layer' } })),
+    };
+    const derivedA1 = {
+      __id: 'derived-a1',
+      feature: {
+        properties: { __id: 'derived-a1', name: 'Buffer of Study Parcels' },
+        toolMetadata: { name: 'Buffer', parentLayerId: 'root-a' },
+      },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'derived-a1' } })),
+    };
+    const derivedA2 = {
+      __id: 'derived-a2',
+      feature: {
+        properties: { __id: 'derived-a2', name: 'Clip of Buffer' },
+        toolMetadata: { name: 'Clip', parentLayerId: 'derived-a1' },
+      },
+      toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] }, properties: { __id: 'derived-a2' } })),
+    };
+
+    state.registerLayer(rootA, 'root-a');
+    state.registerLayer(rootB, 'root-b');
+    state.registerLayer(derivedA1, 'derived-a1');
+    state.registerLayer(derivedA2, 'derived-a2');
+    // Push in interleaved order to verify hierarchy groups children beneath root-a
+    tocLayers.push(rootA, rootB, derivedA1, derivedA2);
+
+    const hierarchy = state.getTocLayerHierarchy();
+    expect(hierarchy.map((node) => ({
+      id: node.id,
+      depth: node.depth,
+      parentLayerId: node.parentLayerId,
+      childIds: node.childIds,
+      hidden: node.hiddenByCollapsedAncestor,
+    }))).toEqual([
+      { id: 'root-a', depth: 0, parentLayerId: null, childIds: ['derived-a1'], hidden: false },
+      { id: 'derived-a1', depth: 1, parentLayerId: 'root-a', childIds: ['derived-a2'], hidden: false },
+      { id: 'derived-a2', depth: 2, parentLayerId: 'derived-a1', childIds: [], hidden: false },
+      { id: 'root-b', depth: 0, parentLayerId: null, childIds: [], hidden: false },
+    ]);
+
+    expect(state.toggleLayerGroupCollapsed('root-a')).toBe(true);
+    expect(state.isLayerGroupCollapsed('root-a')).toBe(true);
+
+    const collapsedHierarchy = state.getTocLayerHierarchy();
+    expect(collapsedHierarchy.find((n) => n.id === 'derived-a1').hiddenByCollapsedAncestor).toBe(true);
+    expect(collapsedHierarchy.find((n) => n.id === 'derived-a2').hiddenByCollapsedAncestor).toBe(true);
+    expect(collapsedHierarchy.find((n) => n.id === 'root-b').hiddenByCollapsedAncestor).toBe(false);
+  });
 });

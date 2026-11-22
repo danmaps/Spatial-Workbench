@@ -8,6 +8,7 @@ const { ConvertTextToNumericTool } = require('./tools/ConvertTextToNumericTool')
 const { SelectByAttributeTool } = require('./tools/SelectByAttributeTool');
 const { ClipTool } = require('./tools/ClipTool');
 const { EraseTool } = require('./tools/EraseTool');
+const { CompareTool } = require('./tools/CompareTool');
 const { ensureFeatureId } = require('./spatial');
 const { validateExecutionSpec } = require('./runtime/executionSpec');
 const { normalizeToolResult } = require('./runtime/toolResult');
@@ -251,6 +252,7 @@ const HEADLESS_TOOLS = {
   SelectByAttributeTool,
   ClipTool,
   EraseTool,
+  CompareTool,
 };
 
 const FEATURE_COLLECTION_TOOLS = {

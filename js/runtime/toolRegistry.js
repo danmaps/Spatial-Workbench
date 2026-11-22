@@ -10,6 +10,7 @@ const toolDescriptors = [
   { exportName: 'SelectByAttributeTool', load: () => require('../tools/SelectByAttributeTool').SelectByAttributeTool },
   { exportName: 'ClipTool', load: () => require('../tools/ClipTool').ClipTool },
   { exportName: 'EraseTool', load: () => require('../tools/EraseTool').EraseTool },
+  { exportName: 'CompareTool', load: () => require('../tools/CompareTool').CompareTool },
 ];
 
 function loadToolClass(descriptor) {

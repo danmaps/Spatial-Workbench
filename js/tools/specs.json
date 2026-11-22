@@ -637,5 +637,61 @@
       "mutatesState": true,
       "producesArtifacts": false
     }
+  },
+  {
+    "key": "CompareTool",
+    "name": "Compare",
+    "description": "Compares two polygon layers (A vs B) and computes intersection, only-in-A, only-in-B, and area deltas",
+    "headlessSupported": true,
+    "parameters": [
+      {
+        "name": "Layer A",
+        "description": "Baseline polygon layer (A)",
+        "type": "dropdown",
+        "defaultValue": "",
+        "required": true
+      },
+      {
+        "name": "Layer B",
+        "description": "Comparison polygon layer (B)",
+        "type": "dropdown",
+        "defaultValue": "",
+        "required": true
+      }
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Layer A",
+          "kind": "layer",
+          "geometryTypes": [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": true
+        },
+        {
+          "parameter": "Layer B",
+          "kind": "layer",
+          "geometryTypes": [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": false
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "layer",
+          "operation": "add",
+          "geometryType": "Polygon"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
   }
 ]

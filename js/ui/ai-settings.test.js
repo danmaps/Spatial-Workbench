@@ -1,9 +1,12 @@
 const { DEFAULT_OLLAMA_MODEL } = require('../ai-providers');
 const {
+  clearWorkspacePreferences,
   fetchProviderConfig,
   getProviderModels,
+  getWorkspacePreferences,
   renderAISettings,
   renderModelControl,
+  saveWorkspacePreferences,
 } = require('./ai-settings');
 
 describe('ai settings helpers', () => {
@@ -111,5 +114,53 @@ describe('ai settings helpers', () => {
 
     expect(localStorage.getItem('SWB_AI_PROVIDER')).toBe('ollama');
     expect(localStorage.getItem('SWB_AI_MODEL')).toBe('qwen3:4b');
+  });
+
+  test('persists consolidated workspace preferences to localStorage and cookies (#63)', async () => {
+    clearWorkspacePreferences();
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, providers: [] }),
+    });
+
+    const root = document.getElementById('root');
+    await renderAISettings(root);
+
+    const latInput = root.querySelector('#pref-default-lat');
+    const lngInput = root.querySelector('#pref-default-lng');
+    const zoomInput = root.querySelector('#pref-default-zoom');
+    const basemapSelect = root.querySelector('#pref-basemap');
+    const groupTocCheckbox = root.querySelector('#pref-group-toc-layers');
+    const saveButton = Array.from(root.querySelectorAll('button')).find((b) => b.textContent === 'Save');
+
+    latInput.value = '37.77';
+    lngInput.value = '-122.41';
+    zoomInput.value = '11';
+    basemapSelect.value = 'light_all';
+    groupTocCheckbox.checked = false;
+
+    const eventListener = jest.fn();
+    document.addEventListener('spatial-workbench:settings-updated', eventListener);
+    saveButton.click();
+
+    const saved = getWorkspacePreferences();
+    expect(saved).toEqual({
+      defaultLat: 37.77,
+      defaultLng: -122.41,
+      defaultZoom: 11,
+      basemap: 'light_all',
+      defaultExportFormat: 'geojson',
+      groupTocLayers: false,
+    });
+    expect(document.cookie).toContain('swb_prefs=');
+    expect(eventListener).toHaveBeenCalledTimes(1);
+
+    // Even if localStorage is cleared, cookie fallback preserves preferences
+    localStorage.clear();
+    expect(getWorkspacePreferences().defaultLat).toBe(37.77);
+    expect(getWorkspacePreferences().basemap).toBe('light_all');
+
+    clearWorkspacePreferences();
+    expect(saveWorkspacePreferences({ defaultZoom: 9 }).defaultZoom).toBe(9);
   });
 });

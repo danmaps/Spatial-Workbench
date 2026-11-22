@@ -44,10 +44,39 @@ function intersectPolygons(first, second, turfLib) {
   }
 }
 
+function differencePolygons(first, second, turfLib) {
+  try {
+    return turfLib.difference(first, second);
+  } catch (error) {
+    if (typeof turfLib.featureCollection !== 'function') throw error;
+    return turfLib.difference(turfLib.featureCollection([first, second]));
+  }
+}
+
+function computeAreaSqm(featureOrGeoJSON, turfLib) {
+  if (!featureOrGeoJSON || typeof turfLib?.area !== 'function') return 0;
+  try {
+    const raw = Number(turfLib.area(featureOrGeoJSON));
+    return Number.isFinite(raw) ? Number(raw.toFixed(2)) : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
 function targetFeatures(targetGeoJSON) {
   return featuresFromGeoJSON(targetGeoJSON).filter((feature) => (
     feature?.geometry?.type === 'Polygon' || feature?.geometry?.type === 'MultiPolygon'
   ));
 }
 
-module.exports = { featuresFromGeoJSON, featureId, polygonFeatures, dissolvePolygons, intersectPolygons, targetFeatures, unionPolygons };
+module.exports = {
+  computeAreaSqm,
+  differencePolygons,
+  dissolvePolygons,
+  featureId,
+  featuresFromGeoJSON,
+  intersectPolygons,
+  polygonFeatures,
+  targetFeatures,
+  unionPolygons,
+};

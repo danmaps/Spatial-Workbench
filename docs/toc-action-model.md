@@ -96,8 +96,16 @@ Current menu contents:
 
 - **Zoom to layer**
 - **Rename layer**
+- **View attributes**
 - **Layer properties**
 - **Remove layer**
+
+## Parent-child result grouping
+
+Derived tool outputs record `source.parentLayerId` in `js/state.js`. When TOC grouping is enabled (default `true`, configurable in the consolidated Settings panel):
+
+- `state.getTocLayerHierarchy()` nests derived layers (`depth > 0`) directly beneath their parent source layer.
+- Parent layers display a chevron toggle (`.layer-group-toggle`) and a `<N> derived` badge so users can collapse or expand derived output trees without losing visibility toggles, rename, or per-layer actions.
 
 The menu also includes compact layer context above the actions:
 

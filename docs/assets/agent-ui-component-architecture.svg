@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1016"/>
+      <stop offset="100%" stop-color="#131c26"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#22c55e"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="520" rx="12" fill="url(#bgGrad)" stroke="#2a3642" stroke-width="2"/>
+
+  <!-- Header -->
+  <text x="36" y="42" fill="#38bdf8" font-size="11" font-weight="700" letter-spacing="1.5">SPATIAL WORKBENCH · SWB.UI.V0 ARCHITECTURE</text>
+  <text x="36" y="68" fill="#f1f5f9" font-size="20" font-weight="700">Agents Compose the Interface · Components Collect Intent · Runtime Executes</text>
+
+  <!-- Tier 1: Agent Stream -->
+  <rect x="36" y="96" width="250" height="175" rx="8" fill="#161f29" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="52" y="122" fill="#7dd3fc" font-size="12" font-weight="700">1. AGENT UI STREAM (OPENUI LANG)</text>
+  <rect x="52" y="134" width="218" height="96" rx="6" fill="#0d131a" stroke="#263340"/>
+  <text x="62" y="154" fill="#cbd5e1" font-family="monospace" font-size="11">CompactCard([</text>
+  <text x="62" y="171" fill="#38bdf8" font-family="monospace" font-size="11">  LayerInput({scope:"selection"}),</text>
+  <text x="62" y="188" fill="#38bdf8" font-family="monospace" font-size="11">  ToolParameters({Distance:500}),</text>
+  <text x="62" y="205" fill="#38bdf8" font-family="monospace" font-size="11">  SpatialResult(), ExecutionReceipt()</text>
+  <text x="62" y="220" fill="#cbd5e1" font-family="monospace" font-size="11">])</text>
+  <text x="52" y="252" fill="#94a3b8" font-size="11">Streaming guardrail: blocks run while partial</text>
+
+  <!-- Tier 2: Headless Component Contracts & Revision Store -->
+  <rect x="336" y="96" width="288" height="175" rx="8" fill="#161f29" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="352" y="122" fill="#a5b4fc" font-size="12" font-weight="700">2. HEADLESS CONTRACTS &amp; SESSION</text>
+  <rect x="352" y="134" width="256" height="36" rx="5" fill="#1e293b" stroke="#334155"/>
+  <text x="364" y="156" fill="#f1f5f9" font-size="12" font-weight="600">Bounded Registry &amp; Schema Validator</text>
+  <rect x="352" y="178" width="256" height="36" rx="5" fill="#1e293b" stroke="#334155"/>
+  <text x="364" y="200" fill="#f1f5f9" font-size="12" font-weight="600">stateRevision Counter (Rejects Stale AI)</text>
+  <rect x="352" y="222" width="256" height="36" rx="5" fill="#1e293b" stroke="#334155"/>
+  <text x="364" y="244" fill="#f1f5f9" font-size="12" font-weight="600">Draft vs. Committed Execution State</text>
+
+  <!-- Tier 3: Dual Render Surfaces -->
+  <rect x="674" y="96" width="250" height="175" rx="8" fill="#161f29" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="690" y="122" fill="#86efac" font-size="12" font-weight="700">3. DUAL AGENT-COMPOSED SURFACES</text>
+  <rect x="690" y="136" width="218" height="56" rx="5" fill="#0d131a" stroke="#2a3642"/>
+  <text x="702" y="156" fill="#f1f5f9" font-size="12" font-weight="600">Layout A: Compact Card</text>
+  <text x="702" y="175" fill="#94a3b8" font-size="11">Inline chat card + stacked mobile cards</text>
+  <rect x="690" y="200" width="218" height="56" rx="5" fill="#0d131a" stroke="#2a3642"/>
+  <text x="702" y="220" fill="#f1f5f9" font-size="12" font-weight="600">Layout B: Review Workspace</text>
+  <text x="702" y="239" fill="#94a3b8" font-size="11">Split controls + Leaflet canvas &amp; table</text>
+
+  <!-- Tier 4: Deterministic Spatial Execution Runtime -->
+  <rect x="36" y="318" width="888" height="166" rx="8" fill="#141c24" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="56" y="346" fill="#fde68a" font-size="12" font-weight="700">4. SPATIAL WORKBENCH DETERMINISTIC RUNTIME (POST /api/run · WORKER ISOLATED)</text>
+
+  <rect x="56" y="364" width="260" height="98" rx="6" fill="#0d131a" stroke="#2a3642"/>
+  <text x="72" y="388" fill="#f1f5f9" font-size="13" font-weight="600">Selection-Aware Targeting</text>
+  <text x="72" y="410" fill="#94a3b8" font-size="11">targetScope: "layer" | "selection"</text>
+  <text x="72" y="428" fill="#94a3b8" font-size="11">Blocks empty selection; preserves</text>
+  <text x="72" y="446" fill="#94a3b8" font-size="11">source layer IDs for iterative rerun</text>
+
+  <rect x="348" y="364" width="260" height="98" rx="6" fill="#0d131a" stroke="#2a3642"/>
+  <text x="364" y="388" fill="#f1f5f9" font-size="13" font-weight="600">Bounded Spatial Engine</text>
+  <text x="364" y="410" fill="#94a3b8" font-size="11">EPSG:4326 lon/lat · @turf/turf</text>
+  <text x="364" y="428" fill="#94a3b8" font-size="11">Worker timeout &amp; vertex guardrails</text>
+  <text x="364" y="446" fill="#94a3b8" font-size="11">Machine-readable spatial warnings</text>
+
+  <rect x="640" y="364" width="260" height="98" rx="6" fill="#0d131a" stroke="#2a3642"/>
+  <text x="656" y="388" fill="#f1f5f9" font-size="13" font-weight="600">Grounded Execution Receipt</text>
+  <text x="656" y="410" fill="#94a3b8" font-size="11">durationMs · featureCounts (in → out)</text>
+  <text x="656" y="428" fill="#94a3b8" font-size="11">target mode &amp; selectedFeatureCount</text>
+  <text x="656" y="446" fill="#94a3b8" font-size="11">toolHistory lineage &amp; GeoJSON artifact</text>
+
+  <!-- Connectors -->
+  <line x1="286" y1="184" x2="330" y2="184" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="624" y1="184" x2="668" y2="184" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="480" y1="271" x2="480" y2="312" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="780" y1="318" x2="780" y2="277" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+</svg>

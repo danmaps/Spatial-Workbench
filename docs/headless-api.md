@@ -47,9 +47,13 @@ The API now returns those assumptions in machine-readable `spatial` metadata and
 Layer-state tools use `state.layers` plus optional `state.bbox` and `state.selection`:
 
 - `BufferTool`
-- `ExportTool`
+- `ClipTool`
+- `CompareTool`
+- `EraseTool`
+- `ExportTool` (supports single layer ID, feature selection, or `"__all__"` to export all layers)
 - `GroupTool`
 - `RandomPointsTool`
+- `SelectByAttributeTool`
 
 Feature-collection tools use `state.featureCollection` plus optional `state.selection.featureIds`:
 

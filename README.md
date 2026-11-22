@@ -72,11 +72,15 @@ Agents should be able to discover a tool, understand its input schema, run it, i
 - Expose the headless API to agents through a thin MCP server
 - Run spatial tools such as:
   - Random point generation
-  - Buffers
+  - Buffers (`feet`, `meters`, `miles`, `kilometers`, `degrees`)
   - Grouping by distance
-  - Export to GeoJSON
+  - Clip, Erase, and A/B Geometry Comparison (`CompareTool` with overlap, only-in-A, only-in-B, and area/Jaccard metrics)
+  - Select by Attribute
+  - Export to GeoJSON (single layer, selected features, or `"All layers"` full-workspace bundle)
   - AI-generated field values
   - Text-to-numeric conversion
+- Organize derived outputs under their parent source layers in the collapsible TOC hierarchy
+- Configure durable workspace preferences (AI provider/model/key, default map extent, basemap, and TOC grouping) persisted via `localStorage` and cookies
 - Upload external data (GeoJSON, CSV, XLSX with coordinates)
 - See post-import summaries and coordinate warnings after Add Data ingest
 - Zoom to individual layers or the current layer selection from the Contents pane
@@ -115,10 +119,11 @@ Tools are defined declaratively using a small model:
 - Visual execution updates the map and GeoJSON state
 - Tool metadata can be attached to outputs
 - Layer identity, geometry, provenance, source, and UI hooks are normalized through a canonical layer model in `js/state.js` (see `docs/layer-model.md`)
-- TOC row behavior and per-layer actions follow a minimal row + ellipsis-menu model (see `docs/toc-action-model.md`)
+- TOC row behavior, parent-child result grouping, and per-layer actions follow a minimal row + ellipsis-menu model (see `docs/toc-action-model.md`)
 - New tool work should follow the in-repo implementation guide (see `docs/creating-new-tools.md`)
 - The hosted `POST /api/run` endpoint runs inside a bounded, worker-isolated workload envelope (see `docs/hosted-workload-envelope.md`)
 - Opinionated GIS component contracts (`swb.ui.v0`) for agent-generated interfaces are specified in `docs/agent-ui-components-plan.md`
+- Deep-dive, blog-post-style feature profiles with architecture diagrams and code samples are available in [`docs/feature-profiles.md`](docs/feature-profiles.md)
 
 This borrows from desktop GIS geoprocessing tools, but the direction is smaller, service-oriented, and agent-friendly.
 

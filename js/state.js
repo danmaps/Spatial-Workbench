@@ -475,6 +475,25 @@ function setLayerName(layerOrId, name) {
   return true;
 }
 
+const _collapsedGroupLayerIds = new Set();
+
+function isLayerGroupCollapsed(layerId) {
+  return Boolean(layerId && _collapsedGroupLayerIds.has(layerId));
+}
+
+function setLayerGroupCollapsed(layerId, collapsed) {
+  if (!layerId) return false;
+  const next = Boolean(collapsed);
+  if (next) _collapsedGroupLayerIds.add(layerId);
+  else _collapsedGroupLayerIds.delete(layerId);
+  return next;
+}
+
+function toggleLayerGroupCollapsed(layerId) {
+  if (!layerId) return false;
+  return setLayerGroupCollapsed(layerId, !isLayerGroupCollapsed(layerId));
+}
+
 function getChildLayerIds(parentId) {
   if (!parentId) return [];
 
@@ -485,6 +504,77 @@ function getChildLayerIds(parentId) {
   });
 
   return ids;
+}
+
+function getTocLayerHierarchy() {
+  ensureLayerRemoveListener();
+  const { tocLayers } = getAppRefs();
+  const rawLayers = Array.isArray(tocLayers) ? tocLayers : [];
+
+  const entries = rawLayers.map((layer) => {
+    const preferredId = layer?.feature?.properties?.__id;
+    const preferredDatasetId = layer?.feature?.properties?.__datasetId;
+    const id = registerLayer(layer, preferredId, preferredDatasetId);
+    const info = getLayerInfo(layer);
+    const parentLayerId = info?.source?.parentLayerId || null;
+    return {
+      id,
+      layer,
+      info,
+      parentLayerId,
+    };
+  });
+
+  const entryById = new Map(entries.map((entry) => [entry.id, entry]));
+  const childrenByParentId = new Map();
+  const roots = [];
+
+  entries.forEach((entry) => {
+    const parentId = entry.parentLayerId;
+    if (parentId && parentId !== entry.id && entryById.has(parentId)) {
+      if (!childrenByParentId.has(parentId)) {
+        childrenByParentId.set(parentId, []);
+      }
+      childrenByParentId.get(parentId).push(entry);
+    } else {
+      roots.push(entry);
+    }
+  });
+
+  const ordered = [];
+  const visited = new Set();
+
+  function visit(entry, depth = 0, ancestorCollapsed = false) {
+    if (!entry || visited.has(entry.id)) return;
+    visited.add(entry.id);
+
+    const children = childrenByParentId.get(entry.id) || [];
+    const childIds = children.map((c) => c.id);
+    const collapsed = isLayerGroupCollapsed(entry.id);
+
+    ordered.push({
+      id: entry.id,
+      layer: entry.layer,
+      info: entry.info,
+      parentLayerId: depth > 0 ? entry.parentLayerId : null,
+      depth,
+      childIds,
+      hasChildren: childIds.length > 0,
+      collapsed,
+      hiddenByCollapsedAncestor: ancestorCollapsed,
+    });
+
+    children.forEach((child) => {
+      visit(child, depth + 1, ancestorCollapsed || collapsed);
+    });
+  }
+
+  roots.forEach((root) => visit(root, 0, false));
+  entries.forEach((entry) => {
+    if (!visited.has(entry.id)) visit(entry, 0, false);
+  });
+
+  return ordered;
 }
 
 function isLayerVisible(layerOrId) {
@@ -654,14 +744,119 @@ function removeLayer(id) {
     // best-effort
   }
 
-  // Remove from TOC list if present
+  // If this is a group layer, also unregister its child layers
+  if (typeof layer.eachLayer === 'function') {
+    try {
+      layer.eachLayer((child) => {
+        if (child && child.__id && child.__id !== id) {
+          if (map && map.removeLayer) map.removeLayer(child);
+          unregisterLayer(child.__id);
+        }
+      });
+    } catch (_) {}
+  }
+
+  // Remove from TOC list if present, or from parent group layer if child
   try {
     const idx = tocLayers.indexOf(layer);
-    if (idx >= 0) tocLayers.splice(idx, 1);
+    if (idx >= 0) {
+      tocLayers.splice(idx, 1);
+    } else if (Array.isArray(tocLayers)) {
+      const emptyParentIds = [];
+      tocLayers.forEach((tocLayer) => {
+        if (!tocLayer || tocLayer === layer) return;
+        let belongedToParent = false;
+        if (typeof tocLayer.hasLayer === 'function' && tocLayer.hasLayer(layer)) {
+          belongedToParent = true;
+          if (typeof tocLayer.removeLayer === 'function') tocLayer.removeLayer(layer);
+        } else if (typeof tocLayer.eachLayer === 'function') {
+          tocLayer.eachLayer((child) => {
+            if (child === layer || (child?.__id && child.__id === id)) {
+              belongedToParent = true;
+            }
+          });
+          if (belongedToParent && typeof tocLayer.removeLayer === 'function') {
+            tocLayer.removeLayer(layer);
+          }
+        }
+        if (
+          belongedToParent &&
+          typeof tocLayer.getLayers === 'function' &&
+          tocLayer.getLayers().length === 0 &&
+          tocLayer.__id
+        ) {
+          emptyParentIds.push(tocLayer.__id);
+        }
+      });
+      emptyParentIds.forEach((parentId) => removeLayer(parentId));
+    }
   } catch (_) {}
 
   unregisterLayer(id);
   return true;
+}
+
+function clearAllLayers() {
+  ensureLayerRemoveListener();
+  const { drawnItems, tocLayers } = getAppRefs();
+  const removedIds = [];
+
+  const allTocIds = Array.isArray(tocLayers)
+    ? tocLayers.map((layer) => layer?.__id || ensureStableId(layer)).filter(Boolean)
+    : [];
+  const allRegistryIds = Array.from(_registry.keys());
+  const uniqueIds = Array.from(new Set([...allTocIds, ...allRegistryIds]));
+
+  uniqueIds.forEach((id) => {
+    if (removeLayer(id)) removedIds.push(id);
+  });
+
+  try {
+    if (drawnItems && typeof drawnItems.clearLayers === 'function') {
+      drawnItems.clearLayers();
+    }
+  } catch (_) {}
+
+  return removedIds;
+}
+
+function handleDrawDeleted(deletedLayers) {
+  ensureLayerRemoveListener();
+  const { drawnItems } = getAppRefs();
+  const removedIds = [];
+  const candidates = [];
+
+  if (deletedLayers && typeof deletedLayers.eachLayer === 'function') {
+    deletedLayers.eachLayer((layer) => candidates.push(layer));
+  } else if (Array.isArray(deletedLayers)) {
+    candidates.push(...deletedLayers);
+  }
+
+  candidates.forEach((layer) => {
+    if (layer && layer.__id) {
+      if (removeLayer(layer.__id)) removedIds.push(layer.__id);
+    } else {
+      try {
+        if (drawnItems && typeof drawnItems.removeLayer === 'function') {
+          drawnItems.removeLayer(layer);
+        }
+      } catch (_) {}
+    }
+  });
+
+  if (
+    candidates.length > 0 &&
+    drawnItems &&
+    typeof drawnItems.getLayers === 'function' &&
+    drawnItems.getLayers().length === 0
+  ) {
+    const remainingRemoved = clearAllLayers();
+    remainingRemoved.forEach((id) => {
+      if (!removedIds.includes(id)) removedIds.push(id);
+    });
+  }
+
+  return removedIds;
 }
 
 function listLayers() {
@@ -911,6 +1106,10 @@ module.exports = {
   getLayerName,
   setLayerName,
   getChildLayerIds,
+  getTocLayerHierarchy,
+  isLayerGroupCollapsed,
+  setLayerGroupCollapsed,
+  toggleLayerGroupCollapsed,
   isLayerVisible,
   setLayerVisibility,
   removeLayerTree,
@@ -920,4 +1119,6 @@ module.exports = {
   getState,
   applyResult,
   removeLayer,
+  clearAllLayers,
+  handleDrawDeleted,
 };

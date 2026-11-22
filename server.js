@@ -23,6 +23,9 @@ const { runToolInWorker, getActiveWorkerCount } = require('./js/runtime/workerEx
 const { createSpatialSession, normalizeSpatialRequest, SPATIAL_METADATA } = require('./js/spatial');
 const { createInMemoryDatasetStore, formatDatasetRef, parseDatasetRef } = require('./js/runtime/datasetStore');
 const { getInputLayerIds } = require('./js/runtime/executionSpec');
+const { CONTRACT_VERSION } = require('./js/components/contracts');
+const { OPENUI_COMPONENT_CATALOG, OPENUI_ROOT_LAYOUTS, generateOpenUISystemPrompt } = require('./js/components/adapters/openui');
+const { PROTOTYPE_OPENUI_EXPRESSIONS, PROTOTYPE_STUDY_SITES_FIXTURE } = require('./js/components/prototype');
 const MAX_AI_TOKENS = 4096;
 const DEFAULT_AI_TIMEOUT_MS = 30000;
 const DEFAULT_AI_MAX_RETRIES = 2;
@@ -488,6 +491,22 @@ app.get('/api/runtime-config', (_req, res) => {
 
 app.get('/headless-demo', (_req, res) => {
   res.sendFile('headless-demo.html', { root: __dirname });
+});
+
+app.get(['/agent-ui-demo', '/agent-ui-demo/'], (_req, res) => {
+  res.sendFile('agent-ui-demo.html', { root: __dirname });
+});
+
+app.get('/api/agent-ui/catalog', (_req, res) => {
+  res.json({
+    ok: true,
+    contractVersion: CONTRACT_VERSION,
+    components: OPENUI_COMPONENT_CATALOG,
+    rootLayouts: OPENUI_ROOT_LAYOUTS,
+    systemPrompt: generateOpenUISystemPrompt(),
+    sampleExpressions: PROTOTYPE_OPENUI_EXPRESSIONS,
+    fixture: PROTOTYPE_STUDY_SITES_FIXTURE,
+  });
 });
 
 // Block backend source files, scripts, and hidden files from static serving

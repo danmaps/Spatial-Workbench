@@ -513,7 +513,10 @@ function createExecutionReceiptModel(props = {}, runResponse = null, sessionStat
   }
 
   const ok = Boolean(response.ok);
-  const status = response.status || { code: ok ? 0 : 1, message: ok ? 'Executed.' : 'Execution failed.' };
+  const status = response.status || {
+    code: ok ? 0 : 1,
+    message: ok ? 'Executed.' : (response.error || 'Execution failed.'),
+  };
   const execution = response.execution || {
     startedAt: null,
     finishedAt: null,

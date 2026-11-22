@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spatial Workbench · Agent UI Components Demo (swb.ui.v0)</title>
+    <script defer src="https://analytics.dannymcvey.com/script.js" data-website-id="8b02a3e6-407f-42fb-86b8-af044add7289"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="/public/css/agent-ui-demo.css">
+</head>
+<body>
+    <main class="agent-demo-shell">
+        <header class="agent-demo-header">
+            <div>
+                <p class="agent-demo-eyebrow">Spatial Workbench · <code>swb.ui.v0</code></p>
+                <h1>Opinionated GIS Components for Agent-Generated Interfaces</h1>
+                <p class="agent-demo-subtitle">
+                    Agents compose the interface using OpenUI Lang or declarative JSON. Registered components enforce spatial semantics, selection scope, and revision safety. Spatial Workbench executes the operation via <code>POST /api/run</code>.
+                </p>
+            </div>
+            <div class="agent-demo-toolbar" role="toolbar" aria-label="Layout and stream controls">
+                <div class="agent-demo-segmented" role="group" aria-label="Agent-composed layout variant">
+                    <button type="button" id="layoutCompactBtn" class="swb-btn swb-btn-active" data-layout-mode="compact">
+                        Layout A: Compact Conversational Card
+                    </button>
+                    <button type="button" id="layoutWorkspaceBtn" class="swb-btn" data-layout-mode="workspace">
+                        Layout B: Expanded Review Workspace
+                    </button>
+                </div>
+                <div class="agent-demo-actions">
+                    <button type="button" id="simulateStreamBtn" class="swb-btn swb-btn-ghost">
+                        Simulate Partial Stream
+                    </button>
+                    <button type="button" id="exportOutputBtn" class="swb-btn swb-btn-secondary">
+                        Run ExportTool (GeoJSON)
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <section class="agent-demo-prompt-bar" aria-label="Agent prompt and OpenUI expression">
+            <div class="agent-demo-prompt-card">
+                <span class="swb-eyebrow">User Prompt</span>
+                <p class="agent-demo-prompt-quote">“Buffer these features by 500 meters and let me inspect and export the result.”</p>
+            </div>
+            <details class="agent-demo-openui-details">
+                <summary>Inspect live OpenUI Lang expression &amp; state revision (<span id="revisionBadge">Rev #1</span>)</summary>
+                <pre id="openuiExpressionPre" class="agent-demo-code"></pre>
+            </details>
+        </section>
+
+        <section id="compositionHost" class="agent-demo-composition-host" aria-live="polite"></section>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/public/js/agent-ui-demo-client.js"></script>
+</body>
+</html>

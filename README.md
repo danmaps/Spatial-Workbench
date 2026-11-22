@@ -16,6 +16,8 @@ Spatial Workbench provides a deployed agent-first runtime with:
   supports drawing, importing, inspecting, and editing.
 - **Headless API:** [`/headless-demo`](https://workbench.dannymcvey.com/headless-demo)
   demonstrates `RandomPointsTool -> BufferTool -> ExportTool` against the deployed API.
+- **Agent UI Components (`swb.ui.v0`):** [`/agent-ui-demo`](https://workbench.dannymcvey.com/agent-ui-demo)
+  demonstrates the opinionated GIS component catalog (`LayerInput`, `SpatialSelection`, `ToolParameters`, `SpatialResult`, `ExecutionReceipt`) and OpenUI Lang adapter across Compact Card and Expanded Review Workspace layouts (`GET /api/agent-ui/catalog`).
 - **Agent transport:** the thin MCP adapter exposes tool discovery and execution
   through the same headless runtime and state model.
 - **AI boundary:** provider responses are normalized, transient failures have

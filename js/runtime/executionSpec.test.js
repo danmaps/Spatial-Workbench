@@ -1,4 +1,4 @@
-const { getInputLayerIds, validateExecutionSpec } = require('./executionSpec');
+const { filterCompatibleLayers, getInputLayerIds, validateExecutionSpec } = require('./executionSpec');
 
 const layerSpec = {
   execution: {
@@ -44,5 +44,56 @@ describe('execution spec helpers', () => {
       ok: false,
       errors: ['Feature collection only accepts Point geometry; received LineString.'],
     });
+  });
+
+  test('filterCompatibleLayers classifies layers against declared geometry constraints', () => {
+    const candidates = filterCompatibleLayers([
+      {
+        id: 'points-1',
+        name: 'Survey Points',
+        geojson: {
+          type: 'FeatureCollection',
+          features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } }],
+        },
+      },
+      {
+        id: 'parcels-1',
+        name: 'Study Parcels',
+        geojson: {
+          type: 'FeatureCollection',
+          features: [
+            { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] } },
+            { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[1, 1], [1, 2], [2, 2], [2, 1], [1, 1]]] } },
+          ],
+        },
+      },
+    ], {
+      parameter: 'Clip Layer',
+      kind: 'layer',
+      geometryTypes: ['Polygon', 'MultiPolygon'],
+    });
+
+    expect(candidates).toEqual([
+      {
+        id: 'points-1',
+        displayName: 'Survey Points',
+        geometryTypes: ['Point'],
+        primaryGeometryType: 'Point',
+        featureCount: 1,
+        compatible: false,
+        incompatibleTypes: ['Point'],
+        reason: 'Clip Layer only accepts Polygon, MultiPolygon geometry; received Point.',
+      },
+      {
+        id: 'parcels-1',
+        displayName: 'Study Parcels',
+        geometryTypes: ['Polygon'],
+        primaryGeometryType: 'Polygon',
+        featureCount: 2,
+        compatible: true,
+        incompatibleTypes: [],
+        reason: null,
+      },
+    ]);
   });
 });

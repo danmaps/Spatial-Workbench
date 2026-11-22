@@ -276,8 +276,8 @@ Supported v0 event types:
 
 Implementation is split into five small, reviewable issues:
 
-1. **[#160](https://github.com/danmaps/Spatial-Workbench/issues/160)** — Harden parameter contracts (`required`, base schema validation, UI Execute button gating for [#4](https://github.com/danmaps/Spatial-Workbench/issues/4)), add `"meters"` units to `BufferTool` and `GroupTool`, enforce explicit `targetScope` (`"layer" | "selection"`), and surface `target` metadata in `POST /api/run` `execution` receipts.
-2. **[#161](https://github.com/danmaps/Spatial-Workbench/issues/161)** — Implement headless v0 GIS component contracts (`swb.ui.v0`) and revisioned session store (`js/components/contracts.js`, `js/components/session.js`).
+1. **[#160](https://github.com/danmaps/Spatial-Workbench/issues/160)** *(Completed)* — Harden parameter contracts (`required`, base schema validation, UI Execute button gating for [#4](https://github.com/danmaps/Spatial-Workbench/issues/4)), add `"meters"` units to `BufferTool` and `GroupTool`, enforce explicit `targetScope` (`"layer" | "selection"`), and surface `target` metadata in `POST /api/run` `execution` receipts.
+2. **[#161](https://github.com/danmaps/Spatial-Workbench/issues/161)** *(Completed)* — Implement headless v0 GIS component contracts (`swb.ui.v0`), `filterCompatibleLayers()`, bounded component registry, and revisioned session store (`js/components/contracts.js`, `js/components/session.js`).
 3. **[#162](https://github.com/danmaps/Spatial-Workbench/issues/162)** — Implement accessible DOM + Leaflet renderers for the v0 GIS component catalog (`js/components/renderers.js`).
 4. **[#163](https://github.com/danmaps/Spatial-Workbench/issues/163)** — Add OpenUI / declarative layout adapter and dual-layout `/agent-ui-demo` prototype (`BufferTool -> ExportTool`).
 5. **[#164](https://github.com/danmaps/Spatial-Workbench/issues/164)** — Add end-to-end equivalence, revision-safety, and accessibility tests for v0 GIS components.

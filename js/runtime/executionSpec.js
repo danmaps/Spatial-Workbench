@@ -26,6 +26,65 @@ function getInputLayerIds(spec, params = {}) {
     .filter((value) => typeof value === 'string' && value))];
 }
 
+function getLayerGeometryTypes(layer = {}) {
+  if (layer?.geojson) {
+    const types = geometryTypesFromGeojson(layer.geojson);
+    if (types.length) return types;
+  }
+  const declared = layer?.geometry?.type || layer?.geometryType || null;
+  if (typeof declared === 'string' && declared && declared !== 'Layer' && declared !== 'FeatureCollection' && declared !== 'Mixed') {
+    return [declared];
+  }
+  return [];
+}
+
+function getLayerFeatureCount(layer = {}) {
+  if (Number.isFinite(layer?.geometry?.featureCount)) return layer.geometry.featureCount;
+  if (Number.isFinite(layer?.featureCount)) return layer.featureCount;
+  const geojson = layer?.geojson;
+  if (!geojson || typeof geojson !== 'object') return 0;
+  if (geojson.type === 'FeatureCollection') {
+    return Array.isArray(geojson.features) ? geojson.features.length : 0;
+  }
+  if (geojson.type === 'Feature') return 1;
+  return 0;
+}
+
+function filterCompatibleLayers(layers = [], inputSpec = {}) {
+  const allowedTypes = Array.isArray(inputSpec?.geometryTypes) ? inputSpec.geometryTypes : [];
+  const parameterLabel = inputSpec?.parameter || 'Layer';
+
+  return (Array.isArray(layers) ? layers : []).map((layer) => {
+    const id = layer?.id || '';
+    const displayName = layer?.displayName || layer?.name || layer?.label || id || 'Layer';
+    const geometryTypes = getLayerGeometryTypes(layer);
+    const primaryGeometryType = geometryTypes.length === 1
+      ? geometryTypes[0]
+      : (geometryTypes.length > 1 ? 'Mixed' : (layer?.geometry?.type || layer?.geometryType || 'Unknown'));
+    const featureCount = getLayerFeatureCount(layer);
+    const incompatibleTypes = allowedTypes.length
+      ? geometryTypes.filter((type) => !allowedTypes.includes(type))
+      : [];
+    const compatible = incompatibleTypes.length === 0 && (allowedTypes.length === 0 || geometryTypes.length > 0);
+    const reason = !compatible
+      ? (incompatibleTypes.length
+          ? `${parameterLabel} only accepts ${allowedTypes.join(', ')} geometry; received ${incompatibleTypes.join(', ')}.`
+          : `${parameterLabel} requires ${allowedTypes.join(', ')} geometry.`)
+      : null;
+
+    return {
+      id,
+      displayName,
+      geometryTypes,
+      primaryGeometryType,
+      featureCount,
+      compatible,
+      incompatibleTypes,
+      reason,
+    };
+  });
+}
+
 function validateExecutionSpec(spec, params = {}, state = {}) {
   const errors = [];
   const layers = Array.isArray(state.layers) ? state.layers : [];
@@ -53,6 +112,7 @@ function validateExecutionSpec(spec, params = {}, state = {}) {
 }
 
 module.exports = {
+  filterCompatibleLayers,
   geometryTypesFromGeojson,
   inputIsActive,
   getExecutionInputs,

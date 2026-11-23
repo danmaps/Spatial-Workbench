@@ -239,5 +239,109 @@ describe('ExportTool', () => {
       { value: '__all__', text: 'All layers (2)' },
     ]);
     expect(select.value).toBe('__all__');
+
+    const formatSelect = document.getElementById('param-Format');
+    expect(Array.from(formatSelect.options).map((o) => o.value)).toEqual(['GeoJSON', 'CSV', 'WKT']);
+  });
+
+  test('exports layer features as CSV with properties, point coordinates, and WKT geometry (#169)', async () => {
+    const sourceGeoJSON = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [-122.4194, 37.7749] },
+          properties: { __id: 'pt-1', name: 'Ferry Building, SF', category: 'transit' },
+        },
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-122.42, 37.77], [-122.41, 37.77], [-122.41, 37.78], [-122.42, 37.78], [-122.42, 37.77]]],
+          },
+          properties: { __id: 'poly-1', name: 'Study Zone "Alpha"', category: 'zone' },
+        },
+      ],
+    };
+
+    const tool = new ExportTool();
+    const result = await tool.run(
+      {
+        Layer: 'study-layer',
+        Format: 'CSV',
+      },
+      {
+        getLayer: () => ({ toGeoJSON: () => sourceGeoJSON }),
+        state: {},
+      }
+    );
+
+    expect(result.download.filename).toBe('study-layer.csv');
+    expect(result.download.mimeType).toBe('text/csv');
+    expect(tool.getStatus()).toEqual({
+      code: 0,
+      message: 'Prepared CSV export.',
+    });
+
+    const lines = result.download.data.split('\n');
+    expect(lines[0]).toBe('__id,name,category,geometry_type,longitude,latitude,wkt');
+    expect(lines[1]).toBe('pt-1,"Ferry Building, SF",transit,Point,-122.4194,37.7749,POINT (-122.4194 37.7749)');
+    expect(lines[2]).toBe(
+      'poly-1,"Study Zone ""Alpha""",zone,Polygon,,,"POLYGON ((-122.42 37.77, -122.41 37.77, -122.41 37.78, -122.42 37.78, -122.42 37.77))"'
+    );
+  });
+
+  test('exports layer features as WKT document (#169)', async () => {
+    const { geometryToWkt } = require('./ExportTool');
+    expect(
+      geometryToWkt({
+        type: 'MultiPoint',
+        coordinates: [[0, 0], [1, 2]],
+      })
+    ).toBe('MULTIPOINT ((0 0), (1 2))');
+    expect(
+      geometryToWkt({
+        type: 'LineString',
+        coordinates: [[0, 0], [1, 1], [2, 1]],
+      })
+    ).toBe('LINESTRING (0 0, 1 1, 2 1)');
+
+    const sourceGeoJSON = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [-118.2437, 34.0522] },
+          properties: { __id: 'la-1' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: [[-118.25, 34.05], [-118.24, 34.06]] },
+          properties: { __id: 'la-line' },
+        },
+      ],
+    };
+
+    const tool = new ExportTool();
+    const result = await tool.run(
+      {
+        Layer: 'la-layer',
+        Format: 'WKT',
+      },
+      {
+        getLayer: () => ({ toGeoJSON: () => sourceGeoJSON }),
+        state: {},
+      }
+    );
+
+    expect(result.download.filename).toBe('la-layer.wkt');
+    expect(result.download.mimeType).toBe('text/plain');
+    expect(result.download.data).toBe(
+      'POINT (-118.2437 34.0522)\nLINESTRING (-118.25 34.05, -118.24 34.06)'
+    );
+    expect(tool.getStatus()).toEqual({
+      code: 0,
+      message: 'Prepared WKT export.',
+    });
   });
 });

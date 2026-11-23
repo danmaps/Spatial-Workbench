@@ -11,7 +11,7 @@
     <aside class="tool-docs-sidebar">
       <a class="tool-docs-brand" href="/tool-docs/index.html">Spatial Workbench</a>
       <nav class="tool-docs-nav" aria-label="Tool docs navigation">
-        <a class="tool-docs-nav-link" href="/tool-docs/AddDataTool.html">Add Data</a><a class="tool-docs-nav-link" href="/tool-docs/BufferTool.html">Buffer</a><a class="tool-docs-nav-link is-current" href="/tool-docs/ExportTool.html">Export</a><a class="tool-docs-nav-link" href="/tool-docs/GenerateAIFeatures.html">Generate AI Features</a><a class="tool-docs-nav-link" href="/tool-docs/GroupTool.html">Group</a><a class="tool-docs-nav-link" href="/tool-docs/RandomPointsTool.html">Random Points</a><a class="tool-docs-nav-link" href="/tool-docs/AddAIGeneratedFieldTool.html">Add AI-Generated Field</a><a class="tool-docs-nav-link" href="/tool-docs/ConvertTextToNumericTool.html">Convert Text to Numeric</a><a class="tool-docs-nav-link" href="/tool-docs/SelectByAttributeTool.html">Select by Attribute</a><a class="tool-docs-nav-link" href="/tool-docs/ClipTool.html">Clip</a><a class="tool-docs-nav-link" href="/tool-docs/EraseTool.html">Erase</a><a class="tool-docs-nav-link" href="/tool-docs/CompareTool.html">Compare</a>
+        <a class="tool-docs-nav-link" href="/tool-docs/AddDataTool.html">Add Data</a><a class="tool-docs-nav-link" href="/tool-docs/BufferTool.html">Buffer</a><a class="tool-docs-nav-link is-current" href="/tool-docs/ExportTool.html">Export</a><a class="tool-docs-nav-link" href="/tool-docs/GenerateAIFeatures.html">Generate AI Features</a><a class="tool-docs-nav-link" href="/tool-docs/GroupTool.html">Group</a><a class="tool-docs-nav-link" href="/tool-docs/RandomPointsTool.html">Random Points</a><a class="tool-docs-nav-link" href="/tool-docs/AddAIGeneratedFieldTool.html">Add AI-Generated Field</a><a class="tool-docs-nav-link" href="/tool-docs/ConvertTextToNumericTool.html">Convert Text to Numeric</a><a class="tool-docs-nav-link" href="/tool-docs/SelectByAttributeTool.html">Select by Attribute</a><a class="tool-docs-nav-link" href="/tool-docs/ClipTool.html">Clip</a><a class="tool-docs-nav-link" href="/tool-docs/EraseTool.html">Erase</a><a class="tool-docs-nav-link" href="/tool-docs/CompareTool.html">Compare</a><a class="tool-docs-nav-link" href="/tool-docs/SpatialJoinTool.html">Spatial Join</a><a class="tool-docs-nav-link" href="/tool-docs/DissolveTool.html">Dissolve</a>
       </nav>
     </aside>
     <main class="tool-docs-main">
@@ -19,7 +19,7 @@
     <header class="tool-docs-header">
       <div class="tool-docs-kicker">Tool reference</div>
       <h1>Export</h1>
-      <p class="tool-docs-description">Export data</p>
+      <p class="tool-docs-description">Export data as GeoJSON, CSV, or WKT</p>
       <div class="tool-docs-meta-grid">
         <div class="tool-docs-meta-card">
           <div class="tool-docs-meta-label">Key</div>
@@ -54,7 +54,7 @@
         <td>dropdown</td>
         <td>format to export</td>
         <td>geojson</td>
-        <td>geojson</td>
+        <td>geojson, csv, wkt</td>
       </tr>
         </tbody>
       </table>
@@ -67,7 +67,7 @@
       <pre class="tool-docs-code"><code>{
   &quot;key&quot;: &quot;ExportTool&quot;,
   &quot;name&quot;: &quot;Export&quot;,
-  &quot;description&quot;: &quot;Export data&quot;,
+  &quot;description&quot;: &quot;Export data as GeoJSON, CSV, or WKT&quot;,
   &quot;headlessSupported&quot;: true,
   &quot;parameters&quot;: [
     {
@@ -83,7 +83,9 @@
       &quot;type&quot;: &quot;dropdown&quot;,
       &quot;defaultValue&quot;: &quot;geojson&quot;,
       &quot;options&quot;: [
-        &quot;geojson&quot;
+        &quot;geojson&quot;,
+        &quot;csv&quot;,
+        &quot;wkt&quot;
       ],
       &quot;required&quot;: true
     }

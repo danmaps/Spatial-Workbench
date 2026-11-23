@@ -22,6 +22,8 @@ const COMPONENT_TYPES = Object.freeze([
   'ToolParameters',
   'SpatialResult',
   'ExecutionReceipt',
+  'SpatialPredicatePicker',
+  'GeometryComparison',
 ]);
 
 const EVENT_TYPES = Object.freeze([
@@ -30,6 +32,8 @@ const EVENT_TYPES = Object.freeze([
   'swb:params-draft-changed',
   'swb:execute-requested',
   'swb:artifact-download',
+  'swb:predicate-changed',
+  'swb:comparison-decision',
 ]);
 
 function deepClone(value) {
@@ -576,6 +580,111 @@ function createExecutionReceiptModel(props = {}, runResponse = null, sessionStat
   };
 }
 
+const SUPPORTED_PREDICATES = Object.freeze(['intersects', 'within', 'within_distance']);
+const SUPPORTED_DISTANCE_UNITS = Object.freeze(['feet', 'meters', 'miles', 'kilometers', 'degrees']);
+
+function createSpatialPredicatePickerModel(props = {}, sessionState = {}) {
+  const componentId = props.componentId || 'predicate-picker';
+  const toolKey = props.toolKey || 'SpatialJoinTool';
+  const draft = sessionState?.drafts?.[toolKey] || {};
+
+  const predicate = String(props.predicate || draft.Predicate || 'intersects').toLowerCase();
+  const rawDistance = props.distance !== undefined ? props.distance : (draft.Distance !== undefined ? draft.Distance : 100);
+  const distance = Number(rawDistance);
+  const units = String(props.units || draft.Units || 'meters').toLowerCase();
+
+  const errors = [];
+  if (!SUPPORTED_PREDICATES.includes(predicate)) {
+    errors.push(`Predicate must be one of: ${SUPPORTED_PREDICATES.join(', ')}.`);
+  }
+  if (predicate === 'within_distance') {
+    if (!Number.isFinite(distance) || distance <= 0) {
+      errors.push('Distance must be greater than 0 for within_distance.');
+    }
+    if (!SUPPORTED_DISTANCE_UNITS.includes(units)) {
+      errors.push(`Units must be one of: ${SUPPORTED_DISTANCE_UNITS.join(', ')}.`);
+    }
+  }
+
+  const streamComplete = props.streamComplete !== undefined
+    ? Boolean(props.streamComplete)
+    : (sessionState?.streamComplete !== false);
+  let lifecycle = 'draft';
+  if (!streamComplete) lifecycle = 'loading';
+  else if (errors.length > 0) lifecycle = 'invalid';
+
+  return {
+    ...createEnvelope(props, sessionState, { lifecycle, streamComplete }),
+    type: 'SpatialPredicatePicker',
+    componentId,
+    toolKey,
+    allowedPredicates: [...SUPPORTED_PREDICATES],
+    allowedUnits: [...SUPPORTED_DISTANCE_UNITS],
+    requiresDistance: predicate === 'within_distance',
+    result: {
+      toolKey,
+      predicate,
+      distance: predicate === 'within_distance' ? distance : null,
+      units: predicate === 'within_distance' ? units : null,
+      valid: errors.length === 0,
+    },
+    validation: {
+      ok: errors.length === 0,
+      errors,
+    },
+  };
+}
+
+function createGeometryComparisonModel(props = {}, sessionState = {}) {
+  const componentId = props.componentId || 'geometry-comparison';
+  const layers = Array.isArray(sessionState?.layers) ? sessionState.layers : [];
+  const comparisonLayer = layers.find(
+    (layer) =>
+      (props.comparisonLayerId && layer.id === props.comparisonLayerId) ||
+      Boolean(layer?.geojson?.toolMetadata?.comparison)
+  ) || null;
+
+  const metrics = comparisonLayer?.geojson?.toolMetadata?.comparison
+    || sessionState?.lastRunResponse?.output?.comparison
+    || props.comparison
+    || null;
+
+  const layerAId = metrics?.layerAId || props.layerAId || null;
+  const layerBId = metrics?.layerBId || props.layerBId || null;
+  const decisionKey = comparisonLayer?.id || 'latest';
+  const recordedDecision = sessionState?.comparisonDecisions?.[decisionKey]?.decision
+    || props.decision
+    || 'pending';
+
+  const streamComplete = props.streamComplete !== undefined
+    ? Boolean(props.streamComplete)
+    : (sessionState?.streamComplete !== false);
+  let lifecycle = 'completed';
+  if (!streamComplete) lifecycle = 'loading';
+  else if (!metrics) lifecycle = 'empty';
+
+  return {
+    ...createEnvelope(props, sessionState, { lifecycle, streamComplete }),
+    type: 'GeometryComparison',
+    componentId,
+    comparisonLayerId: comparisonLayer?.id || props.comparisonLayerId || null,
+    layerAId,
+    layerBId,
+    grounded: Boolean(metrics),
+    metrics: metrics ? deepClone(metrics) : null,
+    decision: recordedDecision,
+    result: {
+      grounded: Boolean(metrics),
+      comparisonLayerId: comparisonLayer?.id || props.comparisonLayerId || null,
+      layerAId,
+      layerBId,
+      jaccardSimilarity: metrics?.jaccardSimilarity ?? null,
+      areaDeltaSqm: metrics?.areaDeltaSqm ?? null,
+      decision: recordedDecision,
+    },
+  };
+}
+
 function createComponentEvent({
   eventType,
   componentId,
@@ -653,6 +762,8 @@ function createComponentRegistry() {
     ['ToolParameters', (props, state, options) => createToolParametersModel(props, state, options)],
     ['SpatialResult', (props, state) => createSpatialResultModel(props, state)],
     ['ExecutionReceipt', (props, state, options) => createExecutionReceiptModel(props, options?.lastRunResponse || props?.response || null, state)],
+    ['SpatialPredicatePicker', (props, state) => createSpatialPredicatePickerModel(props, state)],
+    ['GeometryComparison', (props, state) => createGeometryComparisonModel(props, state)],
   ]);
 
   return {
@@ -771,6 +882,8 @@ module.exports = {
   createToolParametersModel,
   createSpatialResultModel,
   createExecutionReceiptModel,
+  createSpatialPredicatePickerModel,
+  createGeometryComparisonModel,
   createComponentEvent,
   validateComponentEvent,
   createFallbackComponentModel,

@@ -4,6 +4,177 @@ const { listLayers, getActiveLayerId } = require('../state');
 const { buildTargetMetadata, buildToolHistory, getTargetToolHistory, resolveTargetLayerData } = require('./targeting');
 
 const EXPORT_ALL_LAYERS_VALUE = '__all__';
+const SUPPORTED_EXPORT_FORMATS = Object.freeze({
+    geojson: { label: 'GeoJSON', extension: 'geojson', mimeType: 'application/json' },
+    csv: { label: 'CSV', extension: 'csv', mimeType: 'text/csv' },
+    wkt: { label: 'WKT', extension: 'wkt', mimeType: 'text/plain' },
+});
+
+function normalizeExportFormat(rawFormat) {
+    if (typeof rawFormat !== 'string') return null;
+    const key = rawFormat.trim().toLowerCase();
+    return SUPPORTED_EXPORT_FORMATS[key] ? key : null;
+}
+
+function formatCoordinatePair(coord) {
+    if (!Array.isArray(coord) || coord.length < 2) return null;
+    const x = Number(coord[0]);
+    const y = Number(coord[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (coord.length >= 3 && Number.isFinite(Number(coord[2]))) {
+        return `${x} ${y} ${Number(coord[2])}`;
+    }
+    return `${x} ${y}`;
+}
+
+function formatCoordSequence(coords) {
+    if (!Array.isArray(coords)) return '';
+    return coords.map(formatCoordinatePair).filter(Boolean).join(', ');
+}
+
+function geometryToWkt(geometry) {
+    if (!geometry || typeof geometry !== 'object' || !geometry.type) return '';
+    const type = geometry.type;
+    const coords = geometry.coordinates;
+
+    if (type === 'Point') {
+        const pair = formatCoordinatePair(coords);
+        return pair ? `POINT (${pair})` : 'POINT EMPTY';
+    }
+    if (type === 'MultiPoint') {
+        if (!Array.isArray(coords) || !coords.length) return 'MULTIPOINT EMPTY';
+        const parts = coords
+            .map((pt) => {
+                const pair = formatCoordinatePair(pt);
+                return pair ? `(${pair})` : null;
+            })
+            .filter(Boolean);
+        return parts.length ? `MULTIPOINT (${parts.join(', ')})` : 'MULTIPOINT EMPTY';
+    }
+    if (type === 'LineString') {
+        const seq = formatCoordSequence(coords);
+        return seq ? `LINESTRING (${seq})` : 'LINESTRING EMPTY';
+    }
+    if (type === 'MultiLineString') {
+        if (!Array.isArray(coords) || !coords.length) return 'MULTILINESTRING EMPTY';
+        const lines = coords
+            .map((line) => {
+                const seq = formatCoordSequence(line);
+                return seq ? `(${seq})` : null;
+            })
+            .filter(Boolean);
+        return lines.length ? `MULTILINESTRING (${lines.join(', ')})` : 'MULTILINESTRING EMPTY';
+    }
+    if (type === 'Polygon') {
+        if (!Array.isArray(coords) || !coords.length) return 'POLYGON EMPTY';
+        const rings = coords
+            .map((ring) => {
+                const seq = formatCoordSequence(ring);
+                return seq ? `(${seq})` : null;
+            })
+            .filter(Boolean);
+        return rings.length ? `POLYGON (${rings.join(', ')})` : 'POLYGON EMPTY';
+    }
+    if (type === 'MultiPolygon') {
+        if (!Array.isArray(coords) || !coords.length) return 'MULTIPOLYGON EMPTY';
+        const polys = coords
+            .map((poly) => {
+                if (!Array.isArray(poly)) return null;
+                const rings = poly
+                    .map((ring) => {
+                        const seq = formatCoordSequence(ring);
+                        return seq ? `(${seq})` : null;
+                    })
+                    .filter(Boolean);
+                return rings.length ? `(${rings.join(', ')})` : null;
+            })
+            .filter(Boolean);
+        return polys.length ? `MULTIPOLYGON (${polys.join(', ')})` : 'MULTIPOLYGON EMPTY';
+    }
+    if (type === 'GeometryCollection') {
+        const geoms = Array.isArray(geometry.geometries)
+            ? geometry.geometries.map(geometryToWkt).filter(Boolean)
+            : [];
+        return geoms.length ? `GEOMETRYCOLLECTION (${geoms.join(', ')})` : 'GEOMETRYCOLLECTION EMPTY';
+    }
+    return '';
+}
+
+function escapeCsvCell(value) {
+    if (value === null || value === undefined) return '';
+    const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    if (/[",\r\n]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+}
+
+function featuresToCsv(features = []) {
+    const list = Array.isArray(features) ? features : [];
+    const propertyKeys = [];
+    const seenKeys = new Set();
+    let hasPointGeometry = false;
+
+    list.forEach((feature) => {
+        if (feature?.geometry?.type === 'Point') {
+            hasPointGeometry = true;
+        }
+        const props = feature?.properties;
+        if (props && typeof props === 'object') {
+            Object.keys(props).forEach((key) => {
+                if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+                    propertyKeys.push(key);
+                }
+            });
+        }
+    });
+
+    const columns = [
+        ...propertyKeys,
+        ...(!seenKeys.has('geometry_type') ? ['geometry_type'] : []),
+        ...(hasPointGeometry && !seenKeys.has('longitude') ? ['longitude'] : []),
+        ...(hasPointGeometry && !seenKeys.has('latitude') ? ['latitude'] : []),
+        ...(!seenKeys.has('wkt') ? ['wkt'] : []),
+    ];
+
+    const headerRow = columns.map(escapeCsvCell).join(',');
+    const dataRows = list.map((feature) => {
+        const props = (feature && typeof feature.properties === 'object' && feature.properties) || {};
+        const geom = feature?.geometry || null;
+        const isPoint = geom?.type === 'Point' && Array.isArray(geom.coordinates) && geom.coordinates.length >= 2;
+        return columns
+            .map((col) => {
+                if (Object.prototype.hasOwnProperty.call(props, col)) {
+                    return escapeCsvCell(props[col]);
+                }
+                if (col === 'geometry_type') {
+                    return escapeCsvCell(geom?.type || '');
+                }
+                if (col === 'longitude') {
+                    return isPoint ? escapeCsvCell(geom.coordinates[0]) : '';
+                }
+                if (col === 'latitude') {
+                    return isPoint ? escapeCsvCell(geom.coordinates[1]) : '';
+                }
+                if (col === 'wkt') {
+                    return escapeCsvCell(geometryToWkt(geom));
+                }
+                return '';
+            })
+            .join(',');
+    });
+
+    return [headerRow, ...dataRows].join('\n');
+}
+
+function featuresToWktDocument(features = []) {
+    const list = Array.isArray(features) ? features : [];
+    return list
+        .map((feature) => geometryToWkt(feature?.geometry || null))
+        .filter(Boolean)
+        .join('\n');
+}
 
 function deepClone(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -93,19 +264,19 @@ class ExportTool extends Tool {
     constructor() {
         super("Export", [
             new Parameter("Layer","layer to export","dropdown","", null, null, null, true),
-            new Parameter("Format","format to export","dropdown","geojson", ["geojson"], null, null, true)  
+            new Parameter("Format","format to export","dropdown","geojson", ["geojson", "csv", "wkt"], null, null, true)  
         ]);
 
-        this.description = "Export data";
+        this.description = "Export data as GeoJSON, CSV, or WKT";
         this.headlessSupported = true;
         this.execution = { stateMode: 'layers', inputs: [{ parameter: 'Layer', kind: 'layer', geometryTypes: ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'], cardinality: 'one', selectionAware: true }], outputs: [{ kind: 'artifact', operation: 'create', artifactType: 'download' }], mutatesState: false, producesArtifacts: true };
     }
     async validate(params, context = {}) {
         const inputLayerId = params['Layer'];
-        const format = params['Format'] || 'GeoJSON';
+        const format = normalizeExportFormat(params['Format'] || 'GeoJSON');
         const errors = [];
 
-        if (String(format).toLowerCase() !== 'geojson') {
+        if (!format) {
             errors.push('Unsupported export format.');
         }
 
@@ -129,16 +300,24 @@ class ExportTool extends Tool {
         // Keep headless JSON receipts machine-readable; progress belongs on stderr.
         console.error("Exporting data...");
         const inputLayerId = params['Layer'];
-        const format = params['Format'] || 'GeoJSON';
-        if (String(format).toLowerCase() === 'geojson') {
-            if (isAllLayersTarget(inputLayerId)) {
-                const allLayers = resolveAllExportableLayers(context);
-                if (!allLayers.length) {
-                    this.setStatus(2, 'No layer selected.');
-                    return;
-                }
+        const formatKey = normalizeExportFormat(params['Format'] || 'GeoJSON');
+        if (!formatKey) {
+            this.setStatus(2, 'Unsupported export format.');
+            return;
+        }
+        const formatMeta = SUPPORTED_EXPORT_FORMATS[formatKey];
 
-                const features = allLayers.flatMap((layer) => layer.features);
+        if (isAllLayersTarget(inputLayerId)) {
+            const allLayers = resolveAllExportableLayers(context);
+            if (!allLayers.length) {
+                this.setStatus(2, 'No layer selected.');
+                return;
+            }
+
+            const features = allLayers.flatMap((layer) => layer.features);
+            let dataString = '';
+
+            if (formatKey === 'geojson') {
                 const layerSummaries = allLayers.map((layer) => ({
                     id: layer.id,
                     name: layer.name,
@@ -167,36 +346,53 @@ class ExportTool extends Tool {
                     toolMetadata,
                     toolHistory: [toolMetadata],
                 };
-                this.setStatus(0, `Prepared GeoJSON export for ${allLayers.length} layer(s) (${features.length} feature(s)).`);
-                return {
-                    download: {
-                        filename: `all-layers.${format.toLowerCase()}`,
-                        mimeType: 'application/json',
-                        data: JSON.stringify(exportedGeoJSON),
-                    },
-                };
+                dataString = JSON.stringify(exportedGeoJSON);
+            } else if (formatKey === 'csv') {
+                dataString = featuresToCsv(features);
+            } else if (formatKey === 'wkt') {
+                dataString = featuresToWktDocument(features);
             }
 
-            const target = resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope });
-
-            if (!target.ok || !target.targetGeoJSON) {
-                this.setStatus(2, target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');
-                return;
-            }
-
-            const filenameSuffix = target.mode === 'selection' ? '-selection' : '';
-            const exportedGeoJSON = addExportMetadata(target.targetGeoJSON, target, params, this.name);
-            this.setStatus(0, target.mode === 'selection'
-                ? `Prepared GeoJSON export for ${target.selectedFeatureCount} selected feature(s).`
-                : 'Prepared GeoJSON export.');
+            this.setStatus(0, `Prepared ${formatMeta.label} export for ${allLayers.length} layer(s) (${features.length} feature(s)).`);
             return {
                 download: {
-                    filename: `${target.layerId}${filenameSuffix}.${format.toLowerCase()}`,
-                    mimeType: 'application/json',
-                    data: JSON.stringify(exportedGeoJSON)
-                }
+                    filename: `all-layers.${formatMeta.extension}`,
+                    mimeType: formatMeta.mimeType,
+                    data: dataString,
+                },
             };
         }
+
+        const target = resolveTargetLayerData(inputLayerId, context, { targetScope: params?.targetScope });
+
+        if (!target.ok || !target.targetGeoJSON) {
+            this.setStatus(2, target.mode === 'selection-empty' ? 'No selected features in the chosen layer.' : 'No layer selected.');
+            return;
+        }
+
+        const filenameSuffix = target.mode === 'selection' ? '-selection' : '';
+        const features = extractFeaturesFromGeoJSON(target.targetGeoJSON);
+        let dataString = '';
+
+        if (formatKey === 'geojson') {
+            const exportedGeoJSON = addExportMetadata(target.targetGeoJSON, target, params, this.name);
+            dataString = JSON.stringify(exportedGeoJSON);
+        } else if (formatKey === 'csv') {
+            dataString = featuresToCsv(features);
+        } else if (formatKey === 'wkt') {
+            dataString = featuresToWktDocument(features);
+        }
+
+        this.setStatus(0, target.mode === 'selection'
+            ? `Prepared ${formatMeta.label} export for ${target.selectedFeatureCount} selected feature(s).`
+            : `Prepared ${formatMeta.label} export.`);
+        return {
+            download: {
+                filename: `${target.layerId}${filenameSuffix}.${formatMeta.extension}`,
+                mimeType: formatMeta.mimeType,
+                data: dataString,
+            },
+        };
     }
 
     renderUI(paramValues = {}) {
@@ -230,26 +426,30 @@ class ExportTool extends Tool {
         const formatID = document.getElementById('param-Format');
         if (formatID) {
             formatID.innerHTML = '';
-            // create an array of options
-            const options = ['GeoJSON']; // todo: KML, CSV, GeoPackage, Shapefile
+            const options = ['GeoJSON', 'CSV', 'WKT'];
+            const preferredFormat = normalizeExportFormat(paramValues['Format']) || 'geojson';
 
-            // loop through the options and create an option element for each one
             for (let i = 0; i < options.length; i++) {
                 const option = document.createElement('option');
                 option.value = options[i];
                 option.text = options[i];
+                if (options[i].toLowerCase() === preferredFormat) {
+                    option.selected = true;
+                }
                 formatID.appendChild(option);
             }
-
         }
     }
-
-
 }
 
 module.exports = {
     EXPORT_ALL_LAYERS_VALUE,
+    SUPPORTED_EXPORT_FORMATS,
     ExportTool,
     addExportMetadata,
+    featuresToCsv,
+    featuresToWktDocument,
+    geometryToWkt,
     isAllLayersTarget,
+    normalizeExportFormat,
 };

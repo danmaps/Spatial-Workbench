@@ -92,6 +92,8 @@ describe('OpenUI adapter and dual-layout BufferTool -> ExportTool prototype (#16
       'ToolParameters',
       'SpatialResult',
       'ExecutionReceipt',
+      'SpatialPredicatePicker',
+      'GeometryComparison',
     ]);
     expect(catalog.systemPrompt).toContain('BufferTool');
     expect(catalog.systemPrompt).toContain('CompactCard');

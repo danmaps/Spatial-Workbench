@@ -106,7 +106,7 @@
   {
     "key": "ExportTool",
     "name": "Export",
-    "description": "Export data",
+    "description": "Export data as GeoJSON, CSV, or WKT",
     "headlessSupported": true,
     "parameters": [
       {
@@ -122,7 +122,9 @@
         "type": "dropdown",
         "defaultValue": "geojson",
         "options": [
-          "geojson"
+          "geojson",
+          "csv",
+          "wkt"
         ],
         "required": true
       }
@@ -681,6 +683,159 @@
           ],
           "cardinality": "one",
           "selectionAware": false
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "layer",
+          "operation": "add",
+          "geometryType": "Polygon"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
+  },
+  {
+    "key": "SpatialJoinTool",
+    "name": "Spatial Join",
+    "description": "Joins attributes from a join layer onto a target layer by spatial predicate (intersects, within, or within_distance)",
+    "headlessSupported": true,
+    "parameters": [
+      {
+        "name": "Target Layer",
+        "description": "Target layer receiving joined attributes",
+        "type": "dropdown",
+        "defaultValue": "",
+        "required": true
+      },
+      {
+        "name": "Join Layer",
+        "description": "Source layer providing attributes to join",
+        "type": "dropdown",
+        "defaultValue": "",
+        "required": true
+      },
+      {
+        "name": "Predicate",
+        "description": "Spatial relationship predicate",
+        "type": "dropdown",
+        "defaultValue": "intersects",
+        "options": [
+          "intersects",
+          "within",
+          "within_distance"
+        ],
+        "required": true
+      },
+      {
+        "name": "Distance",
+        "description": "Search distance (for within_distance)",
+        "type": "float",
+        "defaultValue": 100,
+        "min": 0
+      },
+      {
+        "name": "Units",
+        "description": "Distance units (for within_distance)",
+        "type": "dropdown",
+        "defaultValue": "meters",
+        "options": [
+          "feet",
+          "meters",
+          "miles",
+          "kilometers",
+          "degrees"
+        ],
+        "required": true
+      },
+      {
+        "name": "Join Mode",
+        "description": "How matching join features are combined",
+        "type": "dropdown",
+        "defaultValue": "first_match",
+        "options": [
+          "first_match",
+          "summary"
+        ],
+        "required": true
+      }
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Target Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Point",
+            "MultiPoint",
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": true
+        },
+        {
+          "parameter": "Join Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Point",
+            "MultiPoint",
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": false
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "layer",
+          "operation": "add",
+          "geometryType": "Mixed"
+        }
+      ],
+      "mutatesState": true,
+      "producesArtifacts": false
+    }
+  },
+  {
+    "key": "DissolveTool",
+    "name": "Dissolve",
+    "description": "Merges polygon features into a single boundary or groups them by a shared attribute field",
+    "headlessSupported": true,
+    "parameters": [
+      {
+        "name": "Input Layer",
+        "description": "Polygon layer to dissolve",
+        "type": "dropdown",
+        "defaultValue": "",
+        "required": true
+      },
+      {
+        "name": "Dissolve Field",
+        "description": "Attribute field to group by (leave empty to dissolve all)",
+        "type": "text",
+        "defaultValue": ""
+      }
+    ],
+    "execution": {
+      "stateMode": "layers",
+      "inputs": [
+        {
+          "parameter": "Input Layer",
+          "kind": "layer",
+          "geometryTypes": [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          "cardinality": "one",
+          "selectionAware": true
         }
       ],
       "outputs": [

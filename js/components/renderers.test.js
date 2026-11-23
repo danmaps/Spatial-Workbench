@@ -195,4 +195,86 @@ describe('swb.ui.v0 DOM and Leaflet component renderers', () => {
     expect(mockLeaflet.geoJSON).toHaveBeenCalledTimes(1);
     expect(fitBounds).toHaveBeenCalledTimes(1);
   });
+
+  test('renders SpatialPredicatePicker and GeometryComparison components and dispatches their events (#167)', () => {
+    const session = createComponentSession({
+      layers: [
+        STUDY_SITES_LAYER,
+        {
+          id: 'compare-out',
+          name: 'Compare A vs B',
+          geometryType: 'Polygon',
+          geojson: {
+            type: 'FeatureCollection',
+            features: [],
+            toolMetadata: {
+              name: 'Compare',
+              comparison: {
+                layerAId: 'parcel-a',
+                layerBId: 'parcel-b',
+                areaASqm: 1000,
+                areaBSqm: 1200,
+                intersectionAreaSqm: 800,
+                onlyInAAreaSqm: 200,
+                onlyInBAreaSqm: 400,
+                areaDeltaSqm: 200,
+                jaccardSimilarity: 0.5714,
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const host = document.createElement('div');
+    const render = () => {
+      const resolved = session.resolveLayout({
+        contractVersion: 'swb.ui.v0',
+        layout: 'workspace',
+        components: [
+          {
+            type: 'SpatialPredicatePicker',
+            componentId: 'pred-1',
+            toolKey: 'SpatialJoinTool',
+          },
+          {
+            type: 'GeometryComparison',
+            componentId: 'cmp-1',
+            comparisonLayerId: 'compare-out',
+          },
+        ],
+      });
+      renderComposition(host, resolved, {
+        onEvent: (event) => {
+          session.dispatchEvent(event);
+        },
+      });
+    };
+
+    render();
+
+    const predSelect = host.querySelector('.swb-predicate-select');
+    expect(predSelect.value).toBe('intersects');
+    predSelect.value = 'within_distance';
+    predSelect.dispatchEvent(new Event('change'));
+
+    expect(session.getState().drafts.SpatialJoinTool.Predicate).toBe('within_distance');
+
+    render();
+    const distInput = host.querySelector('.swb-predicate-distance');
+    expect(distInput).not.toBeNull();
+    distInput.value = '250';
+    distInput.dispatchEvent(new Event('change'));
+    expect(session.getState().drafts.SpatialJoinTool.Distance).toBe(250);
+
+    render();
+    const acceptBButton = host.querySelector('[data-comparison-decision="accepted_b"]');
+    expect(acceptBButton).not.toBeNull();
+    acceptBButton.click();
+
+    expect(session.getState().comparisonDecisions['compare-out']).toEqual({
+      decision: 'accepted_b',
+      candidateLayerId: 'parcel-b',
+    });
+  });
 });

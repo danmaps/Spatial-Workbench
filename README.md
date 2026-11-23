@@ -17,7 +17,7 @@ Spatial Workbench provides a deployed agent-first runtime with:
 - **Headless API:** [`/headless-demo`](https://workbench.dannymcvey.com/headless-demo)
   demonstrates `RandomPointsTool -> BufferTool -> ExportTool` against the deployed API.
 - **Agent UI Components (`swb.ui.v0`):** [`/agent-ui-demo`](https://workbench.dannymcvey.com/agent-ui-demo)
-  demonstrates the opinionated GIS component catalog (`LayerInput`, `SpatialSelection`, `ToolParameters`, `SpatialResult`, `ExecutionReceipt`) and OpenUI Lang adapter across Compact Card and Expanded Review Workspace layouts (`GET /api/agent-ui/catalog`).
+  demonstrates the opinionated GIS component catalog (`LayerInput`, `SpatialSelection`, `ToolParameters`, `SpatialResult`, `ExecutionReceipt`, `SpatialPredicatePicker`, `GeometryComparison`) and OpenUI Lang adapter across Compact Card and Expanded Review Workspace layouts (`GET /api/agent-ui/catalog`).
 - **Agent transport:** the thin MCP adapter exposes tool discovery and execution
   through the same headless runtime and state model.
 - **AI boundary:** provider responses are normalized, transient failures have
@@ -74,11 +74,13 @@ Agents should be able to discover a tool, understand its input schema, run it, i
   - Random point generation
   - Buffers (`feet`, `meters`, `miles`, `kilometers`, `degrees`)
   - Grouping by distance
-  - Clip, Erase, and A/B Geometry Comparison (`CompareTool` with overlap, only-in-A, only-in-B, and area/Jaccard metrics)
+  - Clip, Erase, Dissolve (`DissolveTool` by attribute or into a single boundary), and A/B Geometry Comparison (`CompareTool` with overlap, only-in-A, only-in-B, and area/Jaccard metrics)
+  - Spatial Join (`SpatialJoinTool` with `intersects`, `within`, `within_distance` predicates and `first_match` or numeric `summary` aggregations)
   - Select by Attribute
-  - Export to GeoJSON (single layer, selected features, or `"All layers"` full-workspace bundle)
+  - Export to GeoJSON, CSV, or WKT (single layer, selected features, or `"All layers"` full-workspace bundle)
   - AI-generated field values
   - Text-to-numeric conversion
+- Convert any derived layer's `toolHistory` into an exportable, 1-click replayable `swb.spatial-expression.v1` workflow recipe
 - Organize derived outputs under their parent source layers in the collapsible TOC hierarchy
 - Configure durable workspace preferences (AI provider/model/key, default map extent, basemap, and TOC grouping) persisted via `localStorage` and cookies
 - Upload external data (GeoJSON, CSV, XLSX with coordinates)

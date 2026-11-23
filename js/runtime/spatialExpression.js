@@ -106,10 +106,119 @@ async function runExpression(expression, execute, options = {}) {
   return { ok: true, version: expression.version, steps, receipts, state };
 }
 
+const TOOL_HISTORY_DESCRIPTORS = Object.freeze({
+  Buffer: { tool: 'BufferTool', primaryInputParam: 'Input Layer', createsLayer: true },
+  BufferTool: { tool: 'BufferTool', primaryInputParam: 'Input Layer', createsLayer: true },
+  Group: { tool: 'GroupTool', primaryInputParam: 'Layer', createsLayer: true },
+  GroupTool: { tool: 'GroupTool', primaryInputParam: 'Layer', createsLayer: true },
+  Clip: { tool: 'ClipTool', primaryInputParam: 'Input Layer', createsLayer: true },
+  ClipTool: { tool: 'ClipTool', primaryInputParam: 'Input Layer', createsLayer: true },
+  Erase: { tool: 'EraseTool', primaryInputParam: 'Input Layer', createsLayer: true },
+  EraseTool: { tool: 'EraseTool', primaryInputParam: 'Input Layer', createsLayer: true },
+  Compare: { tool: 'CompareTool', primaryInputParam: 'Layer A', createsLayer: true },
+  CompareTool: { tool: 'CompareTool', primaryInputParam: 'Layer A', createsLayer: true },
+  'Spatial Join': { tool: 'SpatialJoinTool', primaryInputParam: 'Target Layer', createsLayer: true },
+  SpatialJoinTool: { tool: 'SpatialJoinTool', primaryInputParam: 'Target Layer', createsLayer: true },
+  Dissolve: { tool: 'DissolveTool', primaryInputParam: 'Input Layer', createsLayer: true },
+  DissolveTool: { tool: 'DissolveTool', primaryInputParam: 'Input Layer', createsLayer: true },
+  'Random Points': { tool: 'RandomPointsTool', primaryInputParam: 'Polygon', createsLayer: true },
+  RandomPointsTool: { tool: 'RandomPointsTool', primaryInputParam: 'Polygon', createsLayer: true },
+  'Select by Attribute': { tool: 'SelectByAttributeTool', primaryInputParam: 'Layer', createsLayer: false },
+  SelectByAttributeTool: { tool: 'SelectByAttributeTool', primaryInputParam: 'Layer', createsLayer: false },
+  Export: { tool: 'ExportTool', primaryInputParam: 'Layer', createsLayer: false },
+  ExportTool: { tool: 'ExportTool', primaryInputParam: 'Layer', createsLayer: false },
+});
+
+function resolveToolHistoryStepDescriptor(entry) {
+  if (!isPlainObject(entry)) return null;
+  const key = entry.tool || entry.toolKey || entry.name || null;
+  if (typeof key !== 'string' || !key.trim()) return null;
+  return TOOL_HISTORY_DESCRIPTORS[key.trim()] || null;
+}
+
+function createExpressionFromToolHistory(toolHistory = [], options = {}) {
+  const entries = Array.isArray(toolHistory) ? toolHistory : [];
+  const targetLayerId = typeof options.targetLayerId === 'string' && options.targetLayerId.trim()
+    ? options.targetLayerId.trim()
+    : null;
+  const chainSteps = options.chainSteps !== false;
+  const preserveSelectionScope = options.preserveSelectionScope === true;
+
+  const executableEntries = entries
+    .map((entry) => ({
+      entry,
+      descriptor: resolveToolHistoryStepDescriptor(entry),
+    }))
+    .filter((item) => item.descriptor !== null);
+
+  let currentInputRef = targetLayerId;
+  const steps = executableEntries.map(({ entry, descriptor }, index) => {
+    const stepId = `step_${index + 1}`;
+    const rawParams = isPlainObject(entry.params) ? JSON.parse(JSON.stringify(entry.params)) : {};
+
+    if (!preserveSelectionScope && targetLayerId && rawParams.targetScope === 'selection') {
+      rawParams.targetScope = 'layer';
+    }
+
+    if (descriptor.primaryInputParam) {
+      if (index === 0) {
+        const initialInput = targetLayerId
+          || rawParams[descriptor.primaryInputParam]
+          || entry.parentLayerId
+          || null;
+        if (initialInput) {
+          rawParams[descriptor.primaryInputParam] = initialInput;
+          currentInputRef = initialInput;
+        }
+      } else if (chainSteps && currentInputRef) {
+        rawParams[descriptor.primaryInputParam] = currentInputRef;
+      }
+    }
+
+    if (descriptor.createsLayer) {
+      currentInputRef = { $ref: `${stepId}.state.added[0].id` };
+    }
+
+    return {
+      id: stepId,
+      tool: descriptor.tool,
+      params: rawParams,
+    };
+  });
+
+  return {
+    schema: 'swb.spatial-expression.v1',
+    version: 1,
+    state: isPlainObject(options.state) ? JSON.parse(JSON.stringify(options.state)) : { layers: [] },
+    steps,
+  };
+}
+
+async function replayToolHistory(options = {}) {
+  const execute = options.execute;
+  if (typeof execute !== 'function') {
+    throw expressionError('replayToolHistory requires an execute callback.');
+  }
+  const expression = isPlainObject(options.expression)
+    ? options.expression
+    : createExpressionFromToolHistory(options.toolHistory || [], {
+        targetLayerId: options.targetLayerId,
+        state: options.state,
+        chainSteps: options.chainSteps,
+        preserveSelectionScope: options.preserveSelectionScope,
+      });
+
+  return runExpression(expression, execute, options);
+}
+
 module.exports = {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_STEPS,
+  TOOL_HISTORY_DESCRIPTORS,
+  createExpressionFromToolHistory,
+  replayToolHistory,
   resolveReference,
+  resolveToolHistoryStepDescriptor,
   resolveValue,
   runExpression,
   validateExpression,

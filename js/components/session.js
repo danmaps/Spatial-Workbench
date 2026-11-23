@@ -119,6 +119,7 @@ function createComponentSession(initialInput = {}, options = {}) {
   };
 
   const drafts = deepClone(initialInput.drafts || {});
+  const comparisonDecisions = deepClone(initialInput.comparisonDecisions || {});
   const receipts = [];
   const lastDerivedLayerByToolAndSource = new Map();
   let lastRunResponse = null;
@@ -139,6 +140,7 @@ function createComponentSession(initialInput = {}, options = {}) {
       bbox: bbox ? [...bbox] : null,
       selection: deepClone(selection),
       drafts: deepClone(drafts),
+      comparisonDecisions: deepClone(comparisonDecisions),
       receipts: deepClone(receipts),
       lastRunResponse: deepClone(lastRunResponse),
     };
@@ -345,6 +347,32 @@ function createComponentSession(initialInput = {}, options = {}) {
         toolKey: payload.toolKey || payload.tool,
         params: payload.params,
       });
+    }
+
+    if (event.eventType === 'swb:predicate-changed') {
+      const toolKey = payload.toolKey || 'SpatialJoinTool';
+      return updateDraftParams({
+        toolKey,
+        params: {
+          Predicate: payload.predicate,
+          ...(payload.distance !== undefined && payload.distance !== null ? { Distance: payload.distance } : {}),
+          ...(payload.units ? { Units: payload.units } : {}),
+        },
+      });
+    }
+
+    if (event.eventType === 'swb:comparison-decision') {
+      const key = payload.comparisonLayerId || 'latest';
+      comparisonDecisions[key] = {
+        decision: payload.decision || 'pending',
+        candidateLayerId: payload.candidateLayerId || null,
+      };
+      bumpRevision();
+      return {
+        ok: true,
+        stateRevision,
+        comparisonDecision: deepClone(comparisonDecisions[key]),
+      };
     }
 
     return {

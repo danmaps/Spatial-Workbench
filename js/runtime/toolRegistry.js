@@ -11,6 +11,8 @@ const toolDescriptors = [
   { exportName: 'ClipTool', load: () => require('../tools/ClipTool').ClipTool },
   { exportName: 'EraseTool', load: () => require('../tools/EraseTool').EraseTool },
   { exportName: 'CompareTool', load: () => require('../tools/CompareTool').CompareTool },
+  { exportName: 'SpatialJoinTool', load: () => require('../tools/SpatialJoinTool').SpatialJoinTool },
+  { exportName: 'DissolveTool', load: () => require('../tools/DissolveTool').DissolveTool },
 ];
 
 function loadToolClass(descriptor) {

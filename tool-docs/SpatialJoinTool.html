@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spatial Join · Spatial Workbench Docs</title>
+  <link rel="stylesheet" href="/tool-docs/tool-docs.css" />
+</head>
+<body>
+  <div class="tool-docs-shell">
+    <aside class="tool-docs-sidebar">
+      <a class="tool-docs-brand" href="/tool-docs/index.html">Spatial Workbench</a>
+      <nav class="tool-docs-nav" aria-label="Tool docs navigation">
+        <a class="tool-docs-nav-link" href="/tool-docs/AddDataTool.html">Add Data</a><a class="tool-docs-nav-link" href="/tool-docs/BufferTool.html">Buffer</a><a class="tool-docs-nav-link" href="/tool-docs/ExportTool.html">Export</a><a class="tool-docs-nav-link" href="/tool-docs/GenerateAIFeatures.html">Generate AI Features</a><a class="tool-docs-nav-link" href="/tool-docs/GroupTool.html">Group</a><a class="tool-docs-nav-link" href="/tool-docs/RandomPointsTool.html">Random Points</a><a class="tool-docs-nav-link" href="/tool-docs/AddAIGeneratedFieldTool.html">Add AI-Generated Field</a><a class="tool-docs-nav-link" href="/tool-docs/ConvertTextToNumericTool.html">Convert Text to Numeric</a><a class="tool-docs-nav-link" href="/tool-docs/SelectByAttributeTool.html">Select by Attribute</a><a class="tool-docs-nav-link" href="/tool-docs/ClipTool.html">Clip</a><a class="tool-docs-nav-link" href="/tool-docs/EraseTool.html">Erase</a><a class="tool-docs-nav-link" href="/tool-docs/CompareTool.html">Compare</a><a class="tool-docs-nav-link is-current" href="/tool-docs/SpatialJoinTool.html">Spatial Join</a><a class="tool-docs-nav-link" href="/tool-docs/DissolveTool.html">Dissolve</a>
+      </nav>
+    </aside>
+    <main class="tool-docs-main">
+      
+    <header class="tool-docs-header">
+      <div class="tool-docs-kicker">Tool reference</div>
+      <h1>Spatial Join</h1>
+      <p class="tool-docs-description">Joins attributes from a join layer onto a target layer by spatial predicate (intersects, within, or within_distance)</p>
+      <div class="tool-docs-meta-grid">
+        <div class="tool-docs-meta-card">
+          <div class="tool-docs-meta-label">Key</div>
+          <div class="tool-docs-meta-value"><code>SpatialJoinTool</code></div>
+        </div>
+      </div>
+    </header>
+
+    <section class="tool-docs-section">
+      <div class="tool-docs-section-label">Parameters</div>
+      <table class="tool-docs-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Default</th>
+            <th>Options</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+      <tr>
+        <td>Target Layer</td>
+        <td>dropdown</td>
+        <td>Target layer receiving joined attributes</td>
+        <td><span class="tool-docs-muted">—</span></td>
+        <td><span class="tool-docs-muted">—</span></td>
+      </tr>
+      <tr>
+        <td>Join Layer</td>
+        <td>dropdown</td>
+        <td>Source layer providing attributes to join</td>
+        <td><span class="tool-docs-muted">—</span></td>
+        <td><span class="tool-docs-muted">—</span></td>
+      </tr>
+      <tr>
+        <td>Predicate</td>
+        <td>dropdown</td>
+        <td>Spatial relationship predicate</td>
+        <td>intersects</td>
+        <td>intersects, within, within_distance</td>
+      </tr>
+      <tr>
+        <td>Distance</td>
+        <td>float</td>
+        <td>Search distance (for within_distance)</td>
+        <td>100</td>
+        <td><span class="tool-docs-muted">—</span></td>
+      </tr>
+      <tr>
+        <td>Units</td>
+        <td>dropdown</td>
+        <td>Distance units (for within_distance)</td>
+        <td>meters</td>
+        <td>feet, meters, miles, kilometers, degrees</td>
+      </tr>
+      <tr>
+        <td>Join Mode</td>
+        <td>dropdown</td>
+        <td>How matching join features are combined</td>
+        <td>first_match</td>
+        <td>first_match, summary</td>
+      </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="tool-docs-section"><div class="tool-docs-section-label">Inputs / Outputs / State behavior</div><p><strong>State mode:</strong> layers · <strong>Mutates state:</strong> yes · <strong>Produces artifacts:</strong> no</p><div><strong>Inputs</strong><ul><li><code>Target Layer</code> → layer · Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon · honors selection</li><li><code>Join Layer</code> → layer · Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon</li></ul></div><div><strong>Outputs</strong><ul><li>layer → add · Mixed</li></ul></div></section>
+
+    <section class="tool-docs-section">
+      <div class="tool-docs-section-label">Spec JSON</div>
+      <pre class="tool-docs-code"><code>{
+  &quot;key&quot;: &quot;SpatialJoinTool&quot;,
+  &quot;name&quot;: &quot;Spatial Join&quot;,
+  &quot;description&quot;: &quot;Joins attributes from a join layer onto a target layer by spatial predicate (intersects, within, or within_distance)&quot;,
+  &quot;headlessSupported&quot;: true,
+  &quot;parameters&quot;: [
+    {
+      &quot;name&quot;: &quot;Target Layer&quot;,
+      &quot;description&quot;: &quot;Target layer receiving joined attributes&quot;,
+      &quot;type&quot;: &quot;dropdown&quot;,
+      &quot;defaultValue&quot;: &quot;&quot;,
+      &quot;required&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;Join Layer&quot;,
+      &quot;description&quot;: &quot;Source layer providing attributes to join&quot;,
+      &quot;type&quot;: &quot;dropdown&quot;,
+      &quot;defaultValue&quot;: &quot;&quot;,
+      &quot;required&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;Predicate&quot;,
+      &quot;description&quot;: &quot;Spatial relationship predicate&quot;,
+      &quot;type&quot;: &quot;dropdown&quot;,
+      &quot;defaultValue&quot;: &quot;intersects&quot;,
+      &quot;options&quot;: [
+        &quot;intersects&quot;,
+        &quot;within&quot;,
+        &quot;within_distance&quot;
+      ],
+      &quot;required&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;Distance&quot;,
+      &quot;description&quot;: &quot;Search distance (for within_distance)&quot;,
+      &quot;type&quot;: &quot;float&quot;,
+      &quot;defaultValue&quot;: 100,
+      &quot;min&quot;: 0
+    },
+    {
+      &quot;name&quot;: &quot;Units&quot;,
+      &quot;description&quot;: &quot;Distance units (for within_distance)&quot;,
+      &quot;type&quot;: &quot;dropdown&quot;,
+      &quot;defaultValue&quot;: &quot;meters&quot;,
+      &quot;options&quot;: [
+        &quot;feet&quot;,
+        &quot;meters&quot;,
+        &quot;miles&quot;,
+        &quot;kilometers&quot;,
+        &quot;degrees&quot;
+      ],
+      &quot;required&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;Join Mode&quot;,
+      &quot;description&quot;: &quot;How matching join features are combined&quot;,
+      &quot;type&quot;: &quot;dropdown&quot;,
+      &quot;defaultValue&quot;: &quot;first_match&quot;,
+      &quot;options&quot;: [
+        &quot;first_match&quot;,
+        &quot;summary&quot;
+      ],
+      &quot;required&quot;: true
+    }
+  ],
+  &quot;execution&quot;: {
+    &quot;stateMode&quot;: &quot;layers&quot;,
+    &quot;inputs&quot;: [
+      {
+        &quot;parameter&quot;: &quot;Target Layer&quot;,
+        &quot;kind&quot;: &quot;layer&quot;,
+        &quot;geometryTypes&quot;: [
+          &quot;Point&quot;,
+          &quot;MultiPoint&quot;,
+          &quot;LineString&quot;,
+          &quot;MultiLineString&quot;,
+          &quot;Polygon&quot;,
+          &quot;MultiPolygon&quot;
+        ],
+        &quot;cardinality&quot;: &quot;one&quot;,
+        &quot;selectionAware&quot;: true
+      },
+      {
+        &quot;parameter&quot;: &quot;Join Layer&quot;,
+        &quot;kind&quot;: &quot;layer&quot;,
+        &quot;geometryTypes&quot;: [
+          &quot;Point&quot;,
+          &quot;MultiPoint&quot;,
+          &quot;LineString&quot;,
+          &quot;MultiLineString&quot;,
+          &quot;Polygon&quot;,
+          &quot;MultiPolygon&quot;
+        ],
+        &quot;cardinality&quot;: &quot;one&quot;,
+        &quot;selectionAware&quot;: false
+      }
+    ],
+    &quot;outputs&quot;: [
+      {
+        &quot;kind&quot;: &quot;layer&quot;,
+        &quot;operation&quot;: &quot;add&quot;,
+        &quot;geometryType&quot;: &quot;Mixed&quot;
+      }
+    ],
+    &quot;mutatesState&quot;: true,
+    &quot;producesArtifacts&quot;: false
+  }
+}</code></pre>
+    </section>
+    </main>
+  </div>
+</body>
+</html>

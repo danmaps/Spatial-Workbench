@@ -9,6 +9,8 @@ const { SelectByAttributeTool } = require('./tools/SelectByAttributeTool');
 const { ClipTool } = require('./tools/ClipTool');
 const { EraseTool } = require('./tools/EraseTool');
 const { CompareTool } = require('./tools/CompareTool');
+const { SpatialJoinTool } = require('./tools/SpatialJoinTool');
+const { DissolveTool } = require('./tools/DissolveTool');
 const { ensureFeatureId } = require('./spatial');
 const { validateExecutionSpec } = require('./runtime/executionSpec');
 const { normalizeToolResult } = require('./runtime/toolResult');
@@ -253,6 +255,8 @@ const HEADLESS_TOOLS = {
   ClipTool,
   EraseTool,
   CompareTool,
+  SpatialJoinTool,
+  DissolveTool,
 };
 
 const FEATURE_COLLECTION_TOOLS = {

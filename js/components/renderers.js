@@ -803,6 +803,197 @@ function renderExecutionReceipt(container, model, options = {}) {
   return section;
 }
 
+function renderSpatialPredicatePicker(container, model, options = {}) {
+  const section = document.createElement('section');
+  section.className = 'swb-component swb-predicate-picker';
+  section.dataset.componentType = 'SpatialPredicatePicker';
+  section.dataset.componentId = model.componentId;
+  section.dataset.lifecycle = model.lifecycle;
+  section.setAttribute('role', 'region');
+  section.setAttribute('aria-label', 'Spatial predicate picker');
+
+  const predicateSelectId = `${model.componentId}-predicate`;
+  const distanceInputId = `${model.componentId}-distance`;
+  const unitsSelectId = `${model.componentId}-units`;
+  const disabledAttr = !model.streamComplete ? 'disabled aria-disabled="true"' : '';
+
+  section.innerHTML = `
+    <header class="swb-component-header">
+      <div>
+        <span class="swb-eyebrow">Spatial Predicate · <code>${escapeHtml(model.toolKey)}</code></span>
+        <h3 class="swb-component-title">Spatial Relationship</h3>
+      </div>
+      ${renderLifecycleBadge(model)}
+    </header>
+    <div class="swb-component-body">
+      <div class="swb-field-group">
+        <label class="swb-label" for="${escapeHtml(predicateSelectId)}">Predicate</label>
+        <select id="${escapeHtml(predicateSelectId)}" class="swb-select swb-predicate-select" ${disabledAttr}>
+          ${model.allowedPredicates
+            .map(
+              (p) =>
+                `<option value="${escapeHtml(p)}" ${p === model.result.predicate ? 'selected' : ''}>${escapeHtml(p)}</option>`
+            )
+            .join('')}
+        </select>
+      </div>
+      ${
+        model.requiresDistance
+          ? `
+        <div class="swb-field-group">
+          <label class="swb-label" for="${escapeHtml(distanceInputId)}">Search distance</label>
+          <input
+            type="number"
+            id="${escapeHtml(distanceInputId)}"
+            class="swb-input swb-predicate-distance"
+            value="${escapeHtml(model.result.distance ?? 100)}"
+            min="0"
+            step="any"
+            ${disabledAttr}
+          />
+        </div>
+        <div class="swb-field-group">
+          <label class="swb-label" for="${escapeHtml(unitsSelectId)}">Distance units</label>
+          <select id="${escapeHtml(unitsSelectId)}" class="swb-select swb-predicate-units" ${disabledAttr}>
+            ${model.allowedUnits
+              .map(
+                (u) =>
+                  `<option value="${escapeHtml(u)}" ${u === model.result.units ? 'selected' : ''}>${escapeHtml(u)}</option>`
+              )
+              .join('')}
+          </select>
+        </div>
+      `
+          : ''
+      }
+      ${renderValidationErrors(model.validation)}
+    </div>
+  `;
+
+  const predSelect = section.querySelector('.swb-predicate-select');
+  const distInput = section.querySelector('.swb-predicate-distance');
+  const unitsSelect = section.querySelector('.swb-predicate-units');
+
+  const emitPredicateChange = () => {
+    const nextPred = predSelect ? predSelect.value : model.result.predicate;
+    const nextDist = distInput ? parseFloat(distInput.value) : (model.result.distance ?? 100);
+    const nextUnits = unitsSelect ? unitsSelect.value : (model.result.units || 'meters');
+    emitComponentEvent(section, options, {
+      eventType: 'swb:predicate-changed',
+      componentId: model.componentId,
+      stateRevision: model.stateRevision,
+      payload: {
+        toolKey: model.toolKey,
+        predicate: nextPred,
+        distance: nextPred === 'within_distance' ? nextDist : null,
+        units: nextPred === 'within_distance' ? nextUnits : null,
+      },
+    });
+  };
+
+  if (predSelect) predSelect.addEventListener('change', emitPredicateChange);
+  if (distInput) distInput.addEventListener('change', emitPredicateChange);
+  if (unitsSelect) unitsSelect.addEventListener('change', emitPredicateChange);
+
+  if (container) container.appendChild(section);
+  return section;
+}
+
+function renderGeometryComparison(container, model, options = {}) {
+  const section = document.createElement('section');
+  section.className = 'swb-component swb-geometry-comparison';
+  section.dataset.componentType = 'GeometryComparison';
+  section.dataset.componentId = model.componentId;
+  section.dataset.lifecycle = model.lifecycle;
+  section.setAttribute('role', 'region');
+  section.setAttribute('aria-label', 'A/B geometry comparison review');
+
+  if (!model.grounded || !model.metrics) {
+    section.innerHTML = `
+      <header class="swb-component-header">
+        <div>
+          <span class="swb-eyebrow">Geometry Comparison</span>
+          <h3 class="swb-component-title">A vs. B Candidate Review</h3>
+        </div>
+        ${renderLifecycleBadge(model)}
+      </header>
+      <div class="swb-component-body">
+        <p class="swb-empty-note">Run CompareTool on Layer A and Layer B to inspect overlap, differences, and area deltas.</p>
+      </div>
+    `;
+    if (container) container.appendChild(section);
+    return section;
+  }
+
+  const m = model.metrics;
+  const overlapPct = ((m.jaccardSimilarity || 0) * 100).toFixed(1);
+  const deltaPrefix = (m.areaDeltaSqm || 0) >= 0 ? '+' : '';
+  const disabledAttr = !model.streamComplete ? 'disabled aria-disabled="true"' : '';
+
+  section.innerHTML = `
+    <header class="swb-component-header">
+      <div>
+        <span class="swb-eyebrow">Geometry Comparison · <code>${escapeHtml(m.layerAId || 'A')}</code> vs <code>${escapeHtml(m.layerBId || 'B')}</code></span>
+        <h3 class="swb-component-title">Overlap ${escapeHtml(overlapPct)}% · Δ ${escapeHtml(deltaPrefix + m.areaDeltaSqm)} sq m</h3>
+      </div>
+      ${renderLifecycleBadge(model)}
+    </header>
+    <div class="swb-component-body">
+      <dl class="swb-receipt-grid">
+        <div>
+          <dt>Layer A Area</dt>
+          <dd>${m.areaASqm ?? 0} sq m</dd>
+        </div>
+        <div>
+          <dt>Layer B Area</dt>
+          <dd>${m.areaBSqm ?? 0} sq m</dd>
+        </div>
+        <div>
+          <dt>Overlap (A ∩ B)</dt>
+          <dd>${m.intersectionAreaSqm ?? 0} sq m</dd>
+        </div>
+        <div>
+          <dt>Only in A / Only in B</dt>
+          <dd>${m.onlyInAAreaSqm ?? 0} / ${m.onlyInBAreaSqm ?? 0} sq m</dd>
+        </div>
+        <div>
+          <dt>Review Decision</dt>
+          <dd><code>${escapeHtml(model.decision)}</code></dd>
+        </div>
+      </dl>
+      <div class="swb-comparison-actions">
+        <button type="button" class="swb-btn swb-btn-secondary" data-comparison-decision="accepted_a" data-candidate-layer="${escapeHtml(m.layerAId || '')}" ${disabledAttr}>
+          Keep Candidate A
+        </button>
+        <button type="button" class="swb-btn swb-btn-primary" data-comparison-decision="accepted_b" data-candidate-layer="${escapeHtml(m.layerBId || '')}" ${disabledAttr}>
+          Accept Candidate B
+        </button>
+        <button type="button" class="swb-btn swb-btn-ghost" data-comparison-decision="rejected" data-candidate-layer="" ${disabledAttr}>
+          Reject Both
+        </button>
+      </div>
+    </div>
+  `;
+
+  Array.from(section.querySelectorAll('[data-comparison-decision]')).forEach((btn) => {
+    btn.addEventListener('click', () => {
+      emitComponentEvent(section, options, {
+        eventType: 'swb:comparison-decision',
+        componentId: model.componentId,
+        stateRevision: model.stateRevision,
+        payload: {
+          comparisonLayerId: model.comparisonLayerId,
+          decision: btn.dataset.comparisonDecision,
+          candidateLayerId: btn.dataset.candidateLayer || null,
+        },
+      });
+    });
+  });
+
+  if (container) container.appendChild(section);
+  return section;
+}
+
 function renderComponent(container, model, options = {}) {
   if (!model || typeof model !== 'object') return null;
   switch (model.type) {
@@ -816,6 +1007,10 @@ function renderComponent(container, model, options = {}) {
       return renderSpatialResult(container, model, options);
     case 'ExecutionReceipt':
       return renderExecutionReceipt(container, model, options);
+    case 'SpatialPredicatePicker':
+      return renderSpatialPredicatePicker(container, model, options);
+    case 'GeometryComparison':
+      return renderGeometryComparison(container, model, options);
     case 'FallbackComponent':
     default:
       return renderFallbackComponent(container, model, options);
@@ -843,7 +1038,7 @@ function renderComposition(container, resolvedComposition, options = {}) {
     rightPane.className = 'swb-workspace-pane swb-workspace-inspector';
 
     components.forEach((model) => {
-      const targetPane = model.type === 'SpatialResult' ? rightPane : leftPane;
+      const targetPane = model.type === 'SpatialResult' || model.type === 'GeometryComparison' ? rightPane : leftPane;
       renderComponent(targetPane, model, options);
     });
 
@@ -865,6 +1060,8 @@ module.exports = {
   renderToolParameters,
   renderSpatialResult,
   renderExecutionReceipt,
+  renderSpatialPredicatePicker,
+  renderGeometryComparison,
   renderFallbackComponent,
   renderComponent,
   renderComposition,

@@ -34,6 +34,16 @@ const OPENUI_COMPONENT_CATALOG = Object.freeze([
     signature: 'ExecutionReceipt({ componentId, toolKey })',
     description: 'Displays grounded runtime execution metadata, spatial warnings, and downloadable artifacts.',
   },
+  {
+    name: 'SpatialPredicatePicker',
+    signature: 'SpatialPredicatePicker({ componentId, toolKey, predicate, distance, units })',
+    description: 'Selects a spatial relationship predicate ("intersects", "within", "within_distance") and explicit distance/units.',
+  },
+  {
+    name: 'GeometryComparison',
+    signature: 'GeometryComparison({ componentId, comparisonLayerId, layerAId, layerBId })',
+    description: 'Reviews A/B geometry comparison metrics (overlap, only-in-A, only-in-B, area delta, Jaccard similarity) with accept/reject actions.',
+  },
 ]);
 
 function generateOpenUISystemPrompt(toolCatalog = null) {

@@ -5,6 +5,8 @@
 // a single place to ask "what exists" and to apply results without directly
 // mutating the map.
 
+const { createExpressionFromToolHistory } = require('./runtime/spatialExpression');
+
 const _registry = new Map(); // stableId -> leaflet layer
 let _layerRemoveListenerAttached = false;
 
@@ -447,6 +449,19 @@ function getToolHistory(layer) {
   if (!layer || !layer.feature) return [];
   const history = layer.feature.properties?.toolHistory || layer.feature.toolHistory || [];
   return Array.isArray(history) ? history.map((entry) => cloneMetadata(entry)).filter(Boolean) : [];
+}
+
+function getLayerWorkflowExpression(layerOrId, options = {}) {
+  const layer = typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+  if (!layer) return null;
+  const history = getToolHistory(layer);
+  const expr = createExpressionFromToolHistory(history, {
+    targetLayerId: options.targetLayerId || undefined,
+    state: options.state || { layers: [] },
+    chainSteps: options.chainSteps !== false,
+    preserveSelectionScope: options.preserveSelectionScope === true,
+  });
+  return expr.steps.length > 0 ? expr : null;
 }
 
 function getLayerName(layerOrId) {
@@ -1089,6 +1104,7 @@ module.exports = {
   getLayerInfo,
   getLayerBounds,
   getToolHistory,
+  getLayerWorkflowExpression,
   getActiveLayerId,
   setActiveLayerId,
   getSelectedLayerIds,

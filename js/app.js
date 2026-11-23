@@ -20,6 +20,7 @@ const {
     getLayerSelectionFeatureIds,
 } = require('./ui/selection-style');
 const { instantiateTools } = require('./runtime/toolRegistry');
+const { replayToolHistory } = require('./runtime/spatialExpression');
 
 // Initialize the map using persisted workspace defaults (#63)
 const initialPreferences = getWorkspacePreferences();
@@ -833,6 +834,22 @@ function openLayerProperties(layerOrId) {
         ? `<ol class="properties-history">${history.map((entry) => `<li><strong>${entry.name || 'Unknown step'}</strong>${entry.timestamp ? ` <span class="text-muted">${entry.timestamp}</span>` : ''}${entry.parentLayerId ? `<div class="properties-note">from ${entry.parentLayerId}</div>` : ''}</li>`).join('')}</ol>`
         : '<p class="properties-empty">No tool history recorded yet.</p>';
 
+    const activeReplayTargetId = state.getActiveLayerId() || info.id;
+    const workflowRecipe = typeof state.getLayerWorkflowExpression === 'function'
+        ? state.getLayerWorkflowExpression(layer, { targetLayerId: activeReplayTargetId })
+        : null;
+    const workflowRecipeHtml = workflowRecipe
+        ? `
+            <pre class="properties-json" id="layerWorkflowRecipeJson">${escapeHtml(JSON.stringify(workflowRecipe, null, 2))}</pre>
+            <div class="d-flex align-items-center gap-2 mt-2">
+                <button type="button" class="btn btn-sm btn-primary" id="replayWorkflowRecipeBtn">
+                    Replay Recipe on Active Layer (${escapeHtml(activeReplayTargetId)})
+                </button>
+                <span class="properties-note" id="replayWorkflowStatus"></span>
+            </div>
+        `
+        : '<p class="properties-empty">No executable workflow steps recorded on this layer.</p>';
+
     const importWarnings = Array.isArray(importSummary?.warnings) && importSummary.warnings.length
         ? `<ul class="properties-warnings">${importSummary.warnings.map((warning) => `<li>${warning}</li>`).join('')}</ul>`
         : '<p class="properties-empty">No import warnings.</p>';
@@ -855,6 +872,10 @@ function openLayerProperties(layerOrId) {
             ${historyList}
         </section>
         <section class="properties-section">
+            <h6>Workflow Recipe (swb.spatial-expression.v1)</h6>
+            ${workflowRecipeHtml}
+        </section>
+        <section class="properties-section">
             <h6>Properties</h6>
             <pre class="properties-json">${escapeHtml(JSON.stringify(info.properties || {}, null, 2))}</pre>
         </section>
@@ -863,6 +884,52 @@ function openLayerProperties(layerOrId) {
             ${importWarnings}
         </section>
     `;
+
+    const replayBtn = document.getElementById('replayWorkflowRecipeBtn');
+    if (replayBtn && workflowRecipe) {
+        replayBtn.addEventListener('click', async () => {
+            const statusEl = document.getElementById('replayWorkflowStatus');
+            const targetId = state.getActiveLayerId() || info.id;
+            const expressionToRun = state.getLayerWorkflowExpression(layer, { targetLayerId: targetId }) || workflowRecipe;
+            try {
+                if (statusEl) statusEl.textContent = 'Replaying...';
+                const replayResult = await replayToolHistory({
+                    expression: expressionToRun,
+                    execute: async ({ tool: toolKey, params }) => {
+                        const toolInstance = Object.values(loadedTools).find((t) => t?.constructor?.name === toolKey || t?.name === toolKey);
+                        if (!toolInstance) {
+                            return { ok: false, error: `Tool not loaded: ${toolKey}` };
+                        }
+                        const out = await toolInstance.run(params, {
+                            state: state.getState(),
+                            getLayer: state.getLayer,
+                            listLayers: state.listLayers,
+                            applyResult: state.applyResult,
+                            setSelectedFeatureIds: state.setSelectedFeatureIds,
+                        });
+                        const code = toolInstance.getStatus()?.code ?? 0;
+                        const addedList = Array.isArray(out?.added)
+                            ? out.added.map((id) => (typeof id === 'string' ? { id } : id))
+                            : [];
+                        return {
+                            ok: code === 0,
+                            output: out,
+                            state: { layers: state.listLayers(), added: addedList },
+                        };
+                    },
+                });
+                bindAllLayerSelectionInteractions();
+                updateDataContent();
+                if (statusEl) {
+                    statusEl.textContent = replayResult.ok
+                        ? `Replayed ${replayResult.steps.length} step(s).`
+                        : `Replay failed at ${replayResult.failedStep}.`;
+                }
+            } catch (err) {
+                if (statusEl) statusEl.textContent = err.message || 'Replay failed.';
+            }
+        });
+    }
 
     const modalEl = document.getElementById('layerPropertiesModal');
     if (modalEl && typeof bootstrap !== 'undefined') {

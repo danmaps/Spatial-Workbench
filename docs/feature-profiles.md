@@ -205,3 +205,42 @@ A spatial workbench should feel like a durable working environment rather than a
   * Persists preferences across sessions via `localStorage` and synchronized browser cookies so startup map views and tool defaults apply immediately on load.
 * **Privacy-Safe Operational Telemetry (`js/ai/usageTelemetry.js`):**
   * When an AI-backed tool (`AddAIGeneratedFieldTool` or `GenerateAIFeatures`) executes, the runtime records provider, model, token counts, latency, and estimated cost without ever logging user prompts, API keys, or model completions.
+
+---
+
+## Profile 5: Spatial Joins, Dissolve, Replayable Workflow Recipes & Multi-Format Export
+
+### The Vision & Purpose
+Real-world spatial analysis frequently requires combining attribute tables across layers (`SpatialJoinTool`), merging adjacent polygons by district or category (`DissolveTool`), replaying a proven multi-step workflow on a fresh dataset (`swb.spatial-expression.v1`), and exporting results to tabular (`CSV`) or database-ready (`WKT`) formats in addition to `GeoJSON`.
+
+### Implementation Highlights
+* **`SpatialJoinTool` (`js/tools/SpatialJoinTool.js`):**
+  * Joins attributes from a **Join Layer** onto a **Target Layer** using `intersects`, `within`, or `within_distance` predicates.
+  * Supports **`first_match`** mode (prefixing matched join properties with `join_` plus `join_match_count` and `join_matched`) and **`summary`** mode (computing `join_match_count` plus numeric `sum`, `mean`, `min`, and `max` aggregations across all matching join features).
+* **`DissolveTool` (`js/tools/DissolveTool.js`):**
+  * Merges polygon features into a single boundary (when `Dissolve Field` is empty) or groups and unions polygons by a shared attribute value, recording `dissolvedCount` and `areaSqm` on each dissolved feature.
+* **`SpatialPredicatePicker` & `GeometryComparison` Components (`js/components/`):**
+  * Extends the `swb.ui.v0` catalog with `SpatialPredicatePicker` (interactive predicate + distance/units selector emitting `swb:predicate-changed`) and `GeometryComparison` (displaying Layer A/B areas, intersection, delta, and Jaccard similarity with `accept_a` / `accept_b` / `keep_intersection` decision actions emitting `swb:comparison-decision`).
+* **1-Click Workflow Recipe Bridge (`js/runtime/spatialExpression.js`, `js/state.js`, `js/app.js`):**
+  * `createExpressionFromToolHistory()` and `replayToolHistory()` convert any derived layer's `toolHistory` into a portable `swb.spatial-expression.v1` recipe with `{ $ref: "step_1.state.added[0].id" }` step chaining and 1-click replay on any target layer.
+* **`GeoJSON`, `CSV`, and `WKT` Export (`js/tools/ExportTool.js`):**
+  * `ExportTool` exports single layers, active feature selections, or `"All layers"` (`__all__`) as `GeoJSON`, RFC 4180 `CSV` (with feature properties, `geometry_type`, `longitude`/`latitude` for points, and `wkt`), or `WKT` geometry documents.
+
+### Code Sample: Bridging `toolHistory` into a Replayable Recipe
+
+```js
+const { createExpressionFromToolHistory, replayToolHistory } = require('./js/runtime/spatialExpression');
+const { runHeadlessTool } = require('./js/headless-runtime');
+
+// Convert a derived layer's toolHistory into a portable recipe bound to 'new-sites'
+const recipe = createExpressionFromToolHistory(derivedLayer.geojson.toolHistory, {
+  targetLayerId: 'new-sites',
+  state: workspaceState,
+});
+
+// Replay the entire multi-step pipeline headlessly
+const replayResult = await replayToolHistory({
+  expression: recipe,
+  execute: ({ tool, params, state }) => runHeadlessTool({ tool, params, state }),
+});
+```

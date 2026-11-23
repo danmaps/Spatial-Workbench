@@ -33,7 +33,15 @@
         Units: 'meters',
         targetScope: 'selection',
       },
+      SpatialJoinTool: {
+        'Target Layer': 'study-sites',
+        'Join Layer': 'study-sites',
+        Predicate: 'within_distance',
+        'Distance (meters)': 250,
+        Units: 'meters',
+      },
     },
+    comparisonDecision: null,
     lastReceipt: null,
   };
 
@@ -265,6 +273,72 @@
       </section>
     `;
 
+    const joinDraft = state.drafts.SpatialJoinTool;
+    const predicatePickerHtml = `
+      <section class="swb-component swb-spatial-predicate-picker" data-component-type="SpatialPredicatePicker">
+        <header class="swb-component-header">
+          <div>
+            <span class="swb-eyebrow">Spatial Predicate Picker · <code>SpatialJoinTool</code></span>
+            <h3 class="swb-component-title">Spatial Relationship</h3>
+          </div>
+          <span class="swb-badge">${escapeHtml(joinDraft.Predicate)}</span>
+        </header>
+        <div class="swb-component-body">
+          <div class="swb-field-group">
+            <label class="swb-label" for="demo-predicate-select">Predicate</label>
+            <select id="demo-predicate-select" class="swb-select" ${!state.streamComplete ? 'disabled' : ''}>
+              ${['intersects', 'within', 'within_distance']
+                .map((p) => `<option value="${p}" ${p === joinDraft.Predicate ? 'selected' : ''}>${p}</option>`)
+                .join('')}
+            </select>
+          </div>
+          ${
+            joinDraft.Predicate === 'within_distance'
+              ? `
+            <div class="swb-field-group">
+              <label class="swb-label" for="demo-predicate-distance">Distance (${escapeHtml(joinDraft.Units)})</label>
+              <input type="number" id="demo-predicate-distance" class="swb-input" value="${escapeHtml(joinDraft['Distance (meters)'])}" ${!state.streamComplete ? 'disabled' : ''} />
+            </div>
+          `
+              : ''
+          }
+        </div>
+      </section>
+    `;
+
+    const geometryComparisonHtml = `
+      <section class="swb-component swb-geometry-comparison" data-component-type="GeometryComparison">
+        <header class="swb-component-header">
+          <div>
+            <span class="swb-eyebrow">Geometry Comparison · <code>CompareTool</code></span>
+            <h3 class="swb-component-title">Scenario A vs Scenario B</h3>
+          </div>
+          <span class="swb-badge ${state.comparisonDecision ? 'swb-badge-success' : ''}">
+            ${escapeHtml(state.comparisonDecision ? `Decision: ${state.comparisonDecision}` : 'Awaiting review')}
+          </span>
+        </header>
+        <div class="swb-component-body">
+          <dl class="swb-receipt-grid">
+            <div><dt>Layer A Area</dt><dd>12,450.2 m²</dd></div>
+            <div><dt>Layer B Area</dt><dd>13,100.8 m²</dd></div>
+            <div><dt>Overlap (A ∩ B)</dt><dd>11,200.5 m²</dd></div>
+            <div><dt>Jaccard Similarity</dt><dd>78.1%</dd></div>
+          </dl>
+          <div class="swb-form-actions" style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+            ${['accept_a', 'accept_b', 'keep_intersection']
+              .map(
+                (action) => `
+              <button type="button" class="swb-btn ${state.comparisonDecision === action ? 'swb-btn-primary' : 'swb-btn-secondary'} demo-comparison-btn" data-decision="${action}" ${!state.streamComplete ? 'disabled' : ''}>
+                ${action === 'accept_a' ? 'Accept Layer A' : action === 'accept_b' ? 'Accept Layer B' : 'Keep Intersection'}
+              </button>
+            `
+              )
+              .join('')}
+          </div>
+        </div>
+      </section>
+    `;
+
     if (state.layout === 'workspace') {
       host.innerHTML = `
         <div class="swb-composition swb-layout-workspace">
@@ -272,10 +346,12 @@
             ${layerInputHtml}
             ${selectionHtml}
             ${paramsHtml}
+            ${predicatePickerHtml}
             ${receiptHtml}
           </div>
           <div class="swb-workspace-pane swb-workspace-inspector">
             ${resultHtml}
+            ${geometryComparisonHtml}
           </div>
         </div>
       `;
@@ -285,7 +361,9 @@
           ${layerInputHtml}
           ${selectionHtml}
           ${paramsHtml}
+          ${predicatePickerHtml}
           ${resultHtml}
+          ${geometryComparisonHtml}
           ${receiptHtml}
         </div>
       `;
@@ -368,6 +446,32 @@
         await executeBuffer();
       });
     }
+
+    const predSelect = document.getElementById('demo-predicate-select');
+    if (predSelect) {
+      predSelect.addEventListener('change', (e) => {
+        state.drafts.SpatialJoinTool.Predicate = e.target.value;
+        bumpRevision();
+        render();
+      });
+    }
+
+    const predDist = document.getElementById('demo-predicate-distance');
+    if (predDist) {
+      predDist.addEventListener('change', (e) => {
+        state.drafts.SpatialJoinTool['Distance (meters)'] = parseFloat(e.target.value) || 0;
+        bumpRevision();
+        render();
+      });
+    }
+
+    Array.from(host.querySelectorAll('.demo-comparison-btn')).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.comparisonDecision = btn.dataset.decision || null;
+        bumpRevision();
+        render();
+      });
+    });
   }
 
   async function executeBuffer() {

@@ -1,6 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { listLayers, getActiveLayerId, applyResult } = require('../state');
+const { listLayers, getLayer, getActiveLayerId, applyResult } = require('../state');
 const { resolveTargetLayerData } = require('./targeting');
 const { computeAreaSqm, dissolvePolygons, targetFeatures } = require('./overlay');
 
@@ -175,6 +175,42 @@ class DissolveTool extends Tool {
       option.selected = layer.id === preferred;
       input.appendChild(option);
     });
+
+    const fieldInput = document.getElementById('param-Dissolve Field');
+    if (fieldInput && typeof document !== 'undefined') {
+      fieldInput.placeholder = 'Optional attribute field (leave empty to dissolve all)';
+      let datalist = document.getElementById('dissolve-field-suggestions');
+      if (!datalist) {
+        datalist = document.createElement('datalist');
+        datalist.id = 'dissolve-field-suggestions';
+        fieldInput.parentNode?.insertBefore(datalist, fieldInput.nextSibling);
+      }
+      fieldInput.setAttribute('list', 'dissolve-field-suggestions');
+
+      const syncFieldSuggestions = (layerId) => {
+        datalist.innerHTML = '';
+        if (!layerId || typeof getLayer !== 'function') return;
+        const layerObj = getLayer(layerId);
+        const geojson = layerObj && typeof layerObj.toGeoJSON === 'function' ? layerObj.toGeoJSON() : null;
+        const features = geojson?.type === 'FeatureCollection'
+          ? (geojson.features || [])
+          : (geojson?.type === 'Feature' ? [geojson] : []);
+        const seen = new Set();
+        features.forEach((feat) => {
+          Object.keys(feat?.properties || {}).forEach((key) => {
+            if (!key.startsWith('__') && key !== 'toolHistory' && key !== 'toolMetadata' && !seen.has(key)) {
+              seen.add(key);
+              const opt = document.createElement('option');
+              opt.value = key;
+              datalist.appendChild(opt);
+            }
+          });
+        });
+      };
+
+      syncFieldSuggestions(input.value || preferred);
+      input.addEventListener('change', () => syncFieldSuggestions(input.value));
+    }
   }
 }
 

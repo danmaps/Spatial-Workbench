@@ -120,6 +120,11 @@ function getDefaultLayerName(layer) {
     if (metadata.name === 'Buffer' && parentName) return `Buffer of ${parentName}`;
     if (metadata.name === 'Random Points' && parentName) return `Random points from ${parentName}`;
     if (metadata.name === 'Group' && parentName) return `Grouped ${parentName}`;
+    if (metadata.name === 'Dissolve' && parentName) return `Dissolved ${parentName}`;
+    if (metadata.name === 'Spatial Join' && parentName) return `Spatial join of ${parentName}`;
+    if (metadata.name === 'Clip' && parentName) return `Clip of ${parentName}`;
+    if (metadata.name === 'Erase' && parentName) return `Erase of ${parentName}`;
+    if (metadata.name === 'Compare' && parentName) return `Comparison of ${parentName}`;
     if (metadata.name === 'Add Data') return geometryLabel;
     if (metadata.name && parentName) return `${metadata.name} from ${parentName}`;
     if (metadata.name) return `${metadata.name} ${geometryLabel}`;
@@ -890,40 +895,13 @@ function openLayerProperties(layerOrId) {
         replayBtn.addEventListener('click', async () => {
             const statusEl = document.getElementById('replayWorkflowStatus');
             const targetId = state.getActiveLayerId() || info.id;
-            const expressionToRun = state.getLayerWorkflowExpression(layer, { targetLayerId: targetId }) || workflowRecipe;
             try {
                 if (statusEl) statusEl.textContent = 'Replaying...';
-                const replayResult = await replayToolHistory({
-                    expression: expressionToRun,
-                    execute: async ({ tool: toolKey, params }) => {
-                        const toolInstance = Object.values(loadedTools).find((t) => t?.constructor?.name === toolKey || t?.name === toolKey);
-                        if (!toolInstance) {
-                            return { ok: false, error: `Tool not loaded: ${toolKey}` };
-                        }
-                        const out = await toolInstance.run(params, {
-                            state: state.getState(),
-                            getLayer: state.getLayer,
-                            listLayers: state.listLayers,
-                            applyResult: state.applyResult,
-                            setSelectedFeatureIds: state.setSelectedFeatureIds,
-                        });
-                        const code = toolInstance.getStatus()?.code ?? 0;
-                        const addedList = Array.isArray(out?.added)
-                            ? out.added.map((id) => (typeof id === 'string' ? { id } : id))
-                            : [];
-                        return {
-                            ok: code === 0,
-                            output: out,
-                            state: { layers: state.listLayers(), added: addedList },
-                        };
-                    },
-                });
-                bindAllLayerSelectionInteractions();
-                updateDataContent();
+                const replayResult = await replayLayerWorkflowOnActiveLayer(layer, targetId);
                 if (statusEl) {
-                    statusEl.textContent = replayResult.ok
+                    statusEl.textContent = replayResult?.ok
                         ? `Replayed ${replayResult.steps.length} step(s).`
-                        : `Replay failed at ${replayResult.failedStep}.`;
+                        : `Replay failed at ${replayResult?.failedStep || 'step'}.`;
                 }
             } catch (err) {
                 if (statusEl) statusEl.textContent = err.message || 'Replay failed.';
@@ -936,6 +914,44 @@ function openLayerProperties(layerOrId) {
         const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         modal.show();
     }
+}
+
+async function replayLayerWorkflowOnActiveLayer(layerOrId, explicitTargetLayerId = null) {
+    const layer = typeof layerOrId === 'string' ? state.getLayer(layerOrId) : layerOrId;
+    if (!layer || typeof state.getLayerWorkflowExpression !== 'function') return null;
+    const info = state.getLayerInfo(layer);
+    const targetId = explicitTargetLayerId || state.getActiveLayerId() || info?.id || null;
+    const expressionToRun = state.getLayerWorkflowExpression(layer, { targetLayerId: targetId });
+    if (!expressionToRun) return null;
+
+    const replayResult = await replayToolHistory({
+        expression: expressionToRun,
+        execute: async ({ tool: toolKey, params }) => {
+            const toolInstance = Object.values(loadedTools).find((t) => t?.constructor?.name === toolKey || t?.name === toolKey);
+            if (!toolInstance) {
+                return { ok: false, error: `Tool not loaded: ${toolKey}` };
+            }
+            const out = await toolInstance.run(params, {
+                state: state.getState(),
+                getLayer: state.getLayer,
+                listLayers: state.listLayers,
+                applyResult: state.applyResult,
+                setSelectedFeatureIds: state.setSelectedFeatureIds,
+            });
+            const code = toolInstance.getStatus()?.code ?? 0;
+            const addedList = Array.isArray(out?.added)
+                ? out.added.map((id) => (typeof id === 'string' ? { id } : id))
+                : [];
+            return {
+                ok: code === 0,
+                output: out,
+                state: { layers: state.listLayers(), added: addedList },
+            };
+        },
+    });
+    bindAllLayerSelectionInteractions();
+    updateDataContent();
+    return replayResult;
 }
 
 function renderKeyValueTable(rows, emptyMessage) {
@@ -1231,6 +1247,12 @@ function renderToc() {
             closeLayerMenu();
             openLayerProperties(layer);
         }));
+        if (typeof state.getLayerWorkflowExpression === 'function' && state.getLayerWorkflowExpression(layer)) {
+            actionList.appendChild(createActionButton('fas fa-play', 'Replay recipe on active layer', () => {
+                closeLayerMenu();
+                replayLayerWorkflowOnActiveLayer(layer);
+            }));
+        }
         actionList.appendChild(createActionButton('fas fa-trash', 'Remove layer', () => {
             closeLayerMenu();
             removeLayerWithGuard(layer);

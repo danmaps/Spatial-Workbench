@@ -359,10 +359,10 @@ async function renderAISettings(container) {
 
   const exportFormatSelect = document.createElement('select');
   exportFormatSelect.id = 'pref-export-format';
-  ['geojson'].forEach((fmt) => {
+  ['geojson', 'csv', 'wkt'].forEach((fmt) => {
     const option = document.createElement('option');
     option.value = fmt;
-    option.textContent = fmt.toUpperCase();
+    option.textContent = fmt === 'geojson' ? 'GeoJSON' : fmt.toUpperCase();
     if (fmt === currentPrefs.defaultExportFormat) option.selected = true;
     exportFormatSelect.appendChild(option);
   });

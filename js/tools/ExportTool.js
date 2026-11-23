@@ -427,7 +427,14 @@ class ExportTool extends Tool {
         if (formatID) {
             formatID.innerHTML = '';
             const options = ['GeoJSON', 'CSV', 'WKT'];
-            const preferredFormat = normalizeExportFormat(paramValues['Format']) || 'geojson';
+            let savedDefaultFormat = null;
+            try {
+                const { getWorkspacePreferences } = require('../ui/ai-settings');
+                if (typeof getWorkspacePreferences === 'function') {
+                    savedDefaultFormat = normalizeExportFormat(getWorkspacePreferences()?.defaultExportFormat);
+                }
+            } catch (_) {}
+            const preferredFormat = normalizeExportFormat(paramValues['Format']) || savedDefaultFormat || 'geojson';
 
             for (let i = 0; i < options.length; i++) {
                 const option = document.createElement('option');

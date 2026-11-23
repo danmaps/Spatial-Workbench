@@ -124,6 +124,7 @@ Tools are defined declaratively using a small model:
 - The hosted `POST /api/run` endpoint runs inside a bounded, worker-isolated workload envelope (see `docs/hosted-workload-envelope.md`)
 - Opinionated GIS component contracts (`swb.ui.v0`) for agent-generated interfaces are specified in `docs/agent-ui-components-plan.md`
 - Deep-dive, blog-post-style feature profiles with architecture diagrams and code samples are available in [`docs/feature-profiles.md`](docs/feature-profiles.md)
+- Mobile strategy, GIS web app UX reference patterns, and basemap/OpenFreeMap architecture decisions are documented in [`docs/ux-and-mobile-strategy.md`](docs/ux-and-mobile-strategy.md)
 
 This borrows from desktop GIS geoprocessing tools, but the direction is smaller, service-oriented, and agent-friendly.
 

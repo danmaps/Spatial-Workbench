@@ -259,18 +259,20 @@ class GroupTool extends Tool {
         this.setStatus(2, 'Failed to add grouped layer to map.');
     }
 
-    renderUI() {
-        super.renderUI();
+    renderUI(paramValues = {}) {
+        super.renderUI(paramValues);
 
         const inputLayer = document.getElementById('param-Layer');
         if (inputLayer) {
             inputLayer.innerHTML = '';
             const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
-            for (const layer of listLayers()) {
+            const layers = listLayers();
+            const preferredLayerId = paramValues['Layer'] || activeLayerId || layers[0]?.id || null;
+            for (const layer of layers) {
                 const option = document.createElement('option');
                 option.value = layer.id;
                 option.text = layer.label;
-                if (layer.id === activeLayerId || (!activeLayerId && inputLayer.childElementCount === 0)) option.selected = true;
+                if (layer.id === preferredLayerId || (!preferredLayerId && inputLayer.childElementCount === 0)) option.selected = true;
                 inputLayer.appendChild(option);
             }
         }
@@ -278,13 +280,14 @@ class GroupTool extends Tool {
         const unitsParameter = this.parameters.find((parameter) => parameter.name === 'Units');
         if (unitsParameter?.options) {
             const unitsInput = document.getElementById('param-Units');
+            const preferredUnit = paramValues['Units'] || unitsParameter.defaultValue;
             if (unitsInput) {
                 unitsInput.innerHTML = '';
                 unitsParameter.options.forEach((unit) => {
                     const option = document.createElement('option');
                     option.value = unit;
                     option.text = unit.charAt(0).toUpperCase() + unit.slice(1);
-                    if (unit === unitsParameter.defaultValue) option.selected = true;
+                    if (unit === preferredUnit) option.selected = true;
                     unitsInput.appendChild(option);
                 });
             }

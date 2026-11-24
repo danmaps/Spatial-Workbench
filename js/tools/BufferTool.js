@@ -209,8 +209,8 @@ class BufferTool extends Tool {
         }
     }
     
-    renderUI() {
-        super.renderUI(); 
+    renderUI(paramValues = {}) {
+        super.renderUI(paramValues); 
 
         // update the polygon dropdown options based on tocLayers
         const inputLayer = document.getElementById('param-Input Layer');
@@ -220,11 +220,12 @@ class BufferTool extends Tool {
             // Add an option for each known layer (stable ids)
             const layers = listLayers();
             const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
+            const preferredLayerId = paramValues['Input Layer'] || activeLayerId || layers[0]?.id || null;
             for (const l of layers) {
                 const option = document.createElement('option');
                 option.value = l.id;
                 option.text = l.label;
-                if (l.id === activeLayerId || (!activeLayerId && inputLayer.childElementCount === 0)) option.selected = true;
+                if (l.id === preferredLayerId || (!preferredLayerId && inputLayer.childElementCount === 0)) option.selected = true;
                 inputLayer.appendChild(option);
             }
 
@@ -234,13 +235,14 @@ class BufferTool extends Tool {
         const unitsParameter = this.parameters.find(p => p.name === "Units");
         if (unitsParameter && unitsParameter.options) {
             const unitsInput = document.getElementById('param-Units');
+            const preferredUnit = paramValues['Units'] || unitsParameter.defaultValue;
             // Populate dropdown with units options from the Parameter object
             unitsParameter.options.forEach(unit => {
                 const option = document.createElement('option');
                 option.value = unit;
                 option.text = unit.charAt(0).toUpperCase() + unit.slice(1); // Capitalize the first letter
-                if (unit === unitsParameter.defaultValue) {
-                    option.selected = true; // Set the default value as selected
+                if (unit === preferredUnit) {
+                    option.selected = true; // Set the preserved or default value as selected
                 }
                 unitsInput.appendChild(option);
             });

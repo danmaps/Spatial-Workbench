@@ -1464,11 +1464,16 @@ function updateDataContent() {
     content.innerHTML = `<code class="language-json">${Prism.highlight(geoJsonData, Prism.languages.json, 'json')}</code>`;
 
     const toolElement = document.getElementById('toolName');
-    if (toolElement) {
+    const toolDetails = document.getElementById('toolDetails');
+    const isToolDetailsOpen = !toolDetails || !toolDetails.classList.contains('hidden');
+    if (toolElement && isToolDetailsOpen) {
         let toolname = toolElement.getAttribute('tool');
         let tool = getToolByName(toolname);
         if (tool) {
-            tool.renderUI();
+            const preservedParams = typeof tool.collectParamsFromDOM === 'function'
+                ? tool.collectParamsFromDOM()
+                : {};
+            tool.renderUI(preservedParams);
         }
     }
 

@@ -218,18 +218,20 @@ class AddAIGeneratedFieldTool extends Tool {
     };
   }
 
-  renderUI() {
-    super.renderUI();
+  renderUI(paramValues = {}) {
+    super.renderUI(paramValues);
 
     const inputLayer = document.getElementById('param-Input Layer');
     if (inputLayer) {
       inputLayer.innerHTML = '';
       const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
-      for (const layer of listLayerGroups()) {
+      const layers = listLayerGroups();
+      const preferredLayerId = paramValues['Input Layer'] || activeLayerId || layers[0]?.id || null;
+      for (const layer of layers) {
         const option = document.createElement('option');
         option.value = layer.id;
         option.text = layer.label;
-        if (layer.id === activeLayerId || (!activeLayerId && inputLayer.childElementCount === 0)) option.selected = true;
+        if (layer.id === preferredLayerId || (!preferredLayerId && inputLayer.childElementCount === 0)) option.selected = true;
         inputLayer.appendChild(option);
       }
     }
@@ -237,11 +239,12 @@ class AddAIGeneratedFieldTool extends Tool {
     const outputType = document.getElementById('param-Output Type');
     if (outputType) {
       outputType.innerHTML = '';
+      const preferredOutputType = paramValues['Output Type'] || 'text';
       for (const choice of ['text', 'number', 'boolean']) {
         const option = document.createElement('option');
         option.value = choice;
         option.text = choice;
-        if (choice === 'text') option.selected = true;
+        if (choice === preferredOutputType) option.selected = true;
         outputType.appendChild(option);
       }
     }

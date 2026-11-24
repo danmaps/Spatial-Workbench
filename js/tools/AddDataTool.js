@@ -329,8 +329,8 @@ class AddDataTool extends Tool {
         return res;
     }
 
-    renderUI() {
-        super.renderUI();
+    renderUI(paramValues = {}) {
+        super.renderUI(paramValues);
         const inputElement = document.getElementById('param-Input');
         if (inputElement) {
             inputElement.accept = '.geojson,.csv,.xlsx';

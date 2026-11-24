@@ -137,4 +137,30 @@ describe('RandomPointsTool', () => {
 
     expect(mockListLayers).toHaveBeenCalled();
   });
+
+  test('execute preserves Inside Polygon checkbox, Polygon selection, and Points Count on re-render', async () => {
+    mockListLayers.mockReturnValue([
+      { id: 'poly-1', geometryType: 'Polygon', label: 'Polygon 1' },
+      { id: 'poly-2', geometryType: 'Polygon', label: 'Polygon 2' },
+    ]);
+
+    const poly = { toGeoJSON: jest.fn(() => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [] } })) };
+    L.Polygon = function Polygon() {};
+    Object.setPrototypeOf(poly, L.Polygon.prototype);
+    mockGetLayer.mockReturnValue(poly);
+    turf.randomPoint.mockReturnValue({ features: [{ properties: {} }] });
+
+    const tool = new RandomPointsTool();
+    tool.renderUI();
+
+    document.getElementById('param-Points Count').value = '7';
+    document.getElementById('param-Inside Polygon').checked = true;
+    document.getElementById('param-Polygon').value = 'poly-2';
+
+    await tool.execute();
+
+    expect(document.getElementById('param-Points Count').value).toBe('7');
+    expect(document.getElementById('param-Inside Polygon').checked).toBe(true);
+    expect(document.getElementById('param-Polygon').value).toBe('poly-2');
+  });
 });

@@ -209,18 +209,20 @@ class ConvertTextToNumericTool extends Tool {
     };
   }
 
-  renderUI() {
-    super.renderUI();
+  renderUI(paramValues = {}) {
+    super.renderUI(paramValues);
 
     const inputLayer = document.getElementById('param-Input Layer');
     if (inputLayer) {
       inputLayer.innerHTML = '';
       const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
-      for (const layer of listLayers()) {
+      const layers = listLayers();
+      const preferredLayerId = paramValues['Input Layer'] || activeLayerId || layers[0]?.id || null;
+      for (const layer of layers) {
         const option = document.createElement('option');
         option.value = layer.id;
         option.text = layer.label;
-        if (layer.id === activeLayerId || (!activeLayerId && inputLayer.childElementCount === 0)) option.selected = true;
+        if (layer.id === preferredLayerId || (!preferredLayerId && inputLayer.childElementCount === 0)) option.selected = true;
         inputLayer.appendChild(option);
       }
     }

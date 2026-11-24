@@ -153,8 +153,8 @@ class RandomPointsTool extends Tool {
     }
 
     // Dynamically populate dropdown when the tool is selected
-    renderUI() {
-        super.renderUI(); // Ensure any base UI rendering logic is called
+    renderUI(paramValues = {}) {
+        super.renderUI(paramValues); // Ensure any base UI rendering logic is called
 
         // Dynamically update the polygon dropdown options based on drawnItems
         const polygonIdInput = document.getElementById('param-Polygon');
@@ -165,11 +165,12 @@ class RandomPointsTool extends Tool {
             // Populate dropdown with current polygons (stable ids)
             const layers = listLayers().filter((l) => l.geometryType === 'Polygon' || l.geometryType === 'MultiPolygon');
             const activeLayerId = typeof getActiveLayerId === 'function' ? getActiveLayerId() : null;
+            const preferredPolygonId = paramValues['Polygon'] || activeLayerId || layers[0]?.id || null;
             for (const l of layers) {
                 const option = document.createElement('option');
                 option.value = l.id;
                 option.text = l.label;
-                if (l.id === activeLayerId || (!activeLayerId && polygonIdInput.childElementCount === 0)) option.selected = true;
+                if (l.id === preferredPolygonId || (!preferredPolygonId && polygonIdInput.childElementCount === 0)) option.selected = true;
                 polygonIdInput.appendChild(option);
             }
         }

@@ -128,6 +128,96 @@ const COMPARISON_ROLE_STYLES = Object.freeze({
   }),
 });
 
+const CATEGORICAL_PALETTE = Object.freeze([
+  '#38bdf8',
+  '#f59e0b',
+  '#ec4899',
+  '#34d399',
+  '#a78bfa',
+  '#fb7185',
+  '#facc15',
+  '#2dd4bf',
+  '#60a5fa',
+  '#fb923c',
+]);
+
+const UNGROUPED_COLOR = '#94a3b8';
+
+function getGroupColor(groupId) {
+  if (groupId === null || groupId === undefined || groupId === '' || groupId === '__ungrouped__') {
+    return UNGROUPED_COLOR;
+  }
+  const str = String(groupId).trim();
+  const numericMatch = /^group-(\d+)$/i.exec(str);
+  if (numericMatch) {
+    const idx = Math.max(0, parseInt(numericMatch[1], 10) - 1);
+    return CATEGORICAL_PALETTE[idx % CATEGORICAL_PALETTE.length];
+  }
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return CATEGORICAL_PALETTE[Math.abs(hash) % CATEGORICAL_PALETTE.length];
+}
+
+function getGroupFeatureStyle(feature) {
+  const props = feature?.properties;
+  if (!props || typeof props !== 'object' || !Object.prototype.hasOwnProperty.call(props, 'groupId')) {
+    return null;
+  }
+  const groupId = props.groupId;
+  const isUngrouped = groupId === null || groupId === undefined || groupId === '';
+  const color = getGroupColor(groupId);
+  const geomType = feature?.geometry?.type || '';
+  const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
+
+  return {
+    color: isUngrouped ? '#cbd5e1' : '#0f172a',
+    fillColor: color,
+    fillOpacity: isUngrouped ? 0.55 : (isPoint ? 0.9 : 0.42),
+    weight: isPoint ? 2 : (isUngrouped ? 1.5 : 2.5),
+    opacity: isUngrouped ? 0.75 : 0.95,
+    ...(isPoint ? { radius: isUngrouped ? 5.5 : 7.5 } : {}),
+    ...(!isPoint && isUngrouped ? { dashArray: '4 4' } : {}),
+    ...(!isPoint ? { color } : {}),
+  };
+}
+
+function getFeatureSymbologyStyle(feature) {
+  return getComparisonFeatureStyle(feature) || getGroupFeatureStyle(feature) || null;
+}
+
+function getGroupSummaryMeta(groupResult) {
+  if (!groupResult || typeof groupResult !== 'object' || !Array.isArray(groupResult.groups)) {
+    return null;
+  }
+  const groupCount = Number(groupResult.groupCount) || groupResult.groups.length;
+  const ungroupedCount = Number(groupResult.ungroupedCount) || 0;
+
+  const legendItems = groupResult.groups.map((group) => ({
+    groupId: group.groupId,
+    label: group.groupId,
+    color: getGroupColor(group.groupId),
+    featureCount: Number(group.featureCount) || 0,
+  }));
+
+  if (ungroupedCount > 0) {
+    legendItems.push({
+      groupId: '__ungrouped__',
+      label: 'Ungrouped',
+      color: UNGROUPED_COLOR,
+      featureCount: ungroupedCount,
+    });
+  }
+
+  return {
+    groupCount,
+    ungroupedCount,
+    badgeText: `${groupCount} group${groupCount === 1 ? '' : 's'}`,
+    legendItems,
+  };
+}
+
 function getComparisonFeatureStyle(featureOrRole) {
   const role = typeof featureOrRole === 'string'
     ? featureOrRole
@@ -189,9 +279,15 @@ function getComparisonSummaryMeta(comparison) {
 }
 
 module.exports = {
+  CATEGORICAL_PALETTE,
   COMPARISON_ROLE_STYLES,
+  UNGROUPED_COLOR,
   getComparisonFeatureStyle,
   getComparisonSummaryMeta,
+  getFeatureSymbologyStyle,
+  getGroupColor,
+  getGroupFeatureStyle,
+  getGroupSummaryMeta,
   getLayerSelectionVisualState,
   getFeatureHighlightStyle,
   getLayerSelectionFeatureIds,

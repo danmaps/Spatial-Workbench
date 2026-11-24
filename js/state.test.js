@@ -579,4 +579,74 @@ describe('state provenance helpers', () => {
       },
     ]);
   });
+
+  test('applyResult renders GroupTool point features as circleMarkers colored by groupId', () => {
+    const circleMarkerCalls = [];
+    global.L.circleMarker = jest.fn((latlng, style) => {
+      circleMarkerCalls.push({ latlng, style });
+      return { latlng, style, addTo: jest.fn(), setStyle: jest.fn() };
+    });
+
+    let capturedOptions = null;
+    global.L.geoJSON = jest.fn((gj, options) => {
+      capturedOptions = options;
+      const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
+      const children = features.map((feature, index) => {
+        if (options?.pointToLayer && feature.geometry?.type === 'Point') {
+          options.pointToLayer(feature, { lat: feature.geometry.coordinates[1], lng: feature.geometry.coordinates[0] });
+        }
+        return {
+          feature,
+          __id: feature.properties?.__id || `grp-${index + 1}`,
+          addTo: jest.fn(),
+          setStyle: jest.fn(),
+          toGeoJSON: jest.fn(() => feature),
+        };
+      });
+      return {
+        eachLayer(cb) { children.forEach(cb); },
+        addTo: jest.fn(),
+        feature: null,
+        toGeoJSON: jest.fn(() => gj),
+        __id: undefined,
+      };
+    });
+
+    const groupedCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [-118.2, 34.0] },
+          properties: { __id: 'p-1', groupId: 'group-1', groupSize: 2 },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [-118.3, 34.1] },
+          properties: { __id: 'p-2', groupId: 'group-2', groupSize: 2 },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [-118.4, 34.2] },
+          properties: { __id: 'p-3', groupId: null, groupSize: 1 },
+        },
+      ],
+      toolMetadata: {
+        name: 'Group',
+        result: {
+          groupCount: 2,
+          ungroupedCount: 1,
+          groups: [
+            { groupId: 'group-1', featureCount: 1 },
+            { groupId: 'group-2', featureCount: 1 },
+          ],
+        },
+      },
+    };
+
+    const res = state.applyResult({ addGeojson: groupedCollection });
+    expect(res.ok).toBe(true);
+    expect(typeof capturedOptions?.pointToLayer).toBe('function');
+    expect(circleMarkerCalls.map((c) => c.style.fillColor)).toEqual(['#38bdf8', '#f59e0b', '#94a3b8']);
+  });
 });

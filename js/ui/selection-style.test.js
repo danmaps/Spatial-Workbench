@@ -1,6 +1,10 @@
 const {
   getComparisonFeatureStyle,
   getComparisonSummaryMeta,
+  getFeatureSymbologyStyle,
+  getGroupColor,
+  getGroupFeatureStyle,
+  getGroupSummaryMeta,
   getLayerSelectionVisualState,
   getFeatureHighlightStyle,
   getLayerSelectionFeatureIds,
@@ -112,6 +116,59 @@ describe('selection styling helpers', () => {
       { role: 'intersection', shortLabel: 'A ∩ B', color: '#38bdf8', present: true, areaSqm: 800 },
       { role: 'only-in-a', shortLabel: 'A - B', color: '#f59e0b', present: true, areaSqm: 200 },
       { role: 'only-in-b', shortLabel: 'B - A', color: '#ec4899', present: true, areaSqm: 450 },
+    ]);
+  });
+
+  test('assigns distinct deterministic colors and styles by groupId (including ungrouped features)', () => {
+    expect(getGroupColor('group-1')).toBe('#38bdf8');
+    expect(getGroupColor('group-2')).toBe('#f59e0b');
+    expect(getGroupColor('group-3')).toBe('#ec4899');
+    expect(getGroupColor(null)).toBe('#94a3b8');
+
+    const pointStyle = getGroupFeatureStyle({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [0, 0] },
+      properties: { groupId: 'group-2', groupSize: 3 },
+    });
+    expect(pointStyle).toEqual(
+      expect.objectContaining({
+        fillColor: '#f59e0b',
+        radius: 7.5,
+        fillOpacity: 0.9,
+      })
+    );
+
+    const ungroupedPointStyle = getGroupFeatureStyle({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [1, 1] },
+      properties: { groupId: null, groupSize: 1 },
+    });
+    expect(ungroupedPointStyle).toEqual(
+      expect.objectContaining({
+        fillColor: '#94a3b8',
+        radius: 5.5,
+      })
+    );
+
+    expect(getFeatureSymbologyStyle({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [] },
+      properties: { groupId: 'group-1' },
+    })).toEqual(expect.objectContaining({ color: '#38bdf8', fillColor: '#38bdf8' }));
+
+    const summary = getGroupSummaryMeta({
+      groupCount: 2,
+      ungroupedCount: 1,
+      groups: [
+        { groupId: 'group-1', featureCount: 3 },
+        { groupId: 'group-2', featureCount: 2 },
+      ],
+    });
+    expect(summary.badgeText).toBe('2 groups');
+    expect(summary.legendItems).toEqual([
+      { groupId: 'group-1', label: 'group-1', color: '#38bdf8', featureCount: 3 },
+      { groupId: 'group-2', label: 'group-2', color: '#f59e0b', featureCount: 2 },
+      { groupId: '__ungrouped__', label: 'Ungrouped', color: '#94a3b8', featureCount: 1 },
     ]);
   });
 });

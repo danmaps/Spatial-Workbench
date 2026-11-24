@@ -16,6 +16,7 @@ const {
 const { stopLeafletClickPropagation } = require('./ui/leaflet-click');
 const {
     getComparisonSummaryMeta,
+    getGroupSummaryMeta,
     getLayerSelectionVisualState,
     getFeatureHighlightStyle,
     getLayerSelectionFeatureIds,
@@ -1037,6 +1038,39 @@ function selectComparisonRoleFeatures(layerOrId, role) {
     return state.getSelectedFeatureIds(layerId);
 }
 
+function selectGroupFeatures(layerOrId, groupId) {
+    const layer = typeof layerOrId === 'string' ? state.getLayer(layerOrId) : layerOrId;
+    if (!layer) return [];
+    const layerId = state.ensureStableId(layer);
+    state.setActiveLayerId(layerId);
+
+    const matchingIds = [];
+    getAttributeLayerTargets(layer).forEach((target, index) => {
+        const rawGroupId = target?.feature?.properties?.groupId ?? null;
+        const matches = groupId === '__ungrouped__'
+            ? (rawGroupId === null || rawGroupId === undefined || rawGroupId === '')
+            : rawGroupId === groupId;
+        if (matches) {
+            const featureId = getFeatureSelectionId(target, layerId, index);
+            if (featureId) matchingIds.push(featureId);
+        }
+    });
+
+    const currentSelected = state.getSelectedFeatureIds(layerId);
+    const sameSelection = matchingIds.length > 0
+        && matchingIds.length === currentSelected.length
+        && matchingIds.every((id) => currentSelected.includes(id));
+
+    if (sameSelection) {
+        state.clearSelectedFeatureIds(layerId);
+    } else {
+        state.setSelectedFeatureIds(layerId, matchingIds);
+    }
+
+    refreshSidebarState();
+    return state.getSelectedFeatureIds(layerId);
+}
+
 function renderKeyValueTable(rows, emptyMessage) {
     if (!rows.length) return `<p class="properties-empty">${emptyMessage}</p>`;
     return `<table class="properties-table"><tbody>${rows.map(([key, value]) => `<tr><th>${escapeHtml(String(key))}</th><td>${escapeHtml(String(value))}</td></tr>`).join('')}</tbody></table>`;
@@ -1278,6 +1312,17 @@ function renderToc() {
             badges.appendChild(compBadge);
         }
 
+        const groupMeta = getGroupSummaryMeta(
+            info?.metadata?.result || info?.provenance?.metadata?.result
+        );
+        if (groupMeta) {
+            const grpBadge = document.createElement('span');
+            grpBadge.className = 'layer-badge layer-badge-comparison';
+            grpBadge.textContent = groupMeta.badgeText;
+            grpBadge.title = `${groupMeta.groupCount} group(s), ${groupMeta.ungroupedCount} ungrouped`;
+            badges.appendChild(grpBadge);
+        }
+
         textWrap.appendChild(title);
         textWrap.appendChild(meta);
         textWrap.appendChild(badges);
@@ -1305,6 +1350,26 @@ function renderToc() {
             deltaEl.className = 'comparison-delta-tag';
             deltaEl.textContent = comparisonMeta.deltaBadgeText;
             legendBar.appendChild(deltaEl);
+
+            textWrap.appendChild(legendBar);
+        } else if (groupMeta && groupMeta.legendItems.length) {
+            const legendBar = document.createElement('div');
+            legendBar.className = 'layer-comparison-legend';
+            legendBar.setAttribute('aria-label', 'Group symbology legend');
+
+            groupMeta.legendItems.forEach((item) => {
+                const pill = document.createElement('button');
+                pill.type = 'button';
+                pill.className = 'comparison-legend-pill';
+                pill.dataset.groupId = item.groupId;
+                pill.title = `${item.label}: ${item.featureCount} feature(s) (click to isolate)`;
+                pill.innerHTML = `<span class="comparison-swatch" style="background:${escapeHtml(item.color)}"></span><span>${escapeHtml(item.label)} (${item.featureCount})</span>`;
+                pill.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    selectGroupFeatures(layer, item.groupId);
+                });
+                legendBar.appendChild(pill);
+            });
 
             textWrap.appendChild(legendBar);
         }

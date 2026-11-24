@@ -6,7 +6,7 @@
 // mutating the map.
 
 const { createExpressionFromToolHistory } = require('./runtime/spatialExpression');
-const { getComparisonFeatureStyle } = require('./ui/selection-style');
+const { getFeatureSymbologyStyle } = require('./ui/selection-style');
 
 const _registry = new Map(); // stableId -> leaflet layer
 let _layerRemoveListenerAttached = false;
@@ -988,14 +988,31 @@ function coalesceAdditions(addGeojson) {
   return addGeojson;
 }
 
-function hasComparisonFeatures(gj) {
+function hasFeatureSymbology(gj) {
   if (!gj || typeof gj !== 'object') return false;
-  if (gj.toolMetadata?.comparison) return true;
-  if (gj.type === 'Feature') return Boolean(getComparisonFeatureStyle(gj));
+  if (gj.toolMetadata?.comparison || gj.toolMetadata?.result?.groups) return true;
+  if (gj.type === 'Feature') return Boolean(getFeatureSymbologyStyle(gj));
   if (gj.type === 'FeatureCollection' && Array.isArray(gj.features)) {
-    return gj.features.some((feature) => Boolean(getComparisonFeatureStyle(feature)));
+    return gj.features.some((feature) => Boolean(getFeatureSymbologyStyle(feature)));
   }
   return false;
+}
+
+function buildGeoJsonSymbologyOptions(gj) {
+  if (!hasFeatureSymbology(gj)) return undefined;
+  return {
+    style: (feature) => getFeatureSymbologyStyle(feature) || undefined,
+    pointToLayer: (feature, latlng) => {
+      const symStyle = getFeatureSymbologyStyle(feature);
+      if (symStyle && typeof L !== 'undefined' && typeof L.circleMarker === 'function') {
+        return L.circleMarker(latlng, symStyle);
+      }
+      if (typeof L !== 'undefined' && typeof L.marker === 'function') {
+        return L.marker(latlng);
+      }
+      return null;
+    },
+  };
 }
 
 // { addGeojson?: Feature|FeatureCollection|Array<Feature|FeatureCollection>, removeLayerIds?: string[] }
@@ -1022,10 +1039,7 @@ function applyResult(toolResult) {
     try {
       const parentLayer = gj?.toolMetadata?.parentLayerId ? getLayer(gj.toolMetadata.parentLayerId) : null;
       const isCollection = shouldAddAsSingleResultLayer(gj);
-      const isComparisonLayer = hasComparisonFeatures(gj);
-      const geojsonOptions = isComparisonLayer
-        ? { style: (feature) => getComparisonFeatureStyle(feature) || undefined }
-        : undefined;
+      const geojsonOptions = buildGeoJsonSymbologyOptions(gj);
       let primaryAddedLayerId = null;
 
       if (isCollection) {
@@ -1042,10 +1056,10 @@ function applyResult(toolResult) {
             registerLayer(child, preferredId, datasetId);
             ensureStableId(child, preferredId);
             ensureDatasetId(child, datasetId);
-            const compStyle = getComparisonFeatureStyle(child?.feature);
-            if (compStyle) {
-              child.__comparisonStyle = compStyle;
-              if (typeof child.setStyle === 'function') child.setStyle(compStyle);
+            const symStyle = getFeatureSymbologyStyle(child?.feature);
+            if (symStyle) {
+              child.__symbologyStyle = symStyle;
+              if (typeof child.setStyle === 'function') child.setStyle(symStyle);
             }
           });
         }

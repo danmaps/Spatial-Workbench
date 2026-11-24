@@ -15,6 +15,7 @@ const {
 } = require('./ui/map-interaction-mode');
 const { stopLeafletClickPropagation } = require('./ui/leaflet-click');
 const {
+    getComparisonSummaryMeta,
     getLayerSelectionVisualState,
     getFeatureHighlightStyle,
     getLayerSelectionFeatureIds,
@@ -859,6 +860,45 @@ function openLayerProperties(layerOrId) {
         ? `<ul class="properties-warnings">${importSummary.warnings.map((warning) => `<li>${warning}</li>`).join('')}</ul>`
         : '<p class="properties-empty">No import warnings.</p>';
 
+    const comparisonMeta = getComparisonSummaryMeta(
+        info?.metadata?.comparison || info?.provenance?.metadata?.comparison
+    );
+    const comparisonSectionHtml = comparisonMeta
+        ? `
+        <section class="properties-section">
+            <h6>A/B Comparison &amp; Visual Diff Legend</h6>
+            <div class="comparison-legend-bar mb-2">
+                ${comparisonMeta.legendItems
+                    .map(
+                        (item) => `
+                    <button type="button" class="comparison-legend-pill ${item.present ? '' : 'is-empty'}" data-comparison-role="${escapeHtml(item.role)}" title="Isolate ${escapeHtml(item.label)}">
+                        <span class="comparison-swatch" style="background:${escapeHtml(item.color)}"></span>
+                        <span>${escapeHtml(item.label)}</span>
+                        <span class="comparison-area-note">${item.areaSqm.toLocaleString()} m²</span>
+                    </button>
+                `
+                    )
+                    .join('')}
+                <button type="button" class="comparison-legend-pill" data-comparison-role="all" title="Clear component filter">
+                    <span>Show All</span>
+                </button>
+            </div>
+            ${renderKeyValueTable(
+                [
+                    ['Baseline (Layer A)', `${comparisonMeta.layerAId} (${comparisonMeta.areaASqm.toLocaleString()} m²)`],
+                    ['Candidate (Layer B)', `${comparisonMeta.layerBId} (${comparisonMeta.areaBSqm.toLocaleString()} m²)`],
+                    ['Overlap (A ∩ B)', `${comparisonMeta.intersectionAreaSqm.toLocaleString()} m²`],
+                    ['Only in A (A - B)', `${comparisonMeta.onlyInAAreaSqm.toLocaleString()} m²`],
+                    ['Only in B (B - A)', `${comparisonMeta.onlyInBAreaSqm.toLocaleString()} m²`],
+                    ['Area Delta (B - A)', comparisonMeta.deltaBadgeText],
+                    ['Jaccard Overlap', comparisonMeta.overlapBadgeText],
+                ],
+                'No comparison metrics.'
+            )}
+        </section>
+    `
+        : '';
+
     body.innerHTML = `
         <section class="properties-section">
             <h6>Metadata</h6>
@@ -872,6 +912,7 @@ function openLayerProperties(layerOrId) {
             <h6>Geometry</h6>
             ${renderKeyValueTable(geometryRows, 'No geometry details available.')}
         </section>
+        ${comparisonSectionHtml}
         <section class="properties-section">
             <h6>Tool History</h6>
             ${historyList}
@@ -889,6 +930,12 @@ function openLayerProperties(layerOrId) {
             ${importWarnings}
         </section>
     `;
+
+    Array.from(body.querySelectorAll('[data-comparison-role]')).forEach((pill) => {
+        pill.addEventListener('click', () => {
+            selectComparisonRoleFeatures(layer, pill.dataset.comparisonRole);
+        });
+    });
 
     const replayBtn = document.getElementById('replayWorkflowRecipeBtn');
     if (replayBtn && workflowRecipe) {
@@ -952,6 +999,42 @@ async function replayLayerWorkflowOnActiveLayer(layerOrId, explicitTargetLayerId
     bindAllLayerSelectionInteractions();
     updateDataContent();
     return replayResult;
+}
+
+function selectComparisonRoleFeatures(layerOrId, role) {
+    const layer = typeof layerOrId === 'string' ? state.getLayer(layerOrId) : layerOrId;
+    if (!layer) return [];
+    const layerId = state.ensureStableId(layer);
+    state.setActiveLayerId(layerId);
+
+    if (!role || role === 'all') {
+        state.clearSelectedFeatureIds(layerId);
+        refreshSidebarState();
+        return [];
+    }
+
+    const matchingIds = [];
+    getAttributeLayerTargets(layer).forEach((target, index) => {
+        const targetRole = target?.feature?.properties?.comparisonRole || null;
+        if (targetRole === role) {
+            const featureId = getFeatureSelectionId(target, layerId, index);
+            if (featureId) matchingIds.push(featureId);
+        }
+    });
+
+    const currentSelected = state.getSelectedFeatureIds(layerId);
+    const sameSelection = matchingIds.length > 0
+        && matchingIds.length === currentSelected.length
+        && matchingIds.every((id) => currentSelected.includes(id));
+
+    if (sameSelection) {
+        state.clearSelectedFeatureIds(layerId);
+    } else {
+        state.setSelectedFeatureIds(layerId, matchingIds);
+    }
+
+    refreshSidebarState();
+    return state.getSelectedFeatureIds(layerId);
 }
 
 function renderKeyValueTable(rows, emptyMessage) {
@@ -1184,9 +1267,48 @@ function renderToc() {
             badges.appendChild(groupBadge);
         }
 
+        const comparisonMeta = getComparisonSummaryMeta(
+            info?.metadata?.comparison || info?.provenance?.metadata?.comparison
+        );
+        if (comparisonMeta) {
+            const compBadge = document.createElement('span');
+            compBadge.className = 'layer-badge layer-badge-comparison';
+            compBadge.textContent = comparisonMeta.overlapBadgeText;
+            compBadge.title = `${comparisonMeta.overlapBadgeText} (${comparisonMeta.deltaBadgeText})`;
+            badges.appendChild(compBadge);
+        }
+
         textWrap.appendChild(title);
         textWrap.appendChild(meta);
         textWrap.appendChild(badges);
+
+        if (comparisonMeta) {
+            const legendBar = document.createElement('div');
+            legendBar.className = 'layer-comparison-legend';
+            legendBar.setAttribute('aria-label', 'Comparison diff legend');
+
+            comparisonMeta.legendItems.forEach((legendItem) => {
+                const pill = document.createElement('button');
+                pill.type = 'button';
+                pill.className = `comparison-legend-pill ${legendItem.present ? '' : 'is-empty'}`.trim();
+                pill.dataset.comparisonRole = legendItem.role;
+                pill.title = `${legendItem.label}: ${legendItem.areaSqm.toLocaleString()} m² (click to isolate)`;
+                pill.innerHTML = `<span class="comparison-swatch" style="background:${escapeHtml(legendItem.color)}"></span><span>${escapeHtml(legendItem.shortLabel)}</span>`;
+                pill.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    selectComparisonRoleFeatures(layer, legendItem.role);
+                });
+                legendBar.appendChild(pill);
+            });
+
+            const deltaEl = document.createElement('span');
+            deltaEl.className = 'comparison-delta-tag';
+            deltaEl.textContent = comparisonMeta.deltaBadgeText;
+            legendBar.appendChild(deltaEl);
+
+            textWrap.appendChild(legendBar);
+        }
+
         left.appendChild(textWrap);
 
         const menuWrap = document.createElement('div');

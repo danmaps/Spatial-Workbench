@@ -1,4 +1,6 @@
 const {
+  getComparisonFeatureStyle,
+  getComparisonSummaryMeta,
   getLayerSelectionVisualState,
   getFeatureHighlightStyle,
   getLayerSelectionFeatureIds,
@@ -45,5 +47,71 @@ describe('selection styling helpers', () => {
       total: 0,
       summary: '',
     });
+  });
+
+  test('returns distinct comparison styles for intersection, only-in-a, and only-in-b features', () => {
+    expect(getComparisonFeatureStyle({ properties: { comparisonRole: 'intersection' } })).toEqual({
+      color: '#38bdf8',
+      fillColor: '#38bdf8',
+      fillOpacity: 0.35,
+      weight: 2.5,
+      opacity: 0.95,
+    });
+
+    expect(getComparisonFeatureStyle({ properties: { comparisonRole: 'only-in-a' } })).toEqual({
+      color: '#f59e0b',
+      fillColor: '#f59e0b',
+      fillOpacity: 0.28,
+      weight: 2,
+      opacity: 0.9,
+      dashArray: '5 4',
+    });
+
+    expect(getComparisonFeatureStyle({ properties: { comparisonRole: 'only-in-b' } })).toEqual({
+      color: '#ec4899',
+      fillColor: '#ec4899',
+      fillOpacity: 0.28,
+      weight: 2,
+      opacity: 0.9,
+      dashArray: '2 4',
+    });
+
+    expect(getComparisonFeatureStyle({ properties: { name: 'plain' } })).toBeNull();
+  });
+
+  test('builds comparison summary metadata and visual diff legend items', () => {
+    const summary = getComparisonSummaryMeta({
+      layerAId: 'parcel-a',
+      layerBId: 'parcel-b',
+      areaASqm: 1000,
+      areaBSqm: 1250,
+      intersectionAreaSqm: 800,
+      onlyInAAreaSqm: 200,
+      onlyInBAreaSqm: 450,
+      areaDeltaSqm: 250,
+      jaccardSimilarity: 0.5517,
+      componentCounts: { intersection: 1, onlyInA: 1, onlyInB: 1 },
+    });
+
+    expect(summary).toEqual(
+      expect.objectContaining({
+        layerAId: 'parcel-a',
+        layerBId: 'parcel-b',
+        overlapBadgeText: '55.2% overlap',
+        deltaBadgeText: 'Δ +250 m²',
+      })
+    );
+    expect(summary.legendItems).toHaveLength(3);
+    expect(summary.legendItems.map((item) => ({
+      role: item.role,
+      shortLabel: item.shortLabel,
+      color: item.color,
+      present: item.present,
+      areaSqm: item.areaSqm,
+    }))).toEqual([
+      { role: 'intersection', shortLabel: 'A ∩ B', color: '#38bdf8', present: true, areaSqm: 800 },
+      { role: 'only-in-a', shortLabel: 'A - B', color: '#f59e0b', present: true, areaSqm: 200 },
+      { role: 'only-in-b', shortLabel: 'B - A', color: '#ec4899', present: true, areaSqm: 450 },
+    ]);
   });
 });

@@ -506,4 +506,77 @@ describe('state provenance helpers', () => {
     expect(collapsedHierarchy.find((n) => n.id === 'derived-a2').hiddenByCollapsedAncestor).toBe(true);
     expect(collapsedHierarchy.find((n) => n.id === 'root-b').hiddenByCollapsedAncestor).toBe(false);
   });
+
+  test('applyResult applies distinct comparison diff styles to CompareTool features', () => {
+    const setStyleCalls = [];
+    global.L.geoJSON = jest.fn((gj, options) => {
+      const features = gj.type === 'FeatureCollection' ? gj.features : [gj];
+      const children = features.map((feature, index) => ({
+        feature,
+        __id: feature.properties?.__id || `cmp-${index + 1}`,
+        addTo: jest.fn(),
+        setStyle: jest.fn((style) => setStyleCalls.push({ role: feature.properties?.comparisonRole, style })),
+        toGeoJSON: jest.fn(() => feature),
+      }));
+      return {
+        eachLayer(cb) { children.forEach(cb); },
+        addTo: jest.fn(),
+        feature: null,
+        toGeoJSON: jest.fn(() => gj),
+        __id: undefined,
+        __options: options,
+      };
+    });
+
+    const comparisonCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] },
+          properties: { __id: 'cmp-int', comparisonRole: 'intersection' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [[[1, 0], [1, 1], [2, 1], [2, 0], [1, 0]]] },
+          properties: { __id: 'cmp-a', comparisonRole: 'only-in-a' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [[[-1, 0], [-1, 1], [0, 1], [0, 0], [-1, 0]]] },
+          properties: { __id: 'cmp-b', comparisonRole: 'only-in-b' },
+        },
+      ],
+      toolMetadata: {
+        name: 'Compare',
+        comparison: {
+          layerAId: 'a',
+          layerBId: 'b',
+          jaccardSimilarity: 0.5,
+          areaDeltaSqm: 100,
+        },
+      },
+    };
+
+    const res = state.applyResult({ addGeojson: comparisonCollection });
+    expect(res.ok).toBe(true);
+    expect(global.L.geoJSON).toHaveBeenCalledWith(
+      comparisonCollection,
+      expect.objectContaining({ style: expect.any(Function) })
+    );
+    expect(setStyleCalls).toEqual([
+      {
+        role: 'intersection',
+        style: expect.objectContaining({ color: '#38bdf8', fillColor: '#38bdf8' }),
+      },
+      {
+        role: 'only-in-a',
+        style: expect.objectContaining({ color: '#f59e0b', fillColor: '#f59e0b', dashArray: '5 4' }),
+      },
+      {
+        role: 'only-in-b',
+        style: expect.objectContaining({ color: '#ec4899', fillColor: '#ec4899', dashArray: '2 4' }),
+      },
+    ]);
+  });
 });

@@ -6,6 +6,7 @@
 // mutating the map.
 
 const { createExpressionFromToolHistory } = require('./runtime/spatialExpression');
+const { getComparisonFeatureStyle } = require('./ui/selection-style');
 
 const _registry = new Map(); // stableId -> leaflet layer
 let _layerRemoveListenerAttached = false;
@@ -987,6 +988,16 @@ function coalesceAdditions(addGeojson) {
   return addGeojson;
 }
 
+function hasComparisonFeatures(gj) {
+  if (!gj || typeof gj !== 'object') return false;
+  if (gj.toolMetadata?.comparison) return true;
+  if (gj.type === 'Feature') return Boolean(getComparisonFeatureStyle(gj));
+  if (gj.type === 'FeatureCollection' && Array.isArray(gj.features)) {
+    return gj.features.some((feature) => Boolean(getComparisonFeatureStyle(feature)));
+  }
+  return false;
+}
+
 // { addGeojson?: Feature|FeatureCollection|Array<Feature|FeatureCollection>, removeLayerIds?: string[] }
 function applyResult(toolResult) {
   ensureLayerRemoveListener();
@@ -1011,11 +1022,15 @@ function applyResult(toolResult) {
     try {
       const parentLayer = gj?.toolMetadata?.parentLayerId ? getLayer(gj.toolMetadata.parentLayerId) : null;
       const isCollection = shouldAddAsSingleResultLayer(gj);
+      const isComparisonLayer = hasComparisonFeatures(gj);
+      const geojsonOptions = isComparisonLayer
+        ? { style: (feature) => getComparisonFeatureStyle(feature) || undefined }
+        : undefined;
       let primaryAddedLayerId = null;
 
       if (isCollection) {
         // Add the entire result dataset as a single group layer (one layer in TOC).
-        const groupLayer = L.geoJSON(gj);
+        const groupLayer = geojsonOptions ? L.geoJSON(gj, geojsonOptions) : L.geoJSON(gj);
         const datasetId = ensureDatasetId(groupLayer, gj?.properties?.__datasetId || _uuid());
 
         const id = registerLayer(groupLayer, undefined, datasetId);
@@ -1027,6 +1042,11 @@ function applyResult(toolResult) {
             registerLayer(child, preferredId, datasetId);
             ensureStableId(child, preferredId);
             ensureDatasetId(child, datasetId);
+            const compStyle = getComparisonFeatureStyle(child?.feature);
+            if (compStyle) {
+              child.__comparisonStyle = compStyle;
+              if (typeof child.setStyle === 'function') child.setStyle(compStyle);
+            }
           });
         }
 

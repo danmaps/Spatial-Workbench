@@ -1,6 +1,6 @@
 const { Tool } = require('../models/Tool');
 const { Parameter } = require('../models/Parameter');
-const { listLayers, getActiveLayerId } = require('../state');
+const { listLayers, getActiveLayerId, getLayerSymbology } = require('../state');
 const { buildTargetMetadata, buildToolHistory, getTargetToolHistory, resolveTargetLayerData } = require('./targeting');
 
 const EXPORT_ALL_LAYERS_VALUE = '__all__';
@@ -197,6 +197,14 @@ function extractFeaturesFromGeoJSON(geojson) {
     return [];
 }
 
+function resolveExportSymbology(context, layer, entry, geojson) {
+    const getter = context.getLayerSymbology || getLayerSymbology;
+    const symbology = (typeof getter === 'function' && layer ? getter(layer) : null)
+        || entry?.symbology
+        || geojson?.symbology;
+    return symbology ? deepClone(symbology) : null;
+}
+
 function resolveAllExportableLayers(context = {}) {
     const rawList = (typeof context.listLayers === 'function' ? context.listLayers() : null)
         || (Array.isArray(context?.state?.layers) ? context.state.layers : null)
@@ -234,6 +242,7 @@ function resolveAllExportableLayers(context = {}) {
             name,
             featureCount: features.length,
             features,
+            symbology: resolveExportSymbology(context, layerObj, entry, geojson),
             toolMetadata: geojson.toolMetadata ? deepClone(geojson.toolMetadata) : null,
             toolHistory: history,
         });
@@ -322,6 +331,7 @@ class ExportTool extends Tool {
                     id: layer.id,
                     name: layer.name,
                     featureCount: layer.featureCount,
+                    ...(layer.symbology ? { symbology: layer.symbology } : {}),
                     ...(layer.toolMetadata ? { toolMetadata: layer.toolMetadata } : {}),
                     ...(layer.toolHistory?.length ? { toolHistory: layer.toolHistory } : {}),
                 }));
@@ -376,6 +386,8 @@ class ExportTool extends Tool {
 
         if (formatKey === 'geojson') {
             const exportedGeoJSON = addExportMetadata(target.targetGeoJSON, target, params, this.name);
+            const symbology = resolveExportSymbology(context, target.layer, null, target.sourceGeoJSON);
+            if (symbology) exportedGeoJSON.symbology = symbology;
             dataString = JSON.stringify(exportedGeoJSON);
         } else if (formatKey === 'csv') {
             dataString = featuresToCsv(features);

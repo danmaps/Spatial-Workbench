@@ -86,6 +86,7 @@ Agents should be able to discover a tool, understand its input schema, run it, i
 - Upload external data (GeoJSON, CSV, XLSX with coordinates)
 - See post-import summaries and coordinate warnings after Add Data ingest
 - Zoom to individual layers or the current layer selection from the Contents pane
+- Style a layer from its menu with a single symbol, categorical colors, or a graduated numeric ramp; reset to restore automatic styling
 - Open on-demand layer properties for metadata, source, geometry, and tool history
 - Generate geometry using AI prompts
 - Inspect tool parameters and outputs directly

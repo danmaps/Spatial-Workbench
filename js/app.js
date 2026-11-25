@@ -11,9 +11,13 @@ const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-dra
 const {
     MAP_INTERACTION_MODES,
     normalizeMapInteractionMode,
+    shouldOpenPopupForMapInteractionMode,
     shouldSelectForMapInteractionMode,
 } = require('./ui/map-interaction-mode');
 const { stopLeafletClickPropagation } = require('./ui/leaflet-click');
+const { createStyleLegend, openLayerStyleEditor, closeLayerStyleEditor } = require('./ui/layer-style-editor');
+const { createDrawStyleGuard } = require('./ui/draw-style-guard');
+const { createClearFeatureSelectionButton } = require('./ui/clear-feature-selection');
 const {
     getComparisonSummaryMeta,
     getGroupSummaryMeta,
@@ -81,6 +85,13 @@ let drawControl = new L.Control.Draw({
     },
 });
 map.addControl(drawControl);
+const drawStyleGuard = createDrawStyleGuard({
+    map,
+    state,
+    getLayers: () => tocLayers,
+    closeEditor: closeLayerStyleEditor,
+    refresh: () => refreshSidebarState(),
+});
 
 function getLayerHistorySummary(layer) {
     const info = state.getLayerInfo(layer);
@@ -1326,11 +1337,20 @@ function renderToc() {
         textWrap.appendChild(title);
         textWrap.appendChild(meta);
         textWrap.appendChild(badges);
+        if (state.getSelectedFeatureIds(stableId).length) {
+            textWrap.appendChild(createClearFeatureSelectionButton(stableId, state, refreshSidebarState));
+        }
+
+        const symbology = state.getLayerSymbology(layer);
+        const styleLegend = symbology && createStyleLegend(
+            symbology, drawStyleGuard.getDomain(layer, symbology, info?.geojson), info?.geometry?.type || info?.geometryType
+        );
+        if (styleLegend) textWrap.appendChild(styleLegend);
 
         if (comparisonMeta) {
             const legendBar = document.createElement('div');
             legendBar.className = 'layer-comparison-legend';
-            legendBar.setAttribute('aria-label', 'Comparison diff legend');
+            legendBar.setAttribute('aria-label', symbology ? 'Comparison selection controls' : 'Comparison diff legend');
 
             comparisonMeta.legendItems.forEach((legendItem) => {
                 const pill = document.createElement('button');
@@ -1338,7 +1358,15 @@ function renderToc() {
                 pill.className = `comparison-legend-pill ${legendItem.present ? '' : 'is-empty'}`.trim();
                 pill.dataset.comparisonRole = legendItem.role;
                 pill.title = `${legendItem.label}: ${legendItem.areaSqm.toLocaleString()} m² (click to isolate)`;
-                pill.innerHTML = `<span class="comparison-swatch" style="background:${escapeHtml(legendItem.color)}"></span><span>${escapeHtml(legendItem.shortLabel)}</span>`;
+                if (!symbology) {
+                    const swatch = document.createElement('span');
+                    swatch.className = 'comparison-swatch';
+                    swatch.style.backgroundColor = legendItem.color;
+                    pill.appendChild(swatch);
+                }
+                const label = document.createElement('span');
+                label.textContent = legendItem.shortLabel;
+                pill.appendChild(label);
                 pill.addEventListener('click', (event) => {
                     event.stopPropagation();
                     selectComparisonRoleFeatures(layer, legendItem.role);
@@ -1355,7 +1383,7 @@ function renderToc() {
         } else if (groupMeta && groupMeta.legendItems.length) {
             const legendBar = document.createElement('div');
             legendBar.className = 'layer-comparison-legend';
-            legendBar.setAttribute('aria-label', 'Group symbology legend');
+            legendBar.setAttribute('aria-label', symbology ? 'Group selection controls' : 'Group symbology legend');
 
             groupMeta.legendItems.forEach((item) => {
                 const pill = document.createElement('button');
@@ -1363,7 +1391,15 @@ function renderToc() {
                 pill.className = 'comparison-legend-pill';
                 pill.dataset.groupId = item.groupId;
                 pill.title = `${item.label}: ${item.featureCount} feature(s) (click to isolate)`;
-                pill.innerHTML = `<span class="comparison-swatch" style="background:${escapeHtml(item.color)}"></span><span>${escapeHtml(item.label)} (${item.featureCount})</span>`;
+                if (!symbology) {
+                    const swatch = document.createElement('span');
+                    swatch.className = 'comparison-swatch';
+                    swatch.style.backgroundColor = item.color;
+                    pill.appendChild(swatch);
+                }
+                const label = document.createElement('span');
+                label.textContent = `${item.label} (${item.featureCount})`;
+                pill.appendChild(label);
                 pill.addEventListener('click', (event) => {
                     event.stopPropagation();
                     selectGroupFeatures(layer, item.groupId);
@@ -1410,9 +1446,9 @@ function renderToc() {
         const metaSection = document.createElement('div');
         metaSection.className = 'layer-menu-section layer-menu-details';
         metaSection.innerHTML = `
-            <div class="layer-menu-label">${info?.geometry?.label || getGeometryLabel(info?.geometryType)} · ${sourceBadge.label}</div>
-            <div class="layer-menu-meta">${history.length ? history.join(' → ') : (info?.geometry?.type || info?.geometryType || 'Layer')}</div>
-            <div class="layer-menu-id">${stableId}</div>
+            <div class="layer-menu-label">${escapeHtml(info?.geometry?.label || getGeometryLabel(info?.geometryType))} · ${escapeHtml(sourceBadge.label)}</div>
+            <div class="layer-menu-meta">${escapeHtml(history.length ? history.join(' → ') : (info?.geometry?.type || info?.geometryType || 'Layer'))}</div>
+            <div class="layer-menu-id">${escapeHtml(stableId)}</div>
         `;
 
         const actionList = document.createElement('div');
@@ -1425,6 +1461,22 @@ function renderToc() {
             closeLayerMenu();
             beginRenameLayer(layer, title);
         }));
+        const styleAction = createActionButton('fas fa-palette', 'Style layer', () => {
+            if (drawStyleGuard.isEditing()) return;
+            closeLayerMenu();
+            openLayerStyleEditor({
+                layer,
+                layerName: getLayerLabel(layer, info?.label),
+                state,
+                onChange: () => {
+                    bindAllLayerSelectionInteractions();
+                    refreshSidebarState();
+                },
+            });
+        });
+        styleAction.disabled = drawStyleGuard.isEditing();
+        if (styleAction.disabled) styleAction.title = 'Finish editing geometries before changing layer style';
+        actionList.appendChild(styleAction);
         actionList.appendChild(createActionButton('fas fa-table', 'View attributes', () => {
             closeLayerMenu();
             state.setActiveLayerId(stableId);

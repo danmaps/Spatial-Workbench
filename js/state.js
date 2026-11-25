@@ -7,8 +7,12 @@
 
 const { createExpressionFromToolHistory } = require('./runtime/spatialExpression');
 const { getFeatureSymbologyStyle } = require('./ui/selection-style');
+const { validateSymbology, getSymbologyDomain, createSymbologyResolver } = require('./ui/layer-symbology');
 
 const _registry = new Map(); // stableId -> leaflet layer
+const _layerSymbology = new WeakMap();
+const _originalVisuals = new WeakMap();
+const _symbologyCache = new WeakMap();
 let _layerRemoveListenerAttached = false;
 
 const _selectionState = {
@@ -370,6 +374,124 @@ function unregisterLayer(layerOrId) {
 
 function getLayer(id) {
   return _registry.get(id) || null;
+}
+
+function symbologyLayer(layerOrId) {
+  return typeof layerOrId === 'string' ? getLayer(layerOrId) : layerOrId;
+}
+
+function visitVisualLayers(layer, callback, inheritedFeature) {
+  if (!layer) return;
+  const isGroup = typeof layer.eachLayer === 'function';
+  const feature = layer.feature && (!isGroup || layer.feature.geometry) ? layer.feature : inheritedFeature;
+  if (isGroup) {
+    layer.eachLayer((child) => visitVisualLayers(child, callback, feature));
+  } else if (feature) {
+    callback(layer, feature);
+  }
+}
+
+function rememberVisual(layer) {
+  if (_originalVisuals.has(layer)) return;
+  const options = layer.options || {};
+  const style = {};
+  ['color', 'fillColor', 'opacity', 'fillOpacity', 'weight', 'dashArray'].forEach((key) => {
+    if (options[key] !== undefined) style[key] = options[key];
+  });
+  if (!Object.prototype.hasOwnProperty.call(style, 'dashArray')) style.dashArray = null;
+  _originalVisuals.set(layer, {
+    style,
+    icon: options.icon,
+    opacity: options.opacity,
+    radius: typeof layer.getRadius === 'function' ? layer.getRadius() : undefined,
+    symbologyStyle: layer.__symbologyStyle,
+  });
+}
+
+function paintSymbology(layer, spec, domain) {
+  const resolve = createSymbologyResolver(spec, domain);
+  visitVisualLayers(layer, (visual, feature) => {
+    rememberVisual(visual);
+    const style = resolve(feature);
+    if (typeof visual.setStyle === 'function') {
+      visual.setStyle({ color: style.color, fillColor: style.fillColor, opacity: style.opacity, fillOpacity: style.fillOpacity, weight: style.weight, dashArray: null });
+      if (typeof L !== 'undefined' && typeof L.CircleMarker === 'function'
+        && visual instanceof L.CircleMarker && !(typeof L.Circle === 'function' && visual instanceof L.Circle)) {
+        visual.setRadius(style.radius);
+      }
+      visual.__symbologyStyle = style;
+    } else if (typeof visual.setIcon === 'function' && typeof L !== 'undefined' && typeof L.divIcon === 'function') {
+      // Retain the marker itself so dragging, popups and click handlers survive.
+      const size = 2 * (style.radius + style.weight / 2);
+      const center = size / 2;
+      visual.setIcon(L.divIcon({
+        className: 'layer-symbology-marker',
+        html: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${center}" cy="${center}" r="${style.radius}" fill="${style.fillColor}" fill-opacity="${style.fillOpacity}" stroke="${style.color}" stroke-opacity="${style.opacity}" stroke-width="${style.weight}"/></svg>`,
+        iconSize: [size, size],
+        iconAnchor: [center, center],
+      }));
+      if (typeof visual.setOpacity === 'function') visual.setOpacity(1);
+    }
+  });
+}
+
+function getLayerSymbology(layerOrId) {
+  const layer = symbologyLayer(layerOrId);
+  const spec = layer && _layerSymbology.get(layer);
+  return spec ? { ...spec, paint: { ...spec.paint } } : null;
+}
+
+function getLayerSymbologyDomain(layerOrId) {
+  const layer = symbologyLayer(layerOrId);
+  const spec = layer && _layerSymbology.get(layer);
+  if (!spec) return { fallbackUsed: false };
+  const geojson = typeof layer.toGeoJSON === 'function' ? layer.toGeoJSON() : layer.feature;
+  const signature = JSON.stringify(geojson);
+  const visuals = [];
+  visitVisualLayers(layer, (visual) => visuals.push(visual));
+  const cached = _symbologyCache.get(layer);
+  if (cached && cached.signature === signature && cached.visuals.length === visuals.length
+    && visuals.every((visual, index) => visual === cached.visuals[index])) {
+    return JSON.parse(JSON.stringify(cached.domain));
+  }
+  const domain = getSymbologyDomain(geojson, spec);
+  paintSymbology(layer, spec, domain);
+  _symbologyCache.set(layer, { signature, visuals, domain });
+  return JSON.parse(JSON.stringify(domain));
+}
+
+function setLayerSymbology(layerOrId, inputSpec) {
+  const layer = symbologyLayer(layerOrId);
+  if (!layer || typeof layer !== 'object') throw new TypeError('Layer not found');
+  const spec = validateSymbology(inputSpec);
+  _layerSymbology.set(layer, spec);
+  _symbologyCache.delete(layer);
+  getLayerSymbologyDomain(layer);
+  return { ...spec, paint: { ...spec.paint } };
+}
+
+function resetLayerSymbology(layerOrId) {
+  const layer = symbologyLayer(layerOrId);
+  if (!layer) return null;
+  visitVisualLayers(layer, (visual) => {
+    const original = _originalVisuals.get(visual);
+    if (!original) return;
+    if (typeof visual.setStyle === 'function') {
+      visual.setStyle(original.style);
+      if (typeof L !== 'undefined' && typeof L.CircleMarker === 'function'
+        && visual instanceof L.CircleMarker && !(typeof L.Circle === 'function' && visual instanceof L.Circle)
+        && original.radius !== undefined) visual.setRadius(original.radius);
+      if (original.symbologyStyle === undefined) delete visual.__symbologyStyle;
+      else visual.__symbologyStyle = original.symbologyStyle;
+    } else if (typeof visual.setIcon === 'function' && original.icon) {
+      visual.setIcon(original.icon);
+      if (typeof visual.setOpacity === 'function' && original.opacity !== undefined) visual.setOpacity(original.opacity);
+    }
+    _originalVisuals.delete(visual);
+  });
+  _layerSymbology.delete(layer);
+  _symbologyCache.delete(layer);
+  return null;
 }
 
 function getLayersByDatasetId(datasetId) {
@@ -1134,6 +1256,10 @@ module.exports = {
   ensureToolHistory,
   registerLayer,
   getLayer,
+  getLayerSymbology,
+  setLayerSymbology,
+  resetLayerSymbology,
+  getLayerSymbologyDomain,
   getLayersByDatasetId,
   getLayerInfo,
   getLayerBounds,

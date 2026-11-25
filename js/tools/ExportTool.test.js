@@ -1,7 +1,18 @@
 const mockListLayers = jest.fn(() => []);
+const mockGetLayerSymbology = jest.fn(() => null);
+const makeSymbology = (mode, field, color, opacity = 1) => ({
+  version: 'swb.style.v1',
+  mode,
+  field,
+  palette: 'default',
+  ramp: 'blue',
+  fallbackColor: '#3388ff',
+  paint: { fillColor: color, color, fillOpacity: opacity, opacity, weight: 2, radius: 6 },
+});
 
 jest.mock('../state', () => ({
   listLayers: (...args) => mockListLayers(...args),
+  getLayerSymbology: (...args) => mockGetLayerSymbology(...args),
 }));
 
 describe('ExportTool', () => {
@@ -10,6 +21,7 @@ describe('ExportTool', () => {
   beforeEach(() => {
     jest.resetModules();
     mockListLayers.mockClear();
+    mockGetLayerSymbology.mockReset().mockReturnValue(null);
 
     document.body.innerHTML = `
       <div id="toolSelection" style="display:block"></div>
@@ -24,12 +36,15 @@ describe('ExportTool', () => {
   });
 
   test('exports only selected features when a relevant layer selection exists', async () => {
+    const symbology = makeSymbology('categorical', 'category', '#3388ff');
+    mockGetLayerSymbology.mockReturnValue(symbology);
     const sourceGeoJSON = {
       type: 'FeatureCollection',
       features: [
         { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'feature-1' } },
-        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __id: 'feature-2' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __id: 'feature-2', category: 'station' } },
       ],
+      toolHistory: [{ name: 'Import', timestamp: '2026-08-28T01:00:00.000Z' }],
     };
 
     const tool = new ExportTool();
@@ -51,8 +66,9 @@ describe('ExportTool', () => {
     expect(exportedGeoJSON).toEqual({
       type: 'FeatureCollection',
       features: [
-        expect.objectContaining({ properties: expect.objectContaining({ __id: 'feature-2' }) }),
+        expect.objectContaining({ properties: { __id: 'feature-2', category: 'station' } }),
       ],
+      symbology,
       toolMetadata: expect.objectContaining({
         name: 'Export',
         parentLayerId: 'input-1',
@@ -66,6 +82,7 @@ describe('ExportTool', () => {
         timestamp: expect.any(String),
       }),
       toolHistory: [
+        { name: 'Import', timestamp: '2026-08-28T01:00:00.000Z' },
         expect.objectContaining({
           name: 'Export',
           parentLayerId: 'input-1',
@@ -73,6 +90,9 @@ describe('ExportTool', () => {
         }),
       ],
     });
+    expect(exportedGeoJSON.features[0]).not.toHaveProperty('symbology');
+    expect(exportedGeoJSON.features[0].properties).not.toHaveProperty('symbology');
+    expect(sourceGeoJSON).not.toHaveProperty('symbology');
     expect(result.download.filename).toBe('input-1-selection.geojson');
     expect(tool.getStatus()).toEqual(expect.objectContaining({
       code: 0,
@@ -81,6 +101,8 @@ describe('ExportTool', () => {
   });
 
   test('falls back to exporting the whole layer when no relevant selection exists', async () => {
+    const symbology = makeSymbology('single', '', '#ff0000');
+    mockGetLayerSymbology.mockReturnValue(symbology);
     const sourceGeoJSON = {
       type: 'FeatureCollection',
       features: [
@@ -109,6 +131,7 @@ describe('ExportTool', () => {
 
     expect(JSON.parse(result.download.data)).toEqual({
       ...sourceGeoJSON,
+      symbology,
       toolMetadata: expect.objectContaining({
         name: 'Export',
         parentLayerId: 'input-1',
@@ -142,6 +165,8 @@ describe('ExportTool', () => {
   });
 
   test('exports all layers into a combined FeatureCollection with per-layer provenance when Layer is __all__', async () => {
+    const pointSymbology = makeSymbology('single', '', '#ff0000');
+    const polygonSymbology = makeSymbology('graduated', 'value', '#3388ff', 0.6);
     const layerOneGeoJSON = {
       type: 'FeatureCollection',
       features: [
@@ -152,7 +177,7 @@ describe('ExportTool', () => {
     const layerTwoGeoJSON = {
       type: 'FeatureCollection',
       features: [
-        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] }, properties: { __id: 'buf-1' } },
+        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] }, properties: { __id: 'buf-1', value: 42 } },
       ],
       toolMetadata: { name: 'Buffer', parentLayerId: 'layer-1' },
       toolHistory: [
@@ -165,6 +190,7 @@ describe('ExportTool', () => {
       'layer-1': { toGeoJSON: () => layerOneGeoJSON },
       'layer-2': { toGeoJSON: () => layerTwoGeoJSON },
     };
+    mockGetLayerSymbology.mockImplementation((layer) => layer === layersById['layer-1'] ? pointSymbology : polygonSymbology);
 
     const tool = new ExportTool();
     const result = await tool.run(
@@ -194,6 +220,7 @@ describe('ExportTool', () => {
     expect(exported.features[0].properties).toEqual(
       expect.objectContaining({
         __id: 'pt-1',
+        name: 'Origin',
         __layerId: 'layer-1',
         __layerName: 'Origin Points',
       })
@@ -201,14 +228,22 @@ describe('ExportTool', () => {
     expect(exported.features[1].properties).toEqual(
       expect.objectContaining({
         __id: 'buf-1',
+        value: 42,
         __layerId: 'layer-2',
         __layerName: 'Buffered Origin',
       })
     );
     expect(exported.layers).toEqual([
-      expect.objectContaining({ id: 'layer-1', name: 'Origin Points', featureCount: 1 }),
-      expect.objectContaining({ id: 'layer-2', name: 'Buffered Origin', featureCount: 1 }),
+      expect.objectContaining({ id: 'layer-1', name: 'Origin Points', featureCount: 1, symbology: pointSymbology, toolHistory: layerOneGeoJSON.toolHistory }),
+      expect.objectContaining({ id: 'layer-2', name: 'Buffered Origin', featureCount: 1, symbology: polygonSymbology, toolMetadata: layerTwoGeoJSON.toolMetadata, toolHistory: layerTwoGeoJSON.toolHistory }),
     ]);
+    expect(exported).not.toHaveProperty('symbology');
+    expect(mockGetLayerSymbology).toHaveBeenCalledWith(layersById['layer-1']);
+    expect(mockGetLayerSymbology).toHaveBeenCalledWith(layersById['layer-2']);
+    exported.features.forEach((feature) => {
+      expect(feature).not.toHaveProperty('symbology');
+      expect(feature.properties).not.toHaveProperty('symbology');
+    });
     expect(exported.toolMetadata).toEqual(
       expect.objectContaining({
         name: 'Export',
@@ -220,6 +255,31 @@ describe('ExportTool', () => {
         }),
       })
     );
+  });
+
+  test('preserves GeoJSON symbology when exporting a selection without an explicit layer style', async () => {
+    const symbology = makeSymbology('single', '', '#123456');
+    const sourceGeoJSON = {
+      type: 'FeatureCollection',
+      symbology,
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { __id: 'one', name: 'First' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [1, 1] }, properties: { __id: 'two', name: 'Second' } },
+      ],
+    };
+    const tool = new ExportTool();
+    const result = await tool.run(
+      { Layer: 'input-1', Format: 'GeoJSON' },
+      {
+        getLayer: () => ({ toGeoJSON: () => sourceGeoJSON }),
+        state: { selection: { selectedFeaturesByLayerId: { 'input-1': ['two'] } } },
+      }
+    );
+    const exported = JSON.parse(result.download.data);
+    expect(exported.symbology).toEqual(symbology);
+    expect(exported.features).toEqual([
+      expect.objectContaining({ properties: { __id: 'two', name: 'Second' } }),
+    ]);
   });
 
   test('renderUI includes an All layers option when layers exist', () => {

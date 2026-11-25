@@ -244,3 +244,25 @@ const replayResult = await replayToolHistory({
   execute: ({ tool, params, state }) => runHeadlessTool({ tool, params, state }),
 });
 ```
+
+---
+
+## Profile 6: Declarative Layer Symbology (`swb.style.v1`) & Interactive TOC Legends
+
+### The Vision & Purpose
+Spatial results only become truly legible when their attributes are visually encoded on the map. At the same time, GIS styling should stay lightweight, inspectable, and portable—avoiding bloated desktop style dialogs while still covering the three core workflows: uniform single-symbol styling, categorical coloring by attribute (e.g., `groupId`, `zone`), and graduated numeric color ramps (e.g., `join_match_count`, `areaSqm`).
+
+### Implementation Highlights
+* **Pure, Leaflet-Free Style Engine (`js/ui/layer-symbology.js`):**
+  * Validates declarative `swb.style.v1` JSON specs (`validateSymbology()`), computes shared data domains (`getSymbologyDomain()`), and resolves per-feature paint styles (`createSymbologyResolver()`) without touching Leaflet or the DOM.
+  * Guarantees deterministic categorical color assignment regardless of feature order or selection, and handles numeric edge cases cleanly (`0`, constant fields mapped to ramp midpoint, and `null`/non-numeric fallback).
+* **In-Place Leaflet Styling & Edit Safety (`js/state.js`, `js/ui/draw-style-guard.js`):**
+  * `setLayerSymbology()`, `getLayerSymbology()`, `getLayerSymbologyDomain()`, and `resetLayerSymbology()` manage per-layer styles cleanly across points (`L.Marker` styled via `L.divIcon` SVG circles + `L.CircleMarker`), lines, polygons, and mixed-geometry collections.
+  * `createDrawStyleGuard()` disables style editing during Leaflet Draw geometry edits and re-applies styles automatically on `draw:editstop`.
+* **Automatic Tool Symbology & Interactive Legends (`js/ui/selection-style.js`, `js/ui/layer-style-editor.js`, `js/app.js`):**
+  * `CompareTool` outputs automatically style `intersection` (cyan), `only-in-a` (amber), and `only-in-b` (magenta), and `GroupTool` outputs automatically color features by `groupId` with clickable TOC swatch pills to isolate individual components or groups.
+  * Opening **Style layer** from any layer's TOC `⋯` menu lets users apply Single, Categorical, or Graduated styles or click **Reset to automatic** to restore default visuals.
+* **Portable GeoJSON Exports (`js/tools/ExportTool.js`):**
+  * Single-layer and selection GeoJSON exports include a top-level `symbology` member; `"All layers"` (`__all__`) exports attach each styled layer's spec to its entry in `layers[]`.
+
+See [docs/layer-symbology.md](layer-symbology.md) for the full `swb.style.v1` specification and API reference.

@@ -96,9 +96,19 @@ Current menu contents:
 
 - **Zoom to layer**
 - **Rename layer**
+- **Style layer** (opens the declarative `swb.style.v1` style editor; disabled while Leaflet Draw geometry editing is active)
 - **View attributes**
 - **Layer properties**
+- **Replay recipe on active layer** (shown on derived layers with executable `toolHistory`)
 - **Remove layer**
+
+## Inline legends and feature selection controls
+
+When relevant, TOC rows also render compact inline controls beneath the layer badges:
+
+- **Clear selection** button (`js/ui/clear-feature-selection.js`) when one or more features are selected on that layer.
+- **Declarative style legend** (`js/ui/layer-style-editor.js`) when a custom `swb.style.v1` style is applied (showing category swatches, a graduated numeric range bar, or a single-symbol swatch plus a fallback entry when used).
+- **Comparison diff & Group legends** (`js/ui/selection-style.js`, `js/app.js`) for `CompareTool` (`A ∩ B`, `A - B`, `B - A`) and `GroupTool` (`group-1`, `group-2`, `Ungrouped`) outputs, with clickable pills to isolate individual components or groups on the map.
 
 ## Parent-child result grouping
 

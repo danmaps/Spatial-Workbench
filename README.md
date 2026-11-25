@@ -122,6 +122,7 @@ Tools are defined declaratively using a small model:
 - Visual execution updates the map and GeoJSON state
 - Tool metadata can be attached to outputs
 - Layer identity, geometry, provenance, source, and UI hooks are normalized through a canonical layer model in `js/state.js` (see `docs/layer-model.md`)
+- Declarative layer symbology (`swb.style.v1` — single, categorical, and graduated color ramps) and automatic `CompareTool` / `GroupTool` legends are documented in [`docs/layer-symbology.md`](docs/layer-symbology.md)
 - TOC row behavior, parent-child result grouping, and per-layer actions follow a minimal row + ellipsis-menu model (see `docs/toc-action-model.md`)
 - New tool work should follow the in-repo implementation guide (see `docs/creating-new-tools.md`)
 - The hosted `POST /api/run` endpoint runs inside a bounded, worker-isolated workload envelope (see `docs/hosted-workload-envelope.md`)

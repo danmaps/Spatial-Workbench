@@ -68,6 +68,8 @@ Each logical layer stores at most one optional `symbology` object:
 - **Graduated Ramps (`RAMPS`):**
   - `blue`: `['#eff6ff', '#93c5fd', '#1d4ed8']`
   - `viridis`: `['#440154', '#31688e', '#35b779', '#fde725']`
+  - `amber-rose`: `['#fef3c7', '#f59e0b', '#ec4899', '#9d174d']`
+  - `cyan-blue`: `['#ecfeff', '#38bdf8', '#2563eb', '#1e3a8a']`
 
 ---
 
@@ -94,12 +96,17 @@ Applying an explicit `swb.style.v1` spec via `state.setLayerSymbology()` overrid
 
 ---
 
-## GeoJSON Export Persistence (`ExportTool`)
+## GeoJSON Export & Import Round-Trip (`ExportTool` & `AddDataTool`)
 
 When exporting GeoJSON via `ExportTool`:
 
 - **Single layer or feature selection:** The layer's `symbology` object is written once as a top-level `symbology` property on the exported GeoJSON.
 - **`"All layers"` (`__all__`) export:** Each styled layer's `symbology` object is stored on its corresponding entry in `layers[]`.
+
+When re-importing GeoJSON via `AddDataTool`:
+
+- **Single-layer GeoJSON:** Top-level `symbology` is automatically validated and re-applied via `state.setLayerSymbology()` during `applyResult()` (invalid specs are safely ignored without blocking import).
+- **`"All layers"` (`__all__`) bundles:** `AddDataTool` restores each layer in `layers[]` separately along with its saved `name`, `toolHistory`, and `symbology`.
 
 ---
 

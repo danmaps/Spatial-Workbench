@@ -6,6 +6,8 @@ const PALETTES = Object.freeze({
 const RAMPS = Object.freeze({
   blue: Object.freeze(['#eff6ff', '#93c5fd', '#1d4ed8']),
   viridis: Object.freeze(['#440154', '#31688e', '#35b779', '#fde725']),
+  'amber-rose': Object.freeze(['#fef3c7', '#f59e0b', '#ec4899', '#9d174d']),
+  'cyan-blue': Object.freeze(['#ecfeff', '#38bdf8', '#2563eb', '#1e3a8a']),
 });
 const FALLBACK_COLOR = '#94a3b8';
 const DEFAULTS = Object.freeze({

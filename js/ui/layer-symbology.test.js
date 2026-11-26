@@ -47,3 +47,12 @@ test('graduated domains use finite numbers only and handle constant and empty ra
   expect(getSymbologyDomain(collection([null]), spec)).toEqual({ min: null, max: null, fallbackUsed: true });
   expect(getSymbologyDomain(collection(Array(150000).fill(1)), spec).max).toBe(1);
 });
+
+test('supports dark-basemap amber-rose and cyan-blue graduated ramps (#172)', () => {
+  expect(RAMPS['amber-rose']).toHaveLength(4);
+  expect(RAMPS['cyan-blue']).toHaveLength(4);
+  const amberSpec = validateSymbology({ mode: 'graduated', field: 'value', ramp: 'amber-rose' });
+  const cyanSpec = validateSymbology({ mode: 'graduated', field: 'value', ramp: 'cyan-blue' });
+  expect(resolveSymbology(feature(0), amberSpec, { min: 0, max: 10 }).fillColor).toBe(RAMPS['amber-rose'][0]);
+  expect(resolveSymbology(feature(10), cyanSpec, { min: 0, max: 10 }).fillColor).toBe(RAMPS['cyan-blue'][3]);
+});

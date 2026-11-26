@@ -6,7 +6,7 @@ function getStyleFields(geojson) {
   const numeric = new Set();
   normalizeToFeatures(geojson).forEach((feature) => {
     Object.entries(feature.properties || {}).forEach(([key, value]) => {
-      if (key === '__id' || key === '__datasetId') return;
+      if (key.startsWith('__')) return;
       if (typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) {
         categorical.add(key);
       }

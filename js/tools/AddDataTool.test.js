@@ -115,4 +115,65 @@ describe('AddDataTool', () => {
     expect(button).not.toBeNull();
     expect(button.textContent).toBe('Load Sample Data');
   });
+
+  test('handleGeoJSON preserves top-level symbology and restores per-layer symbology from All layers bundles', async () => {
+    const tool = new AddDataTool();
+    const singleFile = { name: 'styled.geojson' };
+    global.FileReader = class {
+      readAsText() {
+        this.onload({
+          target: {
+            result: JSON.stringify({
+              type: 'FeatureCollection',
+              symbology: { version: 'swb.style.v1', mode: 'single', paint: { fillColor: '#38bdf8' } },
+              features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [-118, 34] }, properties: { name: 'LA' } }],
+            }),
+          },
+        });
+      }
+    };
+
+    await tool.handleGeoJSON(singleFile, { Input: singleFile.name });
+    expect(mockApplyResult.mock.calls[0][0].addGeojson[0].symbology).toEqual(
+      expect.objectContaining({ mode: 'single', paint: { fillColor: '#38bdf8' } })
+    );
+
+    mockApplyResult.mockClear();
+    const bundleFile = { name: 'all-layers.geojson' };
+    global.FileReader = class {
+      readAsText() {
+        this.onload({
+          target: {
+            result: JSON.stringify({
+              type: 'FeatureCollection',
+              layers: [
+                {
+                  id: 'layer-a',
+                  name: 'Sites',
+                  featureCount: 1,
+                  symbology: { version: 'swb.style.v1', mode: 'categorical', field: 'zone' },
+                },
+                {
+                  id: 'layer-b',
+                  name: 'Buffers',
+                  featureCount: 1,
+                  symbology: { version: 'swb.style.v1', mode: 'graduated', field: 'score', ramp: 'amber-rose' },
+                },
+              ],
+              features: [
+                { type: 'Feature', geometry: { type: 'Point', coordinates: [-118, 34] }, properties: { __layerId: 'layer-a', zone: 'north' } },
+                { type: 'Feature', geometry: { type: 'Point', coordinates: [-117, 33] }, properties: { __layerId: 'layer-b', score: 10 } },
+              ],
+            }),
+          },
+        });
+      }
+    };
+
+    await tool.handleGeoJSON(bundleFile, { Input: bundleFile.name });
+    const restored = mockApplyResult.mock.calls[0][0].addGeojson;
+    expect(restored).toHaveLength(2);
+    expect(restored[0].symbology).toEqual(expect.objectContaining({ mode: 'categorical', field: 'zone' }));
+    expect(restored[1].symbology).toEqual(expect.objectContaining({ mode: 'graduated', field: 'score', ramp: 'amber-rose' }));
+  });
 });

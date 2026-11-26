@@ -401,7 +401,7 @@ function rememberVisual(layer) {
   if (!Object.prototype.hasOwnProperty.call(style, 'dashArray')) style.dashArray = null;
   _originalVisuals.set(layer, {
     style,
-    icon: options.icon,
+    icon: typeof layer.getIcon === 'function' ? layer.getIcon() : options.icon,
     opacity: options.opacity,
     radius: typeof layer.getRadius === 'function' ? layer.getRadius() : undefined,
     symbologyStyle: layer.__symbologyStyle,
@@ -1206,6 +1206,15 @@ function applyResult(toolResult) {
         try { groupLayer.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
         try { drawnItems.addLayer(groupLayer); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
 
+        // Restore persisted declarative symbology if present and valid
+        if (gj && gj.symbology) {
+          try {
+            setLayerSymbology(groupLayer, gj.symbology);
+          } catch (e) {
+            if (DEBUG) console.warn('applyResult: ignoring invalid symbology on import', e);
+          }
+        }
+
         // Track in TOC as a single entry
         if (Array.isArray(tocLayers) && !tocLayers.includes(groupLayer)) tocLayers.push(groupLayer);
 
@@ -1232,6 +1241,15 @@ function applyResult(toolResult) {
 
           try { child.addTo(map); } catch (e) { if (DEBUG) console.warn('applyResult: map add failed', e); }
           try { drawnItems.addLayer(child); } catch (e) { if (DEBUG) console.warn('applyResult: drawnItems add failed', e); }
+
+          const incomingSymbology = (gj && gj.symbology) || child?.feature?.symbology || null;
+          if (incomingSymbology) {
+            try {
+              setLayerSymbology(child, incomingSymbology);
+            } catch (e) {
+              if (DEBUG) console.warn('applyResult: ignoring invalid symbology on import', e);
+            }
+          }
 
           if (Array.isArray(tocLayers) && !tocLayers.includes(child)) tocLayers.push(child);
 

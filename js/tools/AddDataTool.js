@@ -166,6 +166,60 @@ class AddDataTool extends Tool {
             reader.onload = (e) => {
                 try {
                     const geojson = JSON.parse(e.target.result);
+                    const isAllLayersBundle = geojson?.type === 'FeatureCollection'
+                        && Array.isArray(geojson.layers)
+                        && geojson.layers.length > 0
+                        && Array.isArray(geojson.features)
+                        && geojson.features.some((feature) => feature?.properties?.__layerId);
+
+                    if (isAllLayersBundle) {
+                        const restoredLayers = geojson.layers
+                            .map((layerSummary) => {
+                                const layerFeatures = geojson.features
+                                    .filter((feature) => feature?.properties?.__layerId === layerSummary.id);
+                                if (!layerFeatures.length) return null;
+                                const collection = {
+                                    type: 'FeatureCollection',
+                                    features: layerFeatures,
+                                    properties: {
+                                        ...(layerSummary.name ? { name: layerSummary.name, displayName: layerSummary.name } : {}),
+                                    },
+                                    ...(layerSummary.symbology ? { symbology: layerSummary.symbology } : {}),
+                                    ...(Array.isArray(layerSummary.toolHistory) ? { toolHistory: layerSummary.toolHistory } : {}),
+                                    toolMetadata: {
+                                        name: this.name,
+                                        params: { ...params, Input: file.name, RestoredLayer: layerSummary.name || layerSummary.id },
+                                        timestamp: new Date().toISOString(),
+                                    },
+                                };
+                                const importSummary = this.buildImportSummary({
+                                    fileName: file.name,
+                                    fileType: 'geojson',
+                                    importedCount: layerFeatures.length,
+                                    skippedCount: 0,
+                                    warnings: [],
+                                });
+                                this.attachImportSummary(collection, importSummary);
+                                return collection;
+                            })
+                            .filter(Boolean);
+
+                        if (restoredLayers.length) {
+                            const totalImported = restoredLayers.reduce((sum, layer) => sum + layer.features.length, 0);
+                            const res = this.addToMap(restoredLayers);
+                            const importSummary = this.buildImportSummary({
+                                fileName: file.name,
+                                fileType: 'geojson',
+                                importedCount: totalImported,
+                                skippedCount: 0,
+                                warnings: [],
+                            });
+                            this.setStatus(0, `Imported ${restoredLayers.length} layer(s) (${totalImported} feature(s)) from ${file.name}.`);
+                            resolve({ ...res, importSummary });
+                            return;
+                        }
+                    }
+
                     const featureCount = geojson.type === 'FeatureCollection'
                         ? (geojson.features || []).length
                         : 1;

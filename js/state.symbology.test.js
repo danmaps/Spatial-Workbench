@@ -120,4 +120,38 @@ describe('layer symbology rendering', () => {
     expect(comparison.options.color).toBe(compareStyle.color);
     expect(state.getSelectedFeatureIds('imported')).toEqual(['multi', 'comparison']);
   });
+
+  test('applyResult restores valid symbology on GeoJSON import and safely ignores invalid specs', () => {
+    const validGeojson = {
+      type: 'FeatureCollection',
+      symbology: {
+        version: 'swb.style.v1',
+        mode: 'categorical',
+        field: 'zone',
+        palette: 'default',
+      },
+      features: [
+        { type: 'Feature', properties: { __id: 'z-1', zone: 'north' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] } },
+        { type: 'Feature', properties: { __id: 'z-2', zone: 'south' }, geometry: { type: 'Polygon', coordinates: [[[2, 0], [3, 0], [3, 1], [2, 0]]] } },
+      ],
+    };
+
+    const resValid = state.applyResult({ addGeojson: validGeojson });
+    expect(resValid.ok).toBe(true);
+    const addedId = resValid.added[0];
+    expect(state.getLayerSymbology(addedId)).toEqual(
+      expect.objectContaining({ mode: 'categorical', field: 'zone', palette: 'default' })
+    );
+
+    const invalidGeojson = {
+      type: 'FeatureCollection',
+      symbology: { version: 'bad.v99', mode: 'unknown' },
+      features: [
+        { type: 'Feature', properties: { __id: 'x-1', zone: 'west' }, geometry: { type: 'Point', coordinates: [0, 0] } },
+      ],
+    };
+    const resInvalid = state.applyResult({ addGeojson: invalidGeojson });
+    expect(resInvalid.ok).toBe(true);
+    expect(state.getLayerSymbology(resInvalid.added[0])).toBeNull();
+  });
 });

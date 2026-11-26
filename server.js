@@ -497,6 +497,10 @@ app.get(['/agent-ui-demo', '/agent-ui-demo/'], (_req, res) => {
   res.sendFile('agent-ui-demo.html', { root: __dirname });
 });
 
+app.get(['/tool-docs', '/tool-docs/'], (_req, res) => {
+  res.sendFile('tool-docs/index.html', { root: __dirname });
+});
+
 app.get('/api/agent-ui/catalog', (_req, res) => {
   res.json({
     ok: true,

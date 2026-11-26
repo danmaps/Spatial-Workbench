@@ -139,12 +139,16 @@ body, html {
     padding-top: 10px;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
 }
 
-.toc-github-link {
+.toc-footer-link {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     color: var(--text-secondary);
     font-size: 12px;
     text-decoration: none;
@@ -152,8 +156,8 @@ body, html {
     transition: opacity 0.15s ease, color 0.15s ease;
 }
 
-.toc-github-link:hover,
-.toc-github-link:focus-visible {
+.toc-footer-link:hover,
+.toc-footer-link:focus-visible {
     color: var(--text-primary);
     opacity: 1;
     text-decoration: none;

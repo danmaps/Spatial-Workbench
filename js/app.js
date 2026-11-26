@@ -11,6 +11,7 @@ const { initializeDesktopAttributeDrawer } = require('./ui/desktop-attribute-dra
 const {
     MAP_INTERACTION_MODES,
     normalizeMapInteractionMode,
+    shouldOpenPopupForMapInteractionMode,
     shouldSelectForMapInteractionMode,
 } = require('./ui/map-interaction-mode');
 const { stopLeafletClickPropagation } = require('./ui/leaflet-click');

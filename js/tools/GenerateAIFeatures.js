@@ -14,6 +14,13 @@ class GenerateAIFeatures extends Tool {
         super("Generate AI Features", [
             new Parameter("Prompt","The prompt to generate AI features","text","", null, null, null, true)  
         ]);
+        this.description = "Generates GeoJSON map features from a natural-language prompt using the AI provider and model configured in Settings.";
+        this.notes = [
+            "Model selection follows your saved Settings panel configuration (stored in localStorage under SWB_AI_PROVIDER and SWB_AI_MODEL).",
+            "If you specify a custom Model in Settings, Generate AI Features uses that exact model.",
+            "If no custom Model is set, it falls back to the active provider's default model: OpenRouter (default provider) -> openai/gpt-4o, OpenAI -> gpt-4o, Built-in AI (Ollama) -> qwen2.5-coder:1.5b (or the local model selected in Settings).",
+            "OpenRouter and OpenAI use your client-side API key (SWB_API_KEY) when provided, or the server's configured key if enabled; Built-in AI (Ollama) requires no API key.",
+        ];
     }
 
     _getApiBase() {

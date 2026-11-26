@@ -61,6 +61,7 @@ class Tool {
             headlessSupported: !!this.headlessSupported,
             parameters: params,
             execution: this.execution || { stateMode: 'browser', inputs: [], outputs: [], mutatesState: false, producesArtifacts: false },
+            ...(Array.isArray(this.notes) && this.notes.length ? { notes: this.notes } : {}),
         };
     }
 

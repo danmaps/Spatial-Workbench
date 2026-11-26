@@ -19,7 +19,7 @@
     <header class="tool-docs-header">
       <div class="tool-docs-kicker">Tool reference</div>
       <h1>Generate AI Features</h1>
-      <p class="tool-docs-description">No description is available for this tool yet.</p>
+      <p class="tool-docs-description">Generates GeoJSON map features from a natural-language prompt using the AI provider and model configured in Settings.</p>
       <div class="tool-docs-meta-grid">
         <div class="tool-docs-meta-card">
           <div class="tool-docs-meta-label">Key</div>
@@ -53,6 +53,11 @@
       </table>
     </section>
 
+    <section class="tool-docs-section">
+      <div class="tool-docs-section-label">Model &amp; Runtime Notes</div>
+      <ul><li>Model selection follows your saved Settings panel configuration (stored in localStorage under SWB_AI_PROVIDER and SWB_AI_MODEL).</li><li>If you specify a custom Model in Settings, Generate AI Features uses that exact model.</li><li>If no custom Model is set, it falls back to the active provider&#39;s default model: OpenRouter (default provider) -&gt; openai/gpt-4o, OpenAI -&gt; gpt-4o, Built-in AI (Ollama) -&gt; qwen2.5-coder:1.5b (or the local model selected in Settings).</li><li>OpenRouter and OpenAI use your client-side API key (SWB_API_KEY) when provided, or the server&#39;s configured key if enabled; Built-in AI (Ollama) requires no API key.</li></ul>
+    </section>
+
     <section class="tool-docs-section"><div class="tool-docs-section-label">Inputs / Outputs / State behavior</div><p><strong>State mode:</strong> browser · <strong>Mutates state:</strong> no · <strong>Produces artifacts:</strong> no</p><div><strong>Inputs</strong><ul><li class="tool-docs-muted">None declared.</li></ul></div><div><strong>Outputs</strong><ul><li class="tool-docs-muted">None declared.</li></ul></div></section>
 
     <section class="tool-docs-section">
@@ -60,7 +65,7 @@
       <pre class="tool-docs-code"><code>{
   &quot;key&quot;: &quot;GenerateAIFeatures&quot;,
   &quot;name&quot;: &quot;Generate AI Features&quot;,
-  &quot;description&quot;: &quot;&quot;,
+  &quot;description&quot;: &quot;Generates GeoJSON map features from a natural-language prompt using the AI provider and model configured in Settings.&quot;,
   &quot;headlessSupported&quot;: false,
   &quot;parameters&quot;: [
     {
@@ -77,7 +82,13 @@
     &quot;outputs&quot;: [],
     &quot;mutatesState&quot;: false,
     &quot;producesArtifacts&quot;: false
-  }
+  },
+  &quot;notes&quot;: [
+    &quot;Model selection follows your saved Settings panel configuration (stored in localStorage under SWB_AI_PROVIDER and SWB_AI_MODEL).&quot;,
+    &quot;If you specify a custom Model in Settings, Generate AI Features uses that exact model.&quot;,
+    &quot;If no custom Model is set, it falls back to the active provider&#39;s default model: OpenRouter (default provider) -&gt; openai/gpt-4o, OpenAI -&gt; gpt-4o, Built-in AI (Ollama) -&gt; qwen2.5-coder:1.5b (or the local model selected in Settings).&quot;,
+    &quot;OpenRouter and OpenAI use your client-side API key (SWB_API_KEY) when provided, or the server&#39;s configured key if enabled; Built-in AI (Ollama) requires no API key.&quot;
+  ]
 }</code></pre>
     </section>
     </main>

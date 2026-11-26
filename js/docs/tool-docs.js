@@ -91,6 +91,14 @@ function renderLayout({ title, content, specs = [], currentKey = null }) {
 </html>`;
 }
 
+function renderNotesSection(notes = []) {
+  if (!Array.isArray(notes) || notes.length === 0) return '';
+  return `<section class="tool-docs-section">
+      <div class="tool-docs-section-label">Model &amp; Runtime Notes</div>
+      <ul>${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>
+    </section>`;
+}
+
 function renderToolDocPage(spec, specs = []) {
   const description = spec.description || 'No description is available for this tool yet.';
   const parameters = Array.isArray(spec.parameters) ? spec.parameters : [];
@@ -124,6 +132,8 @@ function renderToolDocPage(spec, specs = []) {
         </tbody>
       </table>
     </section>
+
+    ${renderNotesSection(spec.notes)}
 
     ${renderExecutionBehavior(spec.execution)}
 

@@ -67,4 +67,54 @@ describe('workspace history stack (#180)', () => {
     expect(shouldHandleUndoRedoShortcut({ metaKey: true, key: 'z', target: dialogBtn })).toBeNull();
     expect(shouldHandleUndoRedoShortcut({ altKey: true, ctrlKey: true, key: 'z', target: body })).toBeNull();
   });
+
+  test('deduplicates unchanged GeoJSON blobs across metadata/visibility/style edits', () => {
+    const bigGeojson = {
+      type: 'FeatureCollection',
+      features: Array.from({ length: 200 }, (_, i) => ({
+        type: 'Feature',
+        properties: { id: i, note: 'payload-data-for-dedup-test' },
+        geometry: { type: 'Point', coordinates: [-118 + i * 0.001, 34 + i * 0.001] },
+      })),
+    };
+    const history = createHistoryStack({ maxEntries: 10 });
+    history.push({ layers: [{ id: 'big', visible: true, name: 'Big', geojson: bigGeojson }] }, 'Import');
+    const afterImportBytes = history.getStatus().totalBytes;
+
+    // Toggle visibility, rename, and style 5 times without changing geometry
+    history.push({ layers: [{ id: 'big', visible: false, name: 'Big', geojson: bigGeojson }] }, 'Hide');
+    history.push({ layers: [{ id: 'big', visible: true, name: 'Big Renamed', geojson: bigGeojson }] }, 'Rename');
+    history.push({ layers: [{ id: 'big', visible: true, name: 'Big Renamed', symbology: { mode: 'single' }, geojson: bigGeojson }] }, 'Style');
+
+    const status = history.getStatus();
+    expect(status.size).toBe(4);
+    expect(status.blobCount).toBe(1);
+    // Total memory barely grew beyond the single copy of bigGeojson
+    expect(status.totalBytes).toBeLessThan(afterImportBytes + 1500);
+
+    // Hydrates full geojson transparently on undo/redo
+    const undone = history.undo();
+    expect(undone.layers[0].name).toBe('Big Renamed');
+    expect(undone.layers[0].geojson.features).toHaveLength(200);
+    expect(undone.layers[0].__geojsonBlobId).toBeUndefined();
+  });
+
+  test('evicts oldest snapshots and garbage-collects unreferenced blobs when maxBytes budget is exceeded', () => {
+    const makePayload = (tag) => ({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: { tag, pad: 'x'.repeat(800) }, geometry: { type: 'Point', coordinates: [0, 0] } }],
+    });
+
+    const history = createHistoryStack({ maxEntries: 25, maxBytes: 1600 });
+    history.push({ layers: [{ id: 'l1', geojson: makePayload('one') }] }, 'Add 1');
+    expect(history.getStatus().blobCount).toBe(1);
+
+    // Deleting l1 and adding a new distinct large payload exceeds 1600 bytes -> evicts l1's snapshot & GCs l1's blob
+    history.push({ layers: [{ id: 'l2', geojson: makePayload('two') }] }, 'Replace with 2');
+
+    const status = history.getStatus();
+    expect(status.size).toBe(1);
+    expect(status.blobCount).toBe(1);
+    expect(status.canUndo).toBe(false);
+  });
 });

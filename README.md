@@ -179,8 +179,8 @@ Planned capabilities focus on making the runtime repeatable for agents:
 - Provider fallback after the normalized AI/retry/telemetry foundation
 - Replayable multi-step workflows with execution receipts and artifact links
 - More tool contracts with examples, preconditions, and deterministic fixtures
-- Spatial join, clip/intersect, geocode/enrich, and suitability workflows
-- Geometry comparison and scoring services
+- Intersection, geocoding, enrichment, and suitability workflows
+- Additional geometry scoring services
 - Provenance and replayable workflows
 - Educational “modes” for learning geometry concepts
 

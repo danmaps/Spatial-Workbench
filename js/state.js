@@ -1169,7 +1169,8 @@ function applyResult(toolResult) {
         const groupLayer = geojsonOptions ? L.geoJSON(gj, geojsonOptions) : L.geoJSON(gj);
         const datasetId = ensureDatasetId(groupLayer, gj?.properties?.__datasetId || _uuid());
 
-        const id = registerLayer(groupLayer, undefined, datasetId);
+        const preferredGroupId = gj?.properties?.__id || undefined;
+        const id = registerLayer(groupLayer, preferredGroupId, datasetId);
         ensureStableId(groupLayer, id);
         ensureFeatureIdentifiers(gj, id);
         if (typeof groupLayer.eachLayer === 'function') {
@@ -1268,6 +1269,98 @@ function applyResult(toolResult) {
   return { ok: errors.length === 0, added, removed, errors };
 }
 
+function captureWorkspaceSnapshot() {
+  const { tocLayers } = getAppRefs();
+  const layers = (Array.isArray(tocLayers) ? tocLayers : [])
+    .map((layer) => {
+      if (!layer) return null;
+      const id = ensureStableId(layer);
+      const datasetId = ensureDatasetId(layer);
+      const geojson = typeof layer.toGeoJSON === 'function' ? JSON.parse(JSON.stringify(layer.toGeoJSON())) : null;
+      if (!geojson) return null;
+      const name = getLayerName(layer);
+      const visible = isLayerVisible(layer);
+      const toolMetadata = getToolMetadata(layer);
+      const toolHistory = getToolHistory(layer);
+      const symbology = getLayerSymbology(layer);
+      return {
+        id,
+        datasetId,
+        name,
+        visible,
+        geojson,
+        ...(toolMetadata ? { toolMetadata: cloneMetadata(toolMetadata) } : {}),
+        ...(toolHistory.length ? { toolHistory } : {}),
+        ...(symbology ? { symbology } : {}),
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    layers,
+    selection: {
+      activeLayerId: getActiveLayerId(),
+      selectedLayerIds: getSelectedLayerIds(),
+      selectedFeaturesByLayerId: getSelectedFeaturesByLayerId(),
+    },
+  };
+}
+
+function restoreWorkspaceSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return { ok: false, restoredCount: 0 };
+  }
+
+  clearAllLayers();
+  const entries = Array.isArray(snapshot.layers) ? snapshot.layers : [];
+  let restoredCount = 0;
+
+  entries.forEach((entry) => {
+    if (!entry || !entry.geojson) return;
+    const gj = JSON.parse(JSON.stringify(entry.geojson));
+    if (!gj.properties || typeof gj.properties !== 'object') gj.properties = {};
+    if (entry.id) gj.properties.__id = entry.id;
+    if (entry.datasetId) gj.properties.__datasetId = entry.datasetId;
+    if (entry.toolMetadata) gj.toolMetadata = cloneMetadata(entry.toolMetadata);
+    if (entry.symbology) gj.symbology = JSON.parse(JSON.stringify(entry.symbology));
+
+    const res = applyResult({ addGeojson: gj });
+    if (res && res.ok && res.added.length) {
+      restoredCount += 1;
+      const restoredLayer = getLayer(entry.id) || getLayer(res.added[0]);
+      if (restoredLayer) {
+        if (entry.name) setLayerName(restoredLayer, entry.name);
+        if (Array.isArray(entry.toolHistory) && entry.toolHistory.length) {
+          const feature = ensureLayerFeature(restoredLayer);
+          feature.toolHistory = entry.toolHistory.map((item) => cloneMetadata(item)).filter(Boolean);
+          feature.properties.toolHistory = feature.toolHistory;
+        }
+        if (entry.visible === false) {
+          setLayerVisibility(restoredLayer, false);
+        }
+      }
+    }
+  });
+
+  const sel = snapshot.selection || {};
+  clearLayerSelection();
+  if (Array.isArray(sel.selectedLayerIds) && sel.selectedLayerIds.length) {
+    setSelectedLayerIds(sel.selectedLayerIds);
+  }
+  if (sel.activeLayerId) {
+    setActiveLayerId(sel.activeLayerId);
+  }
+  if (sel.selectedFeaturesByLayerId && typeof sel.selectedFeaturesByLayerId === 'object') {
+    Object.entries(sel.selectedFeaturesByLayerId).forEach(([layerId, featureIds]) => {
+      if (Array.isArray(featureIds) && featureIds.length) {
+        setSelectedFeatureIds(layerId, featureIds);
+      }
+    });
+  }
+
+  return { ok: true, restoredCount };
+}
+
 module.exports = {
   ensureStableId,
   ensureDatasetId,
@@ -1312,6 +1405,8 @@ module.exports = {
   listLayerGroups,
   getState,
   applyResult,
+  captureWorkspaceSnapshot,
+  restoreWorkspaceSnapshot,
   removeLayer,
   clearAllLayers,
   handleDrawDeleted,

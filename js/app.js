@@ -18,6 +18,7 @@ const { stopLeafletClickPropagation } = require('./ui/leaflet-click');
 const { createStyleLegend, openLayerStyleEditor, closeLayerStyleEditor } = require('./ui/layer-style-editor');
 const { createDrawStyleGuard } = require('./ui/draw-style-guard');
 const { createClearFeatureSelectionButton } = require('./ui/clear-feature-selection');
+const { createHistoryStack, shouldHandleUndoRedoShortcut } = require('./ui/history-stack');
 const {
     getComparisonSummaryMeta,
     getGroupSummaryMeta,
@@ -92,6 +93,57 @@ const drawStyleGuard = createDrawStyleGuard({
     closeEditor: closeLayerStyleEditor,
     refresh: () => refreshSidebarState(),
 });
+
+const workspaceHistory = createHistoryStack({ maxEntries: 25 });
+let isRestoringHistory = false;
+
+function syncHistoryButtons() {
+    const status = workspaceHistory.getStatus();
+    const undoBtn = document.getElementById('undoButton');
+    const redoBtn = document.getElementById('redoButton');
+    if (undoBtn) {
+        undoBtn.disabled = !status.canUndo;
+        undoBtn.title = status.undoLabel ? `Undo: ${status.undoLabel} (Ctrl/Cmd+Z)` : 'Undo (Ctrl/Cmd+Z)';
+    }
+    if (redoBtn) {
+        redoBtn.disabled = !status.canRedo;
+        redoBtn.title = status.redoLabel ? `Redo: ${status.redoLabel} (Ctrl/Cmd+Shift+Z)` : 'Redo (Ctrl/Cmd+Shift+Z)';
+    }
+}
+
+function recordWorkspaceHistory(label = '') {
+    if (isRestoringHistory || typeof state.captureWorkspaceSnapshot !== 'function') return false;
+    const pushed = workspaceHistory.push(state.captureWorkspaceSnapshot(), label);
+    syncHistoryButtons();
+    return pushed;
+}
+
+function applyHistorySnapshot(snapshot) {
+    if (!snapshot || typeof state.restoreWorkspaceSnapshot !== 'function') return false;
+    isRestoringHistory = true;
+    try {
+        closeLayerStyleEditor();
+        state.restoreWorkspaceSnapshot(snapshot);
+        bindAllLayerSelectionInteractions();
+        updateDataContent();
+    } finally {
+        isRestoringHistory = false;
+        syncHistoryButtons();
+    }
+    return true;
+}
+
+function performUndo() {
+    const snapshot = workspaceHistory.undo();
+    if (!snapshot) return false;
+    return applyHistorySnapshot(snapshot);
+}
+
+function performRedo() {
+    const snapshot = workspaceHistory.redo();
+    if (!snapshot) return false;
+    return applyHistorySnapshot(snapshot);
+}
 
 function getLayerHistorySummary(layer) {
     const info = state.getLayerInfo(layer);
@@ -1425,6 +1477,7 @@ function renderToc() {
             event.stopPropagation();
             state.setLayerVisibility(layer, !state.isLayerVisible(layer));
             refreshSidebarState();
+            recordWorkspaceHistory('Toggle visibility');
         });
 
         menuWrap.className = 'layer-menu-wrap';
@@ -1471,6 +1524,7 @@ function renderToc() {
                 onChange: () => {
                     bindAllLayerSelectionInteractions();
                     refreshSidebarState();
+                    recordWorkspaceHistory('Style layer');
                 },
             });
         });
@@ -1595,6 +1649,7 @@ function updateDataContent() {
     }
 
     refreshSidebarState();
+    recordWorkspaceHistory();
 }
 
 document.addEventListener('spatial-workbench:tool-complete', function () {
@@ -1609,6 +1664,7 @@ document.addEventListener('spatial-workbench:settings-updated', function (event)
         map.setView([prefs.defaultLat, prefs.defaultLng], prefs.defaultZoom || 7);
     }
     refreshSidebarState();
+    recordWorkspaceHistory();
 });
 
 // Event listeners remain the same...
@@ -1692,6 +1748,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (zoomSelectionButton) {
         zoomSelectionButton.addEventListener('click', () => zoomToSelection());
     }
+
+    const undoButton = document.getElementById('undoButton');
+    if (undoButton) {
+        undoButton.addEventListener('click', () => performUndo());
+    }
+
+    const redoButton = document.getElementById('redoButton');
+    if (redoButton) {
+        redoButton.addEventListener('click', () => performRedo());
+    }
+    syncHistoryButtons();
 
     Array.from(document.querySelectorAll('[data-map-interaction-mode]')).forEach((button) => {
         button.addEventListener('click', () => {
@@ -1785,6 +1852,15 @@ document.addEventListener('click', (event) => {
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeLayerMenu();
+        return;
+    }
+    const action = shouldHandleUndoRedoShortcut(event);
+    if (action === 'undo') {
+        event.preventDefault();
+        performUndo();
+    } else if (action === 'redo') {
+        event.preventDefault();
+        performRedo();
     }
 });
 
@@ -1803,5 +1879,8 @@ if (typeof module !== 'undefined' && module.exports) {
         openLayerProperties,
         renderImportSummary,
         updateDataContent,
+        performUndo,
+        performRedo,
+        recordWorkspaceHistory,
     };
 }

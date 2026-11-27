@@ -36,6 +36,14 @@
                         <div id="selectionSummary" class="toc-subtitle">No selection</div>
                     </div>
                     <div class="toc-header-actions">
+                        <div class="attribute-mode-toggle" role="group" aria-label="Undo and redo history">
+                            <button type="button" id="undoButton" class="attribute-mode-button" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" disabled>
+                                <i class="fas fa-undo" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" id="redoButton" class="attribute-mode-button" title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo" disabled>
+                                <i class="fas fa-redo" aria-hidden="true"></i>
+                            </button>
+                        </div>
                         <div class="attribute-mode-toggle" role="group" aria-label="Map feature click mode">
                             <button type="button" class="attribute-mode-button is-active" data-map-interaction-mode="select">Select</button>
                             <button type="button" class="attribute-mode-button" data-map-interaction-mode="inspect">Inspect</button>

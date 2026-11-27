@@ -154,4 +154,44 @@ describe('layer symbology rendering', () => {
     expect(resInvalid.ok).toBe(true);
     expect(state.getLayerSymbology(resInvalid.added[0])).toBeNull();
   });
+
+  test('captureWorkspaceSnapshot and restoreWorkspaceSnapshot preserve layers, names, and symbology for undo/redo (#180)', () => {
+    const initialSnap = state.captureWorkspaceSnapshot();
+    expect(initialSnap.layers).toEqual([]);
+
+    const res = state.applyResult({
+      addGeojson: {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', properties: { __id: 'pt-1', zone: 'alpha' }, geometry: { type: 'Point', coordinates: [-118, 34] } },
+          { type: 'Feature', properties: { __id: 'pt-2', zone: 'beta' }, geometry: { type: 'Point', coordinates: [-117, 33] } },
+        ],
+      },
+    });
+    const layerId = res.added[0];
+    state.setLayerName(layerId, 'Study Sites');
+    state.setLayerSymbology(layerId, { mode: 'categorical', field: 'zone', palette: 'default' });
+
+    const styledSnap = state.captureWorkspaceSnapshot();
+    expect(styledSnap.layers).toHaveLength(1);
+    expect(styledSnap.layers[0]).toEqual(
+      expect.objectContaining({
+        id: layerId,
+        name: 'Study Sites',
+        symbology: expect.objectContaining({ mode: 'categorical', field: 'zone' }),
+      })
+    );
+
+    // Undo back to empty
+    state.restoreWorkspaceSnapshot(initialSnap);
+    expect(state.listLayers()).toHaveLength(0);
+
+    // Redo back to styled layer
+    state.restoreWorkspaceSnapshot(styledSnap);
+    expect(state.listLayers()).toHaveLength(1);
+    expect(state.getLayerName(layerId)).toBe('Study Sites');
+    expect(state.getLayerSymbology(layerId)).toEqual(
+      expect.objectContaining({ mode: 'categorical', field: 'zone', palette: 'default' })
+    );
+  });
 });
